@@ -1,0 +1,18 @@
+X_WORLD                  Barycenter position along world x axis                    [deg]
+Y_WORLD                  Barycenter position along world y axis                    [deg]
+X_IMAGE
+Y_IMAGE 
+MAG_AUTO                 This should be kron?                                      [mag]
+MAGERR_AUTO              # rms of mag?
+FLUX_AUTO
+FLUXERR_AUTO
+MAG_ISO                  Isophotal magnitude                                       [mag]
+MAGERR_ISO               RMS error for isophotal magnitude                         [mag]
+FLUX_ISO                 Isophotal flux                                            [count]
+FLUXERR_ISO              RMS error for isophotal flux                              [count]
+CLASS_STAR               S/G classifier output                                    
+ISOAREA_IMAGE 
+SNR_WIN                  Required for PSFEx - not in default file!
+NUMBER                   Running object number                                    
+FLAGS
+

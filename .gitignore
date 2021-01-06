@@ -1,0 +1,9 @@
+*.fit
+*.fits
+*.pyc
+
+*.egg-info
+dxsenv/
+data/
+input_data/
+

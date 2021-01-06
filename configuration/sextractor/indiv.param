@@ -1,0 +1,32 @@
+X_WORLD                  Barycenter position along world x axis                    [deg]
+Y_WORLD                  Barycenter position along world y axis                    [deg]
+XPEAK_IMAGE
+YPEAK_IMAGE
+
+X_IMAGE                  Object position along x                                   [pixel]
+Y_IMAGE                  Object position along y                                   [pixel]
+FLUX_MAX                 # Maximum flux?
+#MAG_BEST                 Best of MAG_AUTO and MAG_ISOCOR                           [mag]
+#MAGERR_BEST              RMS error for MAG_BEST                                    [mag]
+#FLUX_BEST                Best of FLUX_AUTO and FLUX_ISOCOR                         [count]
+#FLUXERR_BEST             RMS error for BEST flux                                   [count]
+MAG_AUTO                 This should be kron?                                      [mag]
+MAGERR_AUTO              # rms of mag?
+FLUX_AUTO
+FLUXERR_AUTO
+FLUX_RADIUS(3)
+MAG_APER(4)              # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
+MAGERR_APER(4)           # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
+FLUX_APER(4)             # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
+FLUXERR_APER(4)          # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
+FWHM_WORLD               FWHM assuming a gaussian core                             [deg]
+MAG_ISO                  Isophotal magnitude                                       [mag]
+MAGERR_ISO               RMS error for isophotal magnitude                         [mag]
+FLUX_ISO                 Isophotal flux                                            [count]
+FLUXERR_ISO              RMS error for isophotal flux                              [count]
+CLASS_STAR               S/G classifier output                                    
+ISOAREA_IMAGE 
+SNR_WIN                  Required for PSFEx - not in default file!
+NUMBER                   Running object number                                    
+FLAGS
+
