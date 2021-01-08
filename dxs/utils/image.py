@@ -31,6 +31,10 @@ def prepare_hdus(
 ):
     stack_path = Path(stack_path) # convert to pathlib Path for niceness.
     results = []
+
+    if segmentation_path is not None:
+        mask
+
     with fits.open(stack_path) as f:
         for ii, ccd in enumerate(survey_config["ccds"]):
             hdu_name = get_hdu_name(stack_path, ccd)

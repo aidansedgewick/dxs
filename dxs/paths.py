@@ -3,8 +3,8 @@ from pathlib import Path
 file_path = Path(__file__).absolute()
 
 input_data_path = file_path.parent.parent / "input_data"
-
-if input_data_path.is_dir() is False:
+stack_data_path = input_data_path / "stacks"
+if stack_data_path.is_dir() is False:
     raise ValueError(f"No data directory {data_path}. \nEither run setup_scripts/get_data.sh or manually add the data in this location. ")
 
 temp_data_path = file_path.parent.parent / "temp_data"
