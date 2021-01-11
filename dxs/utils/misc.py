@@ -1,12 +1,23 @@
+import logging
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import List
 
-import numpy
+from dxs import paths
+
+logger = logging.getLogger("utils.misc")
 
 class ModuleMissingError(Exception):
     pass
+
+
+module_suggestions = {
+    "swarp": "try   module load swarp",
+    "sex": "try   module load sextractor",
+    "stilts": "try   module load starlink",
+}
 
 def check_modules(modules):
     if not isinstance(modules, list):
@@ -21,7 +32,12 @@ def check_modules(modules):
         else:
             print(f"Using {module} at {exe_path}")
     if len(missing_modules) > 0:
-        raise ModuleMissingError(f"Missing modules {missing_modules}. Please load.")
+        suggestions = []
+        for module in missing_modules:
+            suggestion = module_suggestions.get(module, "no suggestions available")
+            suggestions.append(f"Missing '{module}': {suggestion}")
+        suggestion_string = "\n".join(x for x in suggestions)
+        raise ModuleMissingError(f"Missing modules {missing_modules}.\n{suggestion_string}")
 
 def format_flags(config, capitalise=True, float_precision=6):
     """
@@ -58,17 +74,55 @@ def format_flags(config, capitalise=True, float_precision=6):
             raise ValueError(f"Don't know how to format type {type(value)}")
     return formatted_config
 
-def create_file_backups(file_list: List[Path], temp_dir: Path):
+def create_file_backups(file_list: List[Path], temp_dir: Path, verbose=True):
+    if not isinstance(file_list , list):
+        file_list = [file_list]
     temp_dir = Path(temp_dir)
+    temp_dir.mkdir(exist_ok=True, parents=True)
     new_paths = []
     for file_path in file_list:
         file_path = Path(file_path)
         new_file_path = temp_dir / file_path.name
         new_paths.append(new_file_path)
+        if verbose:
+            logger.info(f"backup {file_path} to {temp_dir}")
         shutil.copy2(file_path, new_file_path)
     return new_paths
 
 def get_git_info():
-    pass
+
+    dxs_git = Path(__file__).parent.parent.parent / ".git"
+    branch_cmd = f"git --git-dir {dxs_git} rev-parse --abbrev-ref HEAD".split()
+    try:
+        branch = (
+            subprocess.run(branch_cmd, stdout=subprocess.PIPE)
+            .stdout.decode("utf-8")
+            .strip()
+        )
+    except Exception as e:
+        print(e)
+        print("Couldn't find git branch")
+        branch = "unavailable"
+    local_SHA_cmd = f'git --git-dir {dxs_git} log -n 1 --format="%h"'.split()
+    try:
+        local_SHA = (
+            subprocess.run(local_SHA_cmd, stdout=subprocess.PIPE)
+            .stdout.decode("utf-8")
+            .strip()
+        )
+    except Exception as e:
+        print(e)
+        print("could not record local git SHA")
+        local_SHA = "unavailable"
+    return branch, local_SHA
+
+
+
+
+
+
+
+
+
 
 

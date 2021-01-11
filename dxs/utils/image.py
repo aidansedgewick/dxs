@@ -1,14 +1,15 @@
+import os
 import yaml
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-import astropy.io.fits as fits
-import astropy.wcs as wcs
+from astropy.io import fits
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from astropy.nddata.utils import Cutout2D
+from astropy.wcs import WCS
 
 import dxs.paths as paths
 
@@ -17,111 +18,59 @@ with open(survey_config, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 stack_data = pd.read_csv(paths.header_data_path)
+default_ds9_flags = ["single", "zscale", "cmap bb", "wcs skyformat degrees", "multiframe"]
 
-def get_hdu_name(stack_path, ccd, weight=False):
-    weight = ".weight" if weight else ""
-    return f"{stack_path.stem}_{ccd:02d}{weight}.fits"
 
-def prepare_hdus(
-    stack_path, 
-    resize=True, edges=25.0,
-    segmentation_path=None,
-    normalise_exptime=True,
-    subtract_bgr=True, bgr_size=32,
-):
-    stack_path = Path(stack_path) # convert to pathlib Path for niceness.
-    results = []
+def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0, hdu2=0):
+    path1 = Path(path1)
+    path2 = Path(path2)
+    if save_path is None:
+        save_path = paths.temp_swarp_path / f"diff_{path1.stem}_{path2.stem}.fits"
+    save_path = Path(save_path)
+    with fits.open(path1) as mosaic1:
+        data1 = mosaic1[hdu1].data
+        header1 = mosaic1[hdu1].header
+    with fits.open(path2) as mosaic2:
+        data2 = mosaic2[hdu2].data
+        header2 = mosaic2[hdu2].header
+    if header==1:
+        header = header1
+    elif header==2:
+        header = header2
+    else:
+        raise ValueError("Choose to keep first header (header=1), or second (header=2)")
+    data = data1-data2
+    output_hdu = fits.PrimaryHDU(data=data, header=header)
+    output_hdu.writeto(save_path, overwrite=True)
+   
+    ds9_command = build_ds9_command([save_path, path1, path2])
+    print(f"view image with \n    {ds9_command} &")
 
-    if segmentation_path is not None:
-        mask
 
-    with fits.open(stack_path) as f:
-        for ii, ccd in enumerate(survey_config["ccds"]):
-            hdu_name = get_hdu_name(stack_path, ccd)
-            hdu_path = paths.temp_hdus_path / hdu_name  
-            results.append(hdu_path)          
-            if hdu_path.exists():
-                continue
-            
-            data = f[ccd].data.copy()
-            header = f[ccd].header
+def build_ds9_command(paths, flags=None, relative=True):
+    flags = flags or default_ds9_flags 
+    if not isinstance(paths, list):
+        paths = [paths]
+    if not isinstance(flags, list):
+        flags = [flags]
 
-            if resize:
-                fwcs = wcs.WCS(header)
-                xlen, ylen = header['NAXIS1'], header['NAXIS2']
-                position = (ylen//2, xlen//2)
-                size = (int(ylen-2*edges), int(xlen-2*edges))
-                cutout = Cutout2D(data, position, size, wcs=fwcs)
-                data_hdu = fits.PrimaryHDU(data=cutout.data,header=header)
-                data_hdu.header.update(cutout.wcs.to_header())
-            else:
-                data_hdu = fits.PrimaryHDU(data=data,header=header)
-            data_hdu.writeto(hdu_path, overwrite=True)    
-    return results
-
-def get_stack_data(field, tile, band, pointing=None):
-    """
+    if relative:    
+        print_paths = []
+        for path in paths:
+            path = Path(path)
+            try:
+                print_paths.append( path.relative_to(Path.cwd()) )
+            except:
+                print_paths.append( path )
+    else:
+        print_paths = paths    
+    flag_str = " ".join(f"-{x}" for x in flags)
+    path_str = " ".join(str(path) for path in print_paths)
+    cmd = f"ds9 {flag_str} {path_str}"
+    return cmd
     
-    """
-    queries = [f"(field=='{field}')"]
-    if tile is not None:
-        if not isinstance(tile, list):
-            tile = [tile]
-        queries.append(f"(tile in @tile)")
-    if band is not None:
-        if not isinstance(band, list):
-            band = [band]
-        queries.append(f"(band in @band)")
-    if pointing is not None:
-        if not isinstance(pointing, list):
-            pointing = [pointing]
-        queries.append(f"(pointing in @pointing)")    
-    query = "&".join(q for q in queries)
-    return stack_data.query(query)
-
-def calculate_mosaic_geometry(field, tile, ccds=None, factor=None, border=None):
-    relevant_stacks = get_stack_data(field, tile, band=None)
-    print(relevant_stacks)
-    stack_list = [paths.input_data_path / f"{x}.fit" for x in relevant_stacks["filename"]]
-
-    ccds = ccds or [0]
-    ra_values = []
-    dec_values = []
-    for ii, stack_path in enumerate(stack_list):
-        with fits.open(stack_path) as f:
-            for ccd in ccds:
-                fwcs = wcs.WCS(f[ccd].header)
-                footprint = fwcs.calc_footprint()
-                ra_values.extend(footprint[:,0])
-                dec_values.extend(footprint[:,1])
-    ra_limits = (np.min(ra_values), np.max(ra_values))
-    dec_limits = (np.min(dec_values), np.max(dec_values))
-
-    # center is easy.
-    center = (np.mean(ra_limits), np.mean(dec_limits))
-    
-    # image size takes a bit more thought because of spherical things.
-    cos_dec = np.cos(center[1]*np.pi / 180.)
-    plate_factor = 3600. / survey_config["pixel_scale"]
-    x_size = abs(ra_limits[1] - ra_limits[0]) * plate_factor * cos_dec
-    y_size = abs(dec_limits[1] - dec_limits[0]) * plate_factor
-    image_size = (int(x_size), int(y_size))
-    if factor is not None:
-        image_size = (image_size[0]*factor, image_size[1]*factor)
-    if border is not None:
-        image_size = (image_size[0]+border, image_size[1]+border)
-    return center, image_size    
-
-def add_keys(mosaic_path, data, hdu=0, verbose=False):
-    with fits.open(mosaic_path, mode="update") as mosaic:
-        for key, val in data.items():
-            if verbose:
-                print(f"Update {key} to {val}")
-            mosaic[hdu].header[key.upper()] = val
-        mosaic.flush()
 
 
 
 
-
-
+       

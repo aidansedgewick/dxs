@@ -1,0 +1,7 @@
+NUMBER: id
+X_WORLD: ra
+Y_WORLD: dec
+X_IMAGE: xpix
+Y_IMAGE: ypix
+CLASS_STAR: stell
+ISOAREA_IMAGE: iso_area

@@ -14,7 +14,7 @@ MAG_AUTO                 This should be kron?                                   
 MAGERR_AUTO              # rms of mag?
 FLUX_AUTO
 FLUXERR_AUTO
-FLUX_RADIUS(3)
+FLUX_RADIUS(3)           # radius containing in 0.2, 0.5, 0.9 frac of flux.
 MAG_APER(4)              # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
 MAGERR_APER(4)           # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
 FLUX_APER(4)             # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)

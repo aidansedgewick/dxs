@@ -1,4 +1,5 @@
 #!/bin/bash
-[[ -d ../data/ ]] || mkdir ../data
-cp ./dxs.wget ../data
-( cd ../data ; ./dxs.wget )
+[[ -d ../input_data/stacks ]] || -p mkdir ../input_data/stacks
+[[ -d ../input_data/stacks
+cp ./dxs.wget ../input_data/stacks
+( cd ../input_data/stacks ; ./dxs.wget )

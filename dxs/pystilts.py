@@ -1,7 +1,9 @@
 import logging
 import subprocess
 
-from dxs.utils.misc import check_modules, format_flags
+from dxs.utils.misc import check_modules, format_flags, create_file_backups
+
+from dxs import paths
 
 logger = logging.getLogger("stilts_wrapper")
 
@@ -26,6 +28,7 @@ all_commands = (
     + skypix_commands + sql_commands + misc_commands
 )
 
+docs_url = "http://www.star.bris.ac.uk/~mbt/stilts/"
 
 class Stilts:
     """
@@ -48,9 +51,11 @@ class Stilts:
     stilts_exe
         if your `stilts` executable is not in the path (ie, can't run "stilts" 
         from the command line), provide path to executable here.
+    kwargs
+        extra kwargs to pass to stilts
 
     """
-    docs_url = "http://www.star.bris.ac.uk/~mbt/stilts/"
+
 
     def __init__(self, task, flags=None, stilts_exe="stilts", **kwargs):
         check_modules("stilts")
@@ -60,6 +65,8 @@ class Stilts:
         self.flags = flags or {}
         self.stilts_exe = stilts_exe
         self.flags.update(kwargs)
+        print(kwargs)
+        print("FLAGS ARE", self.flags)
         self.cmd = None
         
         if "out" not in flags:
@@ -72,19 +79,22 @@ class Stilts:
         if task not in table_processing_commands:
             logger.warn(f"task {self.task} behaviour not tested with this wrapper...")
 
-    def run(self):
+    def run(self, strict=True):
         if self.cmd is None:
-            self.cmd = self.build_cmd()
-        status = subprocess.call(self.cmd, shell=True)       
-        if status > 0:
-            error_msg = (
-                f"run: Something went wrong (status={status}).\n "
-                f"check docs? {docs_url}/http://www.star.bris.ac.uk/~mbt/stilts/sun256/{self.task}.html"
-            )
-            raise StiltsError(f"run: Something went wrong (status={status}).")
+            self.build_cmd()
+        print("RUN CMD", self.cmd)
+        status = subprocess.call(self.cmd, shell=True)
+        if strict:    
+            if status > 0:
+                error_msg = (
+                    f"run: Something went wrong (status={status}).\n"
+                    + f"check docs? {docs_url}sun256/{self.task}.html"
+                )
+                raise StiltsError(error_msg)
+        return status
 
     def build_cmd(self, float_precision=6):
-        cmd = f"{stilts_exe} {task} "
+        cmd = f"{self.stilts_exe} {self.task} "
         flags = format_flags(self.flags, capitalise=False, float_precision=float_precision)
         cmd += " ".join(f"{k}={v}" for k, v in flags.items())
         self.cmd = cmd
@@ -94,6 +104,15 @@ class Stilts:
         cls, file1, file2, output, ra=None, dec=None, flags=None, 
         stilts_exe="stilts", **kwargs
     ):
+        if file1 == file2:
+            raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
+        if file1 == output and file1.exists():
+            new_paths = create_file_backups(file1, paths.temp_data_path)
+            file1 = new_paths[0] # filebackups returns list.
+        elif file2 == output and file2.exists():
+            new_paths = create_file_backups(file2, paths.temp_data_path)
+            file2 = new_paths[0]
+
         flags = flags or {}
         flags["in1"] = file1
         flags["in2"] = file2
@@ -108,11 +127,33 @@ class Stilts:
         if dec is not None:
             flags["dec1"] = dec
             flags["dec2"] = dec
-        return cls("tskymatch2", flags=flags, stilts_exe=stilts_exe)
+        print("CLS kwargs", kwargs)
+        return cls("tskymatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)
 
     @classmethod
-    def tskymatch2_(self):
-        pass
+    def tmatch2_fits(
+        cls, file1, file2, output, flags=None, **kwargs
+    ):
+        if file1 == file2:
+            raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
+        if file1 == output and file1.exists():
+            new_paths = create_file_backups(file1, paths.temp_data_path)
+            file1 = new_paths[0] # filebackups returns list.
+        elif file2 == output and file2.exists():
+            new_paths = create_file_backups(file2, paths.temp_data_path)
+            file2 = new_paths[0]
+
+        flags = flags or {}
+        flags["in1"] = file1
+        flags["in2"] = file2
+        flags["ifmt1"] = "fits"
+        flags["ifmt2"] = "fits"
+        flags["omode"] = "out"
+        flags["ofmt"] = "fits"
+        flags["out"] = output
+        
+        print("CLS kwargs", kwargs)
+        return cls("tmatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)        
 
 
 
