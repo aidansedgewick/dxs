@@ -116,7 +116,11 @@ def get_git_info():
         local_SHA = "unavailable"
     return branch, local_SHA
 
+def calc_mids(arr):
+    return 0.5*(arr[:-1]-arr[1:])
 
+def calc_widths(arr):
+    return arr[1:] - arr[:-1]
 
 
 

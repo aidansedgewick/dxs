@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import yaml
 from pathlib import Path
@@ -17,6 +18,8 @@ from dxs.utils.table import table_to_numpynd, fix_column_names
 
 from dxs import paths
 
+logger = logging.getLogger("crosstalks")
+
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
@@ -25,25 +28,38 @@ import matplotlib.pyplot as plt
 
 class CrosstalkProcessor:
     def __init__(
-        self, stack_list, star_catalog: Table, 
+        self, stack_list, star_catalog: Table, crosstalk_catalog_path=None, 
         max_order=8, crosstalk_separation=256
     ):
         self.stack_list = stack_list
         self.star_catalog = star_catalog
-        self.star_catalog.add_column(np.arange(len(star_catalog)), name="Xid")
+        self.star_catalog.add_column(np.arange(len(star_catalog)), name="parent_id")
+        if crosstalk_catalog_path is None:
+            crosstalk_dir = paths.temp_data_path / "crosstalks"
+            crosstalk_dir.mkdir(exist_ok=True, parents=True)
+            crosstalk_catalog_path = crosstalk_dir / f"crosstalks_{int(time.time())}.cat"
+        self.crosstalk_catalog_path = Path(crosstalk_catalog_path)
         self.crosstalk_orders = np.concatenate( 
             [np.arange(-max_order, 0), np.arange(1, max_order+1)]
         )
         self.crosstalk_separation = crosstalk_separation
 
     @classmethod
-    def from_dxs_spec(cls, field, tile, band, star_catalog: Table):
+    def from_dxs_spec(
+        cls, field, tile, band, star_catalog: Table, crosstalk_catalog_path=None
+    ):
         stack_data = get_stack_data(field, tile, band)
         stack_list = [paths.stack_data_path / f"{x}.fit" for x in stack_data["filename"]]
-        return cls(stack_list, star_catalog)
+        if crosstalk_catalog_path is None:
+            crosstalk_catalog_dir = paths.get_catalog_dir(field, tile, band)
+            stem = paths.get_catalog_stem(field, tile, band)
+            crosstalk_catalog_path = crosstalk_catalog_dir / f"{stem}_crosstalks.cat"
+        return cls(
+            stack_list, star_catalog, crosstalk_catalog_path=crosstalk_catalog_path
+        )
 
     def collate_crosstalks(
-        self, mag_column=None, mag_limit=15.0, ra="ra", dec="dec", save_path=None
+        self, mag_column, mag_limit=15.0, ra="ra", dec="dec", save_path=None
     ):
         crosstalk_table_list = []
         for ii, stack_path in enumerate(self.stack_list):
@@ -53,20 +69,16 @@ class CrosstalkProcessor:
             )
             crosstalk_table_list.append(stack_crosstalks)
         all_crosstalks = vstack(crosstalk_table_list, join_type="exact")
-        grouped = all_crosstalks.group_by(["Xid", "crosstalk_direction", "crosstalk_order"])
+        grouped = all_crosstalks.group_by(["parent_id", "crosstalk_direction", "crosstalk_order"])
         crosstalk_locations = grouped.groups.aggregate(np.mean)
-        star_data_copy = self.star_catalog.copy()
+        star_data_copy = self.star_catalog[[ra, dec, mag_column]].copy()
         star_data_copy.rename_column(ra, "parent_ra")
         star_data_copy.rename_column(dec, "parent_dec")
-        star_data_copy.rename_column(mag, "parent_mag")
+        star_data_copy.rename_column(mag_column, "parent_mag")
         crosstalks = join(
-            crosstalk_locations, star_data_copy, keys="Xid", join_type="left"
+            crosstalk_locations, star_data_copy, keys="parent_id", join_type="left"
         )
-        if save_path is None:
-            crosstalk_dir = paths.temp_data_path / "crosstalks"
-            crosstalk_dir.mkdir(exist_ok=True, parents=True)
-        self.crosstalk_catalog_path = save_path
-        crosstalks.write(save_path, format="fits", overwrite=True)
+        crosstalks.write(self.crosstalk_catalog_path, format="fits", overwrite=True)
         return crosstalks
             
     def get_crosstalks_in_stack(
@@ -160,13 +172,12 @@ class CrosstalkProcessor:
     ):
         if crosstalk_catalog_path is None:
             crosstalk_catalog_path = self.crosstalk_catalog_path
-        temporary_catalog_path = (
-            paths.temp_data_path / f"temp_stilts_{int(time.time())}.cat"
-        )
+        crosstalk_catalog_path = Path(crosstalk_catalog_path)
+        logger.info("match crosstalks {crosstalk_catalog_path.name} to {catalog_path.name}")
         stilts = Stilts.tskymatch2_fits(
             catalog_path, 
             crosstalk_catalog_path,
-            temporary_catalog_path,
+            output_path=catalog_path,
             ra1=ra, 
             dec1=dec, 
             ra2="crosstalk_ra", 
@@ -177,8 +188,7 @@ class CrosstalkProcessor:
         input_columns = ["GroupID", "GroupSize", "Separation"]
         output_columns = ["crosstalk_group_id", "crosstalk_group_size", "crosstalk_separation"]
         fix_column_names(
-            temporary_catalog_path, output_path=catalog_path, 
-            input_columns=input_columns, output_columns=output_columns
+            catalog_path, input_columns=input_columns, output_columns=output_columns
         )
 
     def flag_crosstalks_in_catalog(self, catalog_path, coeffs=None):

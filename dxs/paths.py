@@ -39,9 +39,11 @@ def get_mosaic_dir(field, tile, band):
     return mosaics_path / get_mosaic_stem(field, tile, band)
 
 def get_catalog_stem(field, tile, detection_band, measurement_band=None, prefix=None):
-    prefix = prefix or ''
+    prefix = prefix or ""
+    if measurement_band is not None:
+        measurement_band = f"{measurement_band}fp"
     measurement_band = measurement_band or ''
     return f"{prefix}{field}{tile:02d}{detection_band}{measurement_band}"
 
 def get_catalog_dir(field, tile, detection_band):
-    return catalogs_path / get_catalog_stem(field, tile, detection_band)
+    return catalogs_path / get_catalog_stem(field, tile, "")

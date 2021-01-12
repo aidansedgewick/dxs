@@ -48,7 +48,6 @@ def fix_column_names(
                 continue # probably already renamed
             if column in lookup:
                 new_name = f"{band}{prefix}{lookup[column]}{suffix}"
-                print("becomes", new_name)
                 catalog[1].header[column_ttype] = new_name
         if output_path is None or output_path == catalog_path:
             catalog.flush()
@@ -58,7 +57,11 @@ def fix_column_names(
 def fix_sextractor_column_names(catalog_path, band=None, prefix=None, suffix=None):
     sextractor_lookup = _load_sextractor_column_lookup()
     fix_column_names(
-        catalog_path, column_lookup=sextractor_lookup, band=band, prefix=prefix, suffix=suffix
+        catalog_path, 
+        column_lookup=sextractor_lookup, 
+        band=band, 
+        prefix=prefix, 
+        suffix=suffix
     )
 
 def _load_sextractor_column_lookup(lookup_path=default_lookup_path):

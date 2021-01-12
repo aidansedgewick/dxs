@@ -75,13 +75,14 @@ class Stilts:
     @staticmethod
     def _task_check(task):
         if task not in all_commands:
-            raise StiltsError("task {self.task} not recognised")
+            raise StiltsError("task {task} not recognised")
         if task not in table_processing_commands:
-            logger.warn(f"task {self.task} behaviour not tested with this wrapper...")
+            logger.warn(f"task {task} behaviour not tested with this wrapper...")
 
     def run(self, strict=True):
         if self.cmd is None:
             self.build_cmd()
+        print("\n")
         print("RUN CMD", self.cmd)
         status = subprocess.call(self.cmd, shell=True)
         if strict:    
@@ -101,38 +102,37 @@ class Stilts:
 
     @classmethod
     def tskymatch2_fits(
-        cls, file1, file2, output, ra=None, dec=None, flags=None, 
+        cls, file1_path, file2_path, output_path, ra=None, dec=None, flags=None, 
         stilts_exe="stilts", **kwargs
     ):
-        if file1 == file2:
+        if file1_path == file2_path:
             raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
-        if file1 == output and file1.exists():
-            new_paths = create_file_backups(file1, paths.temp_data_path)
-            file1 = new_paths[0] # filebackups returns list.
-        elif file2 == output and file2.exists():
-            new_paths = create_file_backups(file2, paths.temp_data_path)
-            file2 = new_paths[0]
+        if file1_path == output_path and file1_path.exists():
+            new_paths = create_file_backups(file1_path, paths.temp_data_path)
+            file1_path = new_paths[0] # filebackups returns list.
+        elif file2_path == output_path and file2_path.exists():
+            new_paths = create_file_backups(file2_path, paths.temp_data_path)
+            file2_path = new_paths[0]
 
         flags = flags or {}
-        flags["in1"] = file1
-        flags["in2"] = file2
+        flags["in1"] = file1_path
+        flags["in2"] = file2_path
         flags["ifmt1"] = "fits"
         flags["ifmt2"] = "fits"
         flags["omode"] = "out"
         flags["ofmt"] = "fits"
-        flags["out"] = output
+        flags["out"] = output_path
         if ra is not None:
             flags["ra1"] = ra
             flags["ra2"] = ra
         if dec is not None:
             flags["dec1"] = dec
             flags["dec2"] = dec
-        print("CLS kwargs", kwargs)
         return cls("tskymatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)
 
     @classmethod
     def tmatch2_fits(
-        cls, file1, file2, output, flags=None, **kwargs
+        cls, file1, file2, output_path, flags=None, **kwargs
     ):
         if file1 == file2:
             raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
@@ -152,7 +152,6 @@ class Stilts:
         flags["ofmt"] = "fits"
         flags["out"] = output
         
-        print("CLS kwargs", kwargs)
         return cls("tmatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)        
 
 
