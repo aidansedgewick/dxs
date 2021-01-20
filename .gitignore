@@ -6,5 +6,5 @@
 *.egg-info
 dxsenv/
 data/
-input_data/
+
 
