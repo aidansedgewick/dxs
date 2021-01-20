@@ -9,6 +9,9 @@
 3. Install this repository (and requirements):
    - `python3 -m pip install -r requirements.txt`
    - `python3 -m pip install -e .`
+   - install python3 package `astromatic_wrapper`. If you can't do this with pip, 
+     then there's a forked repo at https://github.com/aidansedgewick/astromatic_wrapper which you should be able
+     able to clone (outside of this directory) and install with `python3 -m pip install -e .`
 4. `cd setup_scripts` then `./get_data.sh`. This will take a few hours.
 5. Still in `setup_scripts`, `python3 extract_header_info.py`. Will take ~20 mins.
 6. Optionally prepare the panstarrs catalogs:
@@ -42,4 +45,6 @@ to create a single mosaic. Mosaics are ~1Gb each.
 
 These don't take so long.
 
-You can still create them with the scheduler, however.
+You can still create them with the scheduler, however:
+    `python3 dxs/runner/setup_run.py [field_list] [tile_list] [band_list] scripts/basic_pipeline.py --run_name [meaningful_name]`
+and follow the instructions again.
