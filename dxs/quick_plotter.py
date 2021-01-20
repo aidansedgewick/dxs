@@ -95,16 +95,33 @@ class QuickPlotter:
 
     def remove_crosstalks(self, crosstalk_query=None, name="catalog", catalog=None):
         if crosstalk_query is None:
-            q_J = Query("J_crosstalk_order) > 0")
-            q_K = Query("K_crosstalk_order > 0")
-            crosstalk_query = ~q_K #(~q_J | ~q_K)
+            q_J = Query("J_crosstalk_flag > 0")
+            q_K = Query("K_crosstalk_flag > 0")
+            crosstalk_query = (~q_J | ~q_K)
         print(q_J)
         print(crosstalk_query)
         if catalog is None:
             catalog = self.full_catalog
         selection = crosstalk_query.filter(catalog)
-        logger.info(f"Disregard {len(catalog)-len(selection)} crosstalks")
+        logger.info(f"Discard {len(catalog)-len(selection)} crosstalks")
         setattr(self, name, selection)
+
+    def remove_bad_magnitudes(
+        self, bands, mag_limit=30.0, catalog=None, name="catalog", ap="auto"
+    ):
+        if catalog is None:
+            catalog=self.catalog
+        queries = []
+        if not isinstance(bands, list):
+            bands = [bands]
+        for band in bands:
+            if f"{band}_mag_{ap}" in catalog.colnames:
+                queries.append(f"(J_mag_{ap} < {mag_limit})")
+        queries = tuple(queries)
+        
+        selection = Query(*queries).filter(catalog)
+        print(f"Discard {len(catalog)-len(selection)} objects")
+        setattr(self, name, selection)        
 
     def selection_from_fits(self, catalog_path, name: str):
         catalog_path = Path(catalog_path)

@@ -1,6 +1,7 @@
 import yaml
 from collections import namedtuple
 from glob import glob
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +12,7 @@ from astropy.table import Table, join
 
 from easyquery import Query
 
-from dxs import MosaicBuilder
+from dxs import MosaicBuilder, calculate_mosaic_geometry
 from dxs.utils.phot import ab_to_vega
 
 from dxs import paths
@@ -139,8 +140,44 @@ def process_panstarrs_catalog(
         output_catalog = join(output_catalog, f_cat, keys="objID", join_type="left")
     output_catalog.write(output_catalog_path, overwrite=True)
 
-def process_panstarrs_mosaic_mask(ps_field, extension=""):
-    pass
+def process_panstarrs_mosaic_mask(
+    ps_field, output_path, extension=None, base_dir=None, pixel_scale=1.0
+):
+    if base_dir is None:
+        base_dir = paths.input_data_path / f"external/panstarrs/images"
+    if extension is None:
+        extension = ".unconv.fits"
+    glob_str = str(base_dir / f"{ps_field}/i/skycell**")
+    dir_list = glob(glob_str)
+    stack_list = []
+    for directory in dir_list:
+        directory = Path(directory)
+        stack_list.append( glob(str(directory / f"*{extension}"))[0] )
+    
+    center, size = calculate_mosaic_geometry(
+        stack_list, ccds=[0],
+        pixel_scale=pixel_scale,
+        border=100
+    )
+    mask_config = {
+        "combine_type": "max",
+        "pixel_scale": 1.0,
+        "back_default": 0.0,
+        "gain_default": 1.0,
+        "interpolate": "nearest",
+        "fscalastro_type": None,
+        "center_type": "manual",
+        "center": center,
+        "image_size": size,
+        "pixelscale_type": "manual",
+    }
+    mask_builder = MosaicBuilder(
+        stack_list, output_path, swarp_config=mask_config
+    )
+    mask_builder.write_swarp_list(stack_list)
+    mask_builder.build(prepare_hdus=False)
+
+    
 
 if __name__ == "__main__":
 
@@ -153,8 +190,15 @@ if __name__ == "__main__":
         aperture_catalog_path = catalog_dir / f"stackapflx_{ps_field}.fit"
         output_catalog_path = catalog_dir / f"{field}_panstarrs.fits"
         
-        process_panstarrs_catalog(
-            primary_catalog_path, aperture_catalog_path, output_catalog_path
+        #process_panstarrs_catalog(
+        #    primary_catalog_path, aperture_catalog_path, output_catalog_path
+        #)
+
+        mask_dir = paths.input_data_path / f"external/panstarrs/masks"
+        mask_dir.mkdir(exist_ok=True, parents=True)
+        output_path = mask_dir / f"{field}_mask.fits"
+        process_panstarrs_mosaic_mask(
+            ps_field, output_path=output_path, extension=".unconv.fits"
         )
     
 

@@ -39,6 +39,7 @@ if __name__ == "__main__":
     parser.add_argument("--match_pair", action="store_true", default=False)
     parser.add_argument("--match_extras", action="store_true", default=False)
     parser.add_argument("--full", action="store_true", default=False)
+    parser.add_argument("--n_cpus", action="store", default=None, type=int)
 
     args = parser.parse_args()
 
@@ -74,12 +75,14 @@ if __name__ == "__main__":
 
     ## Match its crosstalks
     J_xproc = CrosstalkProcessor.from_dxs_spec(
-        args.field, args.tile, "J", star_catalog=star_catalog.copy()
-    ) # star_cat is actually an arg, but for spelled out for clarity.
+        args.field, args.tile, "J", 
+        star_catalog=star_catalog.copy(), # actually an arg, but for spelled out for clarity.
+        n_cpus=args.n_cpus
+    )
     assert "j_m" in J_xproc.star_catalog.colnames
     if args.collate_crosstalks:
         J_xproc.collate_crosstalks(mag_column="j_m", mag_limit=13.0)
-    J_with_xtalks_path = J_ex.catalog_path.parent / f"{J_ex.catalog_path.stem}_x.cat"
+    J_with_xtalks_path = J_ex.catalog_path.parent / f"{J_ex.catalog_path.stem}_x.fits"
     if args.match_crosstalks:
         J_xproc.match_crosstalks_to_catalog(
             J_ex.catalog_path, ra="J_ra", dec="J_dec", 
@@ -94,7 +97,7 @@ if __name__ == "__main__":
         fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="_Jfp")
 
     # stick them together.
-    J_output_path = paths.get_catalog_dir(args.field, args.tile, "K") / "EN04JKfp.cat"
+    J_output_path = paths.get_catalog_dir(args.field, args.tile, "K") / "EN04JKfp.fits"
     J_matcher = CatalogMatcher(
         J_with_xtalks_path, output_path=J_output_path, ra="J_ra", dec="J_dec"
     )
@@ -103,6 +106,8 @@ if __name__ == "__main__":
             JKfp_ex.catalog_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
         )
         fix_column_names(J_output_path, column_lookup={"Separation": "Jfp_separation"})
+        J_cov_map_path = J_ex.mosaic_path.name / f"{J_ex.mosaic_path.stem}.cov.fits"
+        J_matcher.add_map_value(J_cov_map_path, "J_coverage", ra="J_ra", dec="J_dec")
     #J_output = Table.read(J_output_path)
     #print(J_output.colnames)
 
@@ -117,12 +122,14 @@ if __name__ == "__main__":
 
     ## Match its crosstalks
     K_xproc = CrosstalkProcessor.from_dxs_spec(
-        args.field, args.tile, "K", star_catalog=star_catalog.copy()
-    ) # star_cat is actually an arg, but for spelled out for clarity.
+        args.field, args.tile, "K", 
+        star_catalog=star_catalog.copy(), # actually an arg, but for spelled out for clarity.
+        n_cpus=args.n_cpus
+    )
     assert "k_m" in K_xproc.star_catalog.colnames
     if args.collate_crosstalks:
         K_xproc.collate_crosstalks(mag_column="k_m", mag_limit=13.0)
-    K_with_xtalks_path = K_ex.catalog_path.parent / f"{K_ex.catalog_path.stem}_x.cat"
+    K_with_xtalks_path = K_ex.catalog_path.parent / f"{K_ex.catalog_path.stem}_x.fits"
     if args.match_crosstalks:
         K_xproc.match_crosstalks_to_catalog(
             K_ex.catalog_path, ra="K_ra", dec="K_dec", output_path=K_with_xtalks_path, band="K"
@@ -136,7 +143,7 @@ if __name__ == "__main__":
         fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="_Kfp")
 
     ## stick them together.
-    K_output_path = paths.get_catalog_dir(args.field, args.tile, "K") / "EN04KJfp.cat"
+    K_output_path = paths.get_catalog_dir(args.field, args.tile, "K") / "EN04KJfp.fits"
     K_matcher = CatalogMatcher(
         K_with_xtalks_path, output_path=K_output_path, ra="K_ra", dec="K_dec"
     )
@@ -145,6 +152,8 @@ if __name__ == "__main__":
             KJfp_ex.catalog_path, ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
         )
         fix_column_names(K_output_path, column_lookup={"Separation": "Kfp_separation"})
+        K_cov_map_path = J_ex.mosaic_path.name / f"{K_ex.mosaic_path.stem}.cov.fits"
+        K_matcher.add_map_value(J_cov_map_path, "K_coverage", ra="K_ra", dec="K_dec")
     #K_output = Table.read(K_output_path)
     #print(K_output.colnames)
 
@@ -184,6 +193,7 @@ if __name__ == "__main__":
 
     qp = QuickPlotter.from_fits(pair_output_path)
     qp.remove_crosstalks()
+    qp.remove_bad_magnitudes(["J", "K"], catalog=qp.catalog)
     qp.create_selection("drgs", ("J_mag_auto - K_mag_auto > 2.3"))
     qp.create_selection("eros", ("i_mag_kron - K_mag_auto > 4.5"))
     qp.create_plot("n_plot")
@@ -207,7 +217,7 @@ if __name__ == "__main__":
             s=1, color="k",
         )
 
-    #plt.show()
+    plt.show()
 
 
 

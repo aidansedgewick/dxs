@@ -1,0 +1,22 @@
+# system
+scheduler: slurm
+account: durham
+queue: cosma
+cpus_per_node: 16
+max_time: 08:00:00
+email: False
+
+extra_header_lines: []
+    
+modules: # load everything. order is purge, load, source, extra.
+  purge:
+    - module purge
+  modules_to_load:
+    - python/3.6.5
+    - sextractor/2.19.5
+    - swarp/2.38
+  modules_to_source:
+    # also include your python env.
+    - /cosma5/data/durham/dc-sedg2/dxs/dxsenv/bin/activate 
+  # extra: # also inlcude "module load", "source" or whatever.
+    

@@ -2,9 +2,11 @@ import json
 import logging
 import time
 import yaml
+from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
+import tqdm
 
 import astropy.io.ascii as ascii
 import astropy.io.fits as fits
@@ -28,7 +30,7 @@ import matplotlib.pyplot as plt
 class CrosstalkProcessor:
     def __init__(
         self, stack_list, star_catalog: Table, crosstalk_catalog_path=None, 
-        max_order=8, crosstalk_separation=256
+        max_order=8, crosstalk_separation=256, n_cpus=None
     ):
         self.stack_list = stack_list
         self.star_catalog = star_catalog
@@ -42,10 +44,11 @@ class CrosstalkProcessor:
             [np.arange(-max_order, 0), np.arange(1, max_order+1)]
         )
         self.crosstalk_separation = crosstalk_separation
+        self.n_cpus = n_cpus
 
     @classmethod
     def from_dxs_spec(
-        cls, field, tile, band, star_catalog: Table, crosstalk_catalog_path=None
+        cls, field, tile, band, star_catalog: Table, crosstalk_catalog_path=None, n_cpus=None
     ):
         stack_data = get_stack_data(field, tile, band)
         stack_list = [paths.stack_data_path / f"{x}.fit" for x in stack_data["filename"]]
@@ -54,19 +57,36 @@ class CrosstalkProcessor:
             stem = paths.get_catalog_stem(field, tile, band)
             crosstalk_catalog_path = crosstalk_catalog_dir / f"{stem}_crosstalks.fits"
         return cls(
-            stack_list, star_catalog, crosstalk_catalog_path=crosstalk_catalog_path
+            stack_list, 
+            star_catalog, 
+            crosstalk_catalog_path=crosstalk_catalog_path,
+            n_cpus=n_cpus,
         )
 
     def collate_crosstalks(
         self, mag_column, mag_limit=15.0, ra="ra", dec="dec", save_path=None
     ):
         crosstalk_table_list = []
-        for ii, stack_path in enumerate(self.stack_list):
-            print(ii, len(self.stack_list))
-            stack_crosstalks = self.get_crosstalks_in_stack(
-                stack_path, mag_column=mag_column, mag_limit=mag_limit, ra="ra", dec="dec"
-            )
-            crosstalk_table_list.append(stack_crosstalks)
+        logger.info(f"collate crosstalks from {len(self.stack_list)}")
+        if self.n_cpus is None:
+            for ii, stack_path in tqdm.tqdm(enumerate(self.stack_list)):
+                stack_crosstalks = self.get_crosstalks_in_stack(
+                    stack_path, mag_column=mag_column, mag_limit=mag_limit, ra="ra", dec="dec"
+                )
+                crosstalk_table_list.append(stack_crosstalks)
+        else:
+            kwargs = {
+                "mag_column": mag_column, "mag_limit": mag_limit, "ra": ra, "dec": dec,
+            }
+            arg_list = [(stack_path, kwargs) for stack_path in self.stack_list]
+            with Pool(self.n_cpus) as pool:
+                results = list(
+                    tqdm.tqdm(
+                        pool.map(self._crosstalks_in_stack_wrapper, arg_list),
+                        total=len(self.stack_list)
+                    )    
+                )
+                crosstalk_table_list = [t for result in results for t in result]
         all_crosstalks = vstack(crosstalk_table_list, join_type="exact")
         grouped = all_crosstalks.group_by(
             ["parent_id", "crosstalk_direction", "crosstalk_order"]
@@ -81,6 +101,10 @@ class CrosstalkProcessor:
         crosstalks.rename_column(mag_column, "parent_mag")
         crosstalks.write(self.crosstalk_catalog_path, overwrite=True)
         return crosstalks
+
+    def _crosstalks_in_stack_wrapper(self, arg):
+        args, kwargs = arg
+        return self.get_crosstalks_in_stack(args, **kwargs)    
             
     def get_crosstalks_in_stack(
         self, stack_path, mag_column=None, mag_limit=15.0, ra="ra", dec="dec"
@@ -201,15 +225,18 @@ class CrosstalkProcessor:
         fix_column_names(
             output_path, band=band, column_lookup=column_lookup
         )
-        self.flag_crosstalks_in_catalog(catalog_path)
+        self.flag_crosstalks_in_catalog(output_path)
 
     def flag_crosstalks_in_catalog(self, catalog_path, coeffs=None):
         catalog = Table.read(catalog_path)
-        crosstalk_flag = np.zeros(len(catalog)) 
+        crosstalk_flag = np.zeros(len(catalog))
+        print(catalog.colnames)
         crosstalk_mask = abs(catalog["crosstalk_order"]) > 0
         crosstalk_flag[ crosstalk_mask ] = 1
         catalog.add_column(crosstalk_flag, name="crosstalk_flag")
-        
+        catalog.write(catalog_path, overwrite=True)
+
+
 
 if __name__ == "__main__":
 

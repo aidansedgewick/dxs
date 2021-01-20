@@ -1,7 +1,7 @@
 import logging.config
 import yaml
 
-from .mosaic_builder import MosaicBuilder, HDUPreparer
+from .mosaic_builder import MosaicBuilder, HDUPreparer, calculate_mosaic_geometry
 from .catalog_builder import (
     CatalogExtractor, 
     CatalogMatcher, 

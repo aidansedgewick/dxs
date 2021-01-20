@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import tqdm
 
 from astropy.coordinates import Angle, SkyCoord
 from astropy.io import fits
@@ -112,8 +113,13 @@ class MosaicBuilder:
         extension = f".{extension}" if extension is not None else ""
         mosaic_path = mosaic_dir / f"{mosaic_stem}{extension}.fits"
         swarp_config = swarp_config or {}
+
+        geom_relevant_stacks = get_stack_data(field, tile, band=None)
+        geom_stack_list = [
+            paths.stack_data_path / f"{x}.fit" for x in geom_relevant_stacks["filename"]
+        ]
         center, size = calculate_mosaic_geometry(
-            field, tile, ccds=survey_config["ccds"],
+            geom_stack_list, ccds=survey_config["ccds"],
             pixel_scale=swarp_config.get("pixel_scale", None)
         )
         swarp_config["center_type"] = "MANUAL"
@@ -122,6 +128,9 @@ class MosaicBuilder:
         swarp_config["pixelscale_type"] = "MANUAL"
         
         relevant_stacks = get_stack_data(field, tile, band)
+        if len(relevant_stacks) == 0:
+            print("No stacks to build.")
+            return None
         return cls(
             relevant_stacks, 
             mosaic_path, 
@@ -154,7 +163,7 @@ class MosaicBuilder:
             n_cpus=n_cpus
         )
 
-    def build(self, **kwargs):
+    def build(self, prepare_hdus=True, **kwargs):
         """
         Parameters
         ----------
@@ -163,7 +172,8 @@ class MosaicBuilder:
         kwargs
             kwargs that are passed to HDUPreparer.prepare_stack() 
         """
-        self.prepare_all_hdus(self.stack_list, **kwargs)
+        if prepare_hdus:
+            self.prepare_all_hdus(self.stack_list, **kwargs)
         config = self.build_swarp_config()
         config.update(self.swarp_config)
         config = format_flags(config)
@@ -177,7 +187,6 @@ class MosaicBuilder:
         swarp_list_name = "@"+str(self.swarp_list_path)
         logger.info("build - starting swarp")
         kwargs = self.swarp.run(swarp_list_name)
-        print("kwargs")
         logger.info(f"Mosaic written to {self.mosaic_path}")
         with open(self.swarp_run_parameters_path, "w+") as f:
             json.dump(kwargs, f, indent=2)
@@ -206,8 +215,11 @@ class MosaicBuilder:
                 hdu_list = [p for result in results for p in result]
         for hdu_path in hdu_list:
             assert hdu_path.exists()
+        self.write_swarp_list(hdu_list)
+
+    def write_swarp_list(self, hdu_list):
         with open(self.swarp_list_path, "w+") as f:
-            f.writelines([str(hdu_path)+"\n" for hdu_path in hdu_list])
+            f.writelines([str(hdu_path)+"\n" for hdu_path in hdu_list])        
     
     def build_swarp_config(self):
         config = {}
@@ -377,11 +389,9 @@ def get_hdu_name(stack_path, ccd, weight=False, prefix=None):
     return f"{prefix}{stack_path.stem}_{ccd:02d}{weight}.fits"
 
 def calculate_mosaic_geometry(
-    field, tile, ccds=None, factor=None, border=None, pixel_scale=None
+    stack_list, ccds=None, factor=None, border=None, pixel_scale=None
 ):
-    relevant_stacks = get_stack_data(field, tile, band=None)
-    print(relevant_stacks)
-    stack_list = [paths.stack_data_path / f"{x}.fit" for x in relevant_stacks["filename"]]
+
 
     logger.info("Calculating mosaic geometry")
 

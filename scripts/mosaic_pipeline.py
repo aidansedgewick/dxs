@@ -44,6 +44,9 @@ if __name__ == "__main__":
     builder = MosaicBuilder.from_dxs_spec(
         args.field, args.tile, args.band, n_cpus=args.n_cpus
     )
+    if builder is None: # ie, if there are no stacks to build
+        print("Builder is None. Exiting")
+        sys.exit()
     builder.build()
     builder.add_extra_keys()
 
@@ -57,7 +60,6 @@ if __name__ == "__main__":
         cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
     )
     
-
     seg_name = paths.get_mosaic_stem(*spec)
     mosaic_dir = paths.get_mosaic_dir(*spec)
     catalog_dir = paths.get_catalog_dir(*spec)
@@ -79,7 +81,7 @@ if __name__ == "__main__":
         mask_wcs = WCS(f[0].header)
     
     masked_builder = MosaicBuilder.from_dxs_spec(
-        args.field, args.tile, args.band, prefix="m", n_cpus=args.n_cpus
+        *spec, prefix="m", n_cpus=args.n_cpus
     )
     masked_builder.build(
         hdu_prefix="m",

@@ -297,7 +297,9 @@ class CatalogMatcher:
         elif engine=="astropy":
             raise NotImplementedError("DIY for now.")
 
-    def add_map_value(self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0):
+    def add_map_value(
+        self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0
+    ):
         catalog = Table.read(self.output_path)
         with fits.open(mosaic_path) as mosaic:
             mosaic_data = mosaic[hdu].data
