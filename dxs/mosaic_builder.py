@@ -20,12 +20,16 @@ from astromatic_wrapper.api import Astromatic
 from photutils.background import SExtractorBackground, Background2D
 
 #from dxs.utils.image import 
-from dxs.utils.misc import check_modules, format_flags, get_git_info
+from dxs.utils.misc import (
+    check_modules, format_flags, get_git_info, AstropyFilter
+)
 
 from dxs import paths
 
 logger = logging.getLogger("mosaic_builder")
-warnings.simplefilter(action="once", category=FITSFixedWarning)
+astropy_logger = logging.getLogger("astropy")
+astropy_logger.addFilter(AstropyFilter())
+#warnings.simplefilter(action="once", category=FITSFixedWarning)
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
@@ -71,8 +75,14 @@ class MosaicBuilder:
         self.n_cpus = n_cpus"""
 
     def __init__(
-        self, relevant_stacks, mosaic_path, swarp_config=None, swarp_config_file= None, n_cpus=None
+        self, 
+        relevant_stacks, 
+        mosaic_path, 
+        swarp_config=None, 
+        swarp_config_file= None, 
+        n_cpus=None
     ):
+        check_modules("swarp") # do we have swarp available?
         if isinstance(relevant_stacks, pd.DataFrame):
             self.relevant_stacks = relevant_stacks
             self.stack_list = [
@@ -80,27 +90,32 @@ class MosaicBuilder:
             ]
         elif isinstance(relevant_stacks, list):
             self.stack_list = relevant_stacks
-        self.stack_list = stack_list
         self.mosaic_path = Path(mosaic_path)
         self.swarp_config = swarp_config or {}
-        self.swarp_config_file = Path(swarp_config_file)
+        self.swarp_config_file = swarp_config_file or paths.config_path / "swarp/mosaic.swarp"
         self.n_cpus = n_cpus
     
         self.mosaic_dir = self.mosaic_path.parent
+        self.mosaic_dir.mkdir(exist_ok=True, parents=True)
         self.swarp_list_path = self.mosaic_dir / "swarp_list.txt"
-        self.swarp_run_parameters_path = self.mosaic_dir / "swarp_run_parameters.json"        
+        parameter_out_name = str(self.mosaic_path.stem).replace(".", "_")
+        print("parameter out name", parameter_out_name)
+        self.swarp_run_parameters_path = self.mosaic_dir / f"{parameter_out_name}_swarp_run_parameters.json"        
 
     @classmethod
     def from_dxs_spec(
-        cls, 
-        field, tile, band, 
-        prefix=None, swarp_config=None, swarp_config_file=None, n_cpus=None
+        cls, field, tile, band, 
+        prefix=None, extension=None, swarp_config=None, swarp_config_file=None, n_cpus=None,
     ):
-        mosaic_dir = paths.get_mosaic_dir(field, tile, band, prefix=prefix)
+        mosaic_dir = paths.get_mosaic_dir(field, tile, band)
         mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix)
-        mosaic_path = mosaic_dir / f"{mosaic_stem}.fits"
+        extension = f".{extension}" if extension is not None else ""
+        mosaic_path = mosaic_dir / f"{mosaic_stem}{extension}.fits"
         swarp_config = swarp_config or {}
-        center, size = calculate_mosaic_geometry(field, tile, ccds=survey_config["ccds"])
+        center, size = calculate_mosaic_geometry(
+            field, tile, ccds=survey_config["ccds"],
+            pixel_scale=swarp_config.get("pixel_scale", None)
+        )
         swarp_config["center_type"] = "MANUAL"
         swarp_config["center"] = center #f"{center[0]:.6f},{center[1]:.6f}"
         swarp_config["image_size"] = size #f"{size[0]},{size[1]}"
@@ -115,6 +130,30 @@ class MosaicBuilder:
             n_cpus=n_cpus
         )
 
+    @classmethod
+    def coverage_from_dxs_spec(
+        cls, field, tile, band, pixel_scale,
+        prefix=None, swarp_config=None, swarp_config_file=None, n_cpus=None,
+    ):
+        swarp_config = swarp_config or {}
+        coverage_config = {
+            "combine_type": "sum", 
+            "pixel_scale": pixel_scale,
+            "back_type": "manual",
+            "back_default": 0.0,
+            "gain_default": 1.0,
+            "interpolate": "nearest",
+            "fscalastro_type": None,
+            "gain_keyword": "None",
+        }
+        swarp_config.update(coverage_config)
+        
+        return cls.from_dxs_spec(
+            field, tile, band, prefix=prefix, 
+            extension="cov", swarp_config=swarp_config, swarp_config_file=swarp_config_file,
+            n_cpus=n_cpus
+        )
+
     def build(self, **kwargs):
         """
         Parameters
@@ -124,7 +163,7 @@ class MosaicBuilder:
         kwargs
             kwargs that are passed to HDUPreparer.prepare_stack() 
         """
-        self.prepare_all_hdus(stack_list=stack_list, **kwargs)
+        self.prepare_all_hdus(self.stack_list, **kwargs)
         config = self.build_swarp_config()
         config.update(self.swarp_config)
         config = format_flags(config)
@@ -136,6 +175,7 @@ class MosaicBuilder:
             store_output=True,
         )
         swarp_list_name = "@"+str(self.swarp_list_path)
+        logger.info("build - starting swarp")
         kwargs = self.swarp.run(swarp_list_name)
         print("kwargs")
         logger.info(f"Mosaic written to {self.mosaic_path}")
@@ -179,20 +219,19 @@ class MosaicBuilder:
         config["nthreads"] = self.n_cpus
         return config
 
-    def add_extra_keys(self, normalise_exptime=False):
-        data = {}
-        data["seeing"] = self.relevant_stacks["seeing"].median()
+    def add_extra_keys(self, keys=None, normalise_exptime=False):
+        keys = keys or {}
+        keys["seeing"] = self.relevant_stacks["seeing"].median()
         if normalise_exptime:
-            data["magzpt"] = self.relevant_stacks["magzpt"].median()
+            keys["magzpt"] = self.relevant_stacks["magzpt"].median()
         else:
             exptime_factor = 2.5*np.log10(self.relevant_stacks["exptime"])
             magzpt_col = self.relevant_stacks["magzpt"] + exptime_factor
-            data["magzpt"] = magzpt_col.median() # works as still pd.Series...
+            keys["magzpt"] = magzpt_col.median() # this should work, as still pd.Series...
         branch, local_sha = get_git_info()
-        data["branch"] = branch
-        data["localSHA"] = local_sha.replace("'","")
-        add_keys(self.mosaic_path, data, hdu=0, verbose=True)
-
+        keys["branch"] = branch
+        keys["localSHA"] = local_sha.replace("'","")
+        add_keys(self.mosaic_path, keys, hdu=0, verbose=True)
 
 def get_stack_data(field, tile, band, pointing=None):
     """
@@ -218,12 +257,16 @@ def get_stack_data(field, tile, band, pointing=None):
 class HDUPreparer:
     def __init__(
         self, hdu, hdu_path,
+        value=None,
         resize=False, edges=25.0, 
         mask_sources=False, mask_wcs=None, mask_map=None,
         normalise_exptime=False, exptime=None,
         subtract_bgr=False, bgr_size=None, filter_size=1, sigma=3.0,
     ):
         self.data = hdu.data
+        if value is not None:
+            self.data = np.random.uniform(0.9999*value, 1.0001*value, hdu.data.shape)
+            #self.data = np.full(hdu.data.shape, value)
         self.header = hdu.header
         self.hdu_path = hdu_path
         self.resize = resize
@@ -264,7 +307,7 @@ class HDUPreparer:
                 logger.warn(warn_msg)
             self.data = self.data / self.exptime
         if self.resize:
-            cutout_size = (int(self.ylen-2*edges), int(self.xlen-2*edges))
+            cutout_size = (int(self.ylen-2*self.edges), int(self.xlen-2*self.edges))
             cutout = Cutout2D(
                 self.data, position=self.center, size=cutout_size, wcs=self.fwcs
             )
@@ -309,18 +352,18 @@ class HDUPreparer:
         return bgr_map
 
     @classmethod
-    def prepare_stack(cls, stack_path, overwrite=False, prefix=None, **kwargs):
+    def prepare_stack(cls, stack_path, overwrite=False, hdu_prefix=None, **kwargs):
         stack_path = Path(stack_path)
         results = []
         with fits.open(stack_path) as f:
             print(stack_path)
             for ii, ccd in enumerate(survey_config["ccds"]):
-                hdu_name = get_hdu_name(stack_path, ccd, prefix=prefix)
+                hdu_name = get_hdu_name(stack_path, ccd, prefix=hdu_prefix)
                 hdu_path = paths.temp_hdus_path / hdu_name # includes ".fits" already...
                 results.append(hdu_path)
                 if not overwrite and hdu_path.exists():
                     continue
-                p = cls(f[ccd], hdu_path, **kwargs)
+                p = cls(f[ccd], hdu_path, exptime=f[0].header["EXP_TIME"], **kwargs)
                 p.prepare_hdu()
         return results
 
@@ -333,10 +376,14 @@ def get_hdu_name(stack_path, ccd, weight=False, prefix=None):
     prefix = prefix or ""
     return f"{prefix}{stack_path.stem}_{ccd:02d}{weight}.fits"
 
-def calculate_mosaic_geometry(field, tile, ccds=None, factor=None, border=None):
+def calculate_mosaic_geometry(
+    field, tile, ccds=None, factor=None, border=None, pixel_scale=None
+):
     relevant_stacks = get_stack_data(field, tile, band=None)
     print(relevant_stacks)
     stack_list = [paths.stack_data_path / f"{x}.fit" for x in relevant_stacks["filename"]]
+
+    logger.info("Calculating mosaic geometry")
 
     ccds = ccds or [0]
     ra_values = []
@@ -353,18 +400,27 @@ def calculate_mosaic_geometry(field, tile, ccds=None, factor=None, border=None):
 
     # center is easy.
     center = (np.mean(ra_limits), np.mean(dec_limits))
-    
     # image size takes a bit more thought because of spherical things.
     cos_dec = np.cos(center[1]*np.pi / 180.)
-    plate_factor = 3600. / survey_config["pixel_scale"]
+    pixel_scale = pixel_scale or survey_config["pixel_scale"]
+    plate_factor = 3600. / pixel_scale
     x_size = abs(ra_limits[1] - ra_limits[0]) * plate_factor * cos_dec
     y_size = abs(dec_limits[1] - dec_limits[0]) * plate_factor
-    image_size = (int(x_size), int(y_size))
+    mosaic_size = (int(x_size), int(y_size))
     if factor is not None:
-        image_size = (image_size[0]*factor, image_size[1]*factor)
+        mosaic_size = (mosaic_size[0]*factor, mosaic_size[1]*factor)
     if border is not None:
-        image_size = (image_size[0]+border, image_size[1]+border)
-    return center, image_size    
+        mosaic_size = (mosaic_size[0]+border, mosaic_size[1]+border)
+    max_size = [int(x) for x in survey_config["max_mosaic_size"]]
+    if mosaic_size[0] > max_size[0] or mosaic_size[1] > max_size[1]:
+        raise MosaicBuilderError(
+            f"Mosaic too large: {mosaic_size[0]},{mosaic_size[1]}"
+            f" larger than {max_size[0],max_size[1]}"
+            f" \n check configuration/survey_config.yaml"
+        )
+    logger.info(f"geom - size {mosaic_size[0]},{mosaic_size[1]}")
+    logger.info(f"geom - center {center[0]:.3f}, {center[1]:.3f}")
+    return center, mosaic_size    
 
 def add_keys(mosaic_path, data, hdu=0, verbose=False):
     with fits.open(mosaic_path, mode="update") as mosaic:

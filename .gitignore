@@ -1,6 +1,7 @@
 *.fit
 *.fits
 *.pyc
+**/swarp.xml
 
 *.egg-info
 dxsenv/

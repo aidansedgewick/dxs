@@ -106,7 +106,7 @@ class Stilts:
         stilts_exe="stilts", **kwargs
     ):
         if file1_path == file2_path:
-            raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
+            raise StiltsError(f"tskymatch2: file1 == file2!?! {file1_path} {file2_path}")
         if file1_path == output_path and file1_path.exists():
             new_paths = create_file_backups(file1_path, paths.temp_data_path)
             file1_path = new_paths[0] # filebackups returns list.

@@ -55,6 +55,8 @@ def format_flags(config, capitalise=True, float_precision=6):
             key = param.upper()
         else:
             key = param
+        if value is None:
+            value = "None"
         if isinstance(value, str):
             formatted_config[key] = value
         elif isinstance(value, Path):
@@ -62,7 +64,7 @@ def format_flags(config, capitalise=True, float_precision=6):
         elif isinstance(value, float):
             formatted_config[key] = f"{value:.{float_precision}f}"
         elif isinstance(value, int):
-            formatted_config[key] = str(value)
+            formatted_config[key] = str(value)        
         elif isinstance(value, tuple):
             if all(isinstance(x, int) for x in value):
                 formatted_config[key] = ','.join(f"{x}" for x in value)
@@ -117,12 +119,14 @@ def get_git_info():
     return branch, local_SHA
 
 def calc_mids(arr):
-    return 0.5*(arr[:-1]-arr[1:])
+    return 0.5*(arr[:-1]+arr[1:])
 
 def calc_widths(arr):
     return arr[1:] - arr[:-1]
 
-
+class AstropyFilter(logging.Filter):
+    def filter(self, message):
+        return not "FITSFixedWarning" in message.getMessage()
 
 
 

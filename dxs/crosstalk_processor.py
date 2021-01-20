@@ -12,7 +12,6 @@ from astropy import wcs
 from astropy.table import Table, Column, vstack, join
 
 from dxs.mosaic_builder import get_stack_data
-#from dxs.catalog_builder import get_catalog_dir, get_catalog_stem
 from dxs.pystilts import Stilts
 from dxs.utils.table import table_to_numpynd, fix_column_names
 
@@ -53,7 +52,7 @@ class CrosstalkProcessor:
         if crosstalk_catalog_path is None:
             crosstalk_catalog_dir = paths.get_catalog_dir(field, tile, band)
             stem = paths.get_catalog_stem(field, tile, band)
-            crosstalk_catalog_path = crosstalk_catalog_dir / f"{stem}_crosstalks.cat"
+            crosstalk_catalog_path = crosstalk_catalog_dir / f"{stem}_crosstalks.fits"
         return cls(
             stack_list, star_catalog, crosstalk_catalog_path=crosstalk_catalog_path
         )
@@ -69,16 +68,18 @@ class CrosstalkProcessor:
             )
             crosstalk_table_list.append(stack_crosstalks)
         all_crosstalks = vstack(crosstalk_table_list, join_type="exact")
-        grouped = all_crosstalks.group_by(["parent_id", "crosstalk_direction", "crosstalk_order"])
+        grouped = all_crosstalks.group_by(
+            ["parent_id", "crosstalk_direction", "crosstalk_order"]
+        )
         crosstalk_locations = grouped.groups.aggregate(np.mean)
-        star_data_copy = self.star_catalog[[ra, dec, mag_column]].copy()
-        star_data_copy.rename_column(ra, "parent_ra")
-        star_data_copy.rename_column(dec, "parent_dec")
-        star_data_copy.rename_column(mag_column, "parent_mag")
+        star_data_copy = self.star_catalog[["parent_id", ra, dec, mag_column]].copy()
         crosstalks = join(
             crosstalk_locations, star_data_copy, keys="parent_id", join_type="left"
         )
-        crosstalks.write(self.crosstalk_catalog_path, format="fits", overwrite=True)
+        crosstalks.rename_column(ra, f"parent_ra")
+        crosstalks.rename_column(dec, f"parent_dec")
+        crosstalks.rename_column(mag_column, "parent_mag")
+        crosstalks.write(self.crosstalk_catalog_path, overwrite=True)
         return crosstalks
             
     def get_crosstalks_in_stack(
@@ -134,25 +135,26 @@ class CrosstalkProcessor:
         right = (stars_in_frame["xpix"] >= xmid)
        
         table_list = []
+        column_selection = ["parent_id", "xpix", "ypix"]
         for ii, order in enumerate(self.crosstalk_orders):
             # Quadrants whose crosstalks scatter in x; start with top_right
-            top_right = stars_in_frame[ top & right ][ ["Xid", "xpix", "ypix"] ]
+            top_right = stars_in_frame[ top & right ][ column_selection ]
             xpix = top_right["xpix"] + order*self.crosstalk_separation
             top_right["xpix"] = xpix
             top_right = top_right[ (xmid < xpix) & (xpix < xlen) ]
             # Bottom left
-            bottom_left = stars_in_frame[ bottom & left ][ ["Xid", "xpix", "ypix"] ]
+            bottom_left = stars_in_frame[ bottom & left ][ column_selection ]
             xpix = bottom_left["xpix"] + order*self.crosstalk_separation
             bottom_left["xpix"] = xpix
             bottom_left = bottom_left[ (0 < xpix) & (xpix < xmid) ]
             
             # Quadrants whose crosstalks scatter in y direction; start top left
-            top_left = stars_in_frame[ top & left ][ ["Xid", "xpix", "ypix"] ]
+            top_left = stars_in_frame[ top & left ][ column_selection ]
             ypix = top_left["ypix"] + order*self.crosstalk_separation
             top_left["ypix"] = ypix
             top_left = top_left[ (ymid < ypix) & (ypix < ylen) ]
             # finally bottom right
-            bottom_right = stars_in_frame[ bottom & right ][ ["Xid", "xpix", "ypix"] ]
+            bottom_right = stars_in_frame[ bottom & right ][ column_selection ]
             ypix = bottom_right["ypix"] + order*self.crosstalk_separation
             bottom_right["ypix"] = ypix
             bottom_right = bottom_right[ (0 < ypix) & (ypix < ymid) ]
@@ -168,38 +170,52 @@ class CrosstalkProcessor:
         return crosstalk_locations
 
     def match_crosstalks_to_catalog(
-        self, catalog_path,  ra=None, dec=None, error=1.0, crosstalk_catalog_path=None
+        self, catalog_path, crosstalk_catalog_path=None, output_path=None,
+        ra=None, dec=None, error=1.0, band=None
     ):
+        catalog_path = Path(catalog_path)
         if crosstalk_catalog_path is None:
             crosstalk_catalog_path = self.crosstalk_catalog_path
         crosstalk_catalog_path = Path(crosstalk_catalog_path)
+        if output_path is None:
+            output_path = catalog_path
         logger.info("match crosstalks {crosstalk_catalog_path.name} to {catalog_path.name}")
         stilts = Stilts.tskymatch2_fits(
-            catalog_path, 
+            catalog_path,
             crosstalk_catalog_path,
-            output_path=catalog_path,
+            output_path=output_path,
             ra1=ra, 
-            dec1=dec, 
+            dec1=dec,
+            join="all1",
+            find="best1",
             ra2="crosstalk_ra", 
             dec2="crosstalk_dec",
             error=error
         )
         stilts.run()
-        input_columns = ["GroupID", "GroupSize", "Separation"]
-        output_columns = ["crosstalk_group_id", "crosstalk_group_size", "crosstalk_separation"]
+        column_lookup = {
+            "GroupID": "crosstalk_group_id",
+            "GroupSize": "crosstalk_group_size",
+            "Separation": "crosstalk_separation",
+        }
         fix_column_names(
-            catalog_path, input_columns=input_columns, output_columns=output_columns
+            output_path, band=band, column_lookup=column_lookup
         )
+        self.flag_crosstalks_in_catalog(catalog_path)
 
     def flag_crosstalks_in_catalog(self, catalog_path, coeffs=None):
-        raise NotImplementedError
+        catalog = Table.read(catalog_path)
+        crosstalk_flag = np.zeros(len(catalog)) 
+        crosstalk_mask = abs(catalog["crosstalk_order"]) > 0
+        crosstalk_flag[ crosstalk_mask ] = 1
+        catalog.add_column(crosstalk_flag, name="crosstalk_flag")
         
 
 if __name__ == "__main__":
 
 
     star_table_path = (
-        paths.input_data_path / "external_catalogs/tmass/tmass_ElaisN1_stars.csv"
+        paths.input_data_path / "external/tmass/tmass_ElaisN1_stars.csv"
     )
     star_catalog = Table.read(star_table_path, format="ascii")
     star_catalog = star_catalog[ star_catalog["k_m"] < 12.0 ]

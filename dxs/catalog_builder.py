@@ -4,6 +4,8 @@ import shutil
 import yaml
 from pathlib import Path
 
+import numpy as np
+
 import astropy.io.fits as fits
 from astropy.table import Table, Column
 from astropy.wcs import WCS
@@ -26,58 +28,19 @@ class CatalogExtractorError:
 class CatalogExtractor:
     """
     Class for building catalogs. Calls SExtractor.
-
     Parameters
     ----------
-    field
-    tile
-    detection_band
-        band for to act as SExtractor measurement image.
-    measurement_band
+    detection_mosaic_path
+    measurement_mosaic_path
+        for use in SExtractor dual-image mode.
+    catalog_path
+        where to store the output? defaults to config's "catalog_dir" / [dectection_image].fits
+    sextractor_config
+        command line arguments to overwrite whatever is in config file.
+    sextractor_config_file
+        
+    """
 
-    """
-    """
-    def __init__(
-        self, field, tile, detection_band, measurement_band=None, prefix=None,
-        sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
-    ):
-        check_modules("sex") # do we have sextractor available?
-        self.field = field
-        self.tile = tile
-        self.detection_band = detection_band
-        self.measurement_band = measurement_band
-        # work out where the mosaics will live
-        detection_mosaic_dir = paths.get_mosaic_dir(field, tile, detection_band)
-        detection_mosaic_stem = paths.get_mosaic_stem(field, tile, detection_band, prefix)
-        self.detection_mosaic_path = detection_mosaic_dir / f"{detection_mosaic_stem}.fits"
-        if measurement_band is not None:
-            measurement_mosaic_dir = paths.get_mosaic_dir(field, tile, measurement_band)
-            measurement_mosaic_stem = paths.get_mosaic_stem(field, tile, measurement_band)
-            self.measurement_mosaic_path = (
-                measurement_mosaic_dir / f"{measurement_mosaic_stem}.fits"
-            )
-        else:
-            self.measurement_mosaic_path = None
-        # workout where the catalogs should live.
-        self.catalog_dir = paths.get_catalog_dir(field, tile, detection_band)
-        self.catalog_dir.mkdir(exist_ok=True, parents=True)
-        self.catalog_stem = paths.get_catalog_stem(
-            field, tile, detection_band, measurement_band=measurement_band
-        )
-        self.catalog_path = self.catalog_dir / f"{self.catalog_stem}.cat"
-        self.segmentation_mosaic_path = (
-            detection_mosaic_dir / f"{detection_mosaic_stem}.seg.fits"
-        )
-        # keep the parameter files.
-        self.sextractor_config = sextractor_config or {}
-        self.sextractor_run_parameters_path = self.catalog_dir / "sextractor_run_parameters.json"
-        self.sextractor_config_file = (
-            sextractor_config_file or paths.config_path / "sextractor/indiv.sex"
-        )
-        self.sextractor_parameter_file = (
-            sextractor_parameter_file or paths.config_path / "sextractor/indiv.param"
-        )
-    """
     def __init__(
         self, detection_mosaic_path, measurement_mosaic_path=None, catalog_path=None,
         sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
@@ -92,15 +55,13 @@ class CatalogExtractor:
             self.measurement_mosaic_path = None
             m_stem = ''
         if catalog_path is None:
-            catalog_path = Path.cwd() / f"{d_stem}{m_stem}.cat"
+            catalog_path = Path.cwd() / f"{d_stem}{m_stem}.fits"
         self.catalog_path = Path(catalog_path)
-        self.segmentation_mosaic_path = (
-            detection_mosaic_dir / f"{d_stem}.seg.fits"
-        )
+
         # keep the parameter files.
         self.sextractor_config = sextractor_config or {}
         self.sextractor_run_parameters_path = (
-            catalog_path.parent / f"{catalog_path.stem}_sextractor_run_parameters.json"
+            catalog_path.parent / f"{catalog_path.stem}_se_run_parameters.json"
         )
         self.sextractor_config_file = (
             sextractor_config_file or paths.config_path / "sextractor/indiv.sex"
@@ -109,11 +70,33 @@ class CatalogExtractor:
             sextractor_parameter_file or paths.config_path / "sextractor/indiv.param"
         )
 
+        self.segmentation_mosaic_path = self.sextractor_config.get(
+            "checkimage_name",
+            detection_mosaic_dir / f"{d_stem}.seg.fits"
+        )
+
     @classmethod
     def from_dxs_spec(
         cls, field, tile, detection_band, measurement_band=None, prefix=None,
         sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
     ):
+        """
+        Build a catalog directly from field name, tile number, band. (eg EN 4 K)
+
+        Parameters
+        ----------
+        field
+        tile
+        detection_band
+            band for to act as SExtractor measurement image.
+        measurement_band
+
+        eg.
+        >>> extractor = CatalogExtractor.from_dxs_spec("EN", 4, "K")
+        >>> extractor.extract()
+        
+        """
+        
         # work out where the mosaics will live
         detection_mosaic_dir = paths.get_mosaic_dir(field, tile, detection_band)
         detection_mosaic_stem = paths.get_mosaic_stem(field, tile, detection_band, prefix)
@@ -132,7 +115,7 @@ class CatalogExtractor:
         catalog_stem = paths.get_catalog_stem(
             field, tile, detection_band, measurement_band=measurement_band
         )
-        catalog_path = catalog_dir / f"{catalog_stem}.cat"
+        catalog_path = catalog_dir / f"{catalog_stem}.fits"
         return cls(
             detection_mosaic_path, 
             measurement_mosaic_path=measurement_mosaic_path,
@@ -160,8 +143,17 @@ class CatalogExtractor:
         cmd, cmd_kwargs = self.sextractor.build_cmd(filenames)
         cmd_kwargs["cmd"] = cmd
         self.sextractor.run(filenames)
+        self.add_snr(
+            self.catalog_path, 
+            flux=["AUTO", "ISO", "APER"], 
+            flux_format="FLUX_{flux}", 
+            flux_err_format="FLUXERR_{flux}",
+            snr_format="SNR_{flux}"
+        )
+            
         with open(self.sextractor_run_parameters_path, "w+") as f:
             json.dump(cmd_kwargs, f, indent=2)
+        
 
     def build_sextractor_config(self,):
         config = {}
@@ -181,11 +173,80 @@ class CatalogExtractor:
                 config["mag_zeropoint"] = header["MAGZPT"]
         return config
 
+    def add_snr(
+        self, catalog_path, flux, flux_err=None, snr_name="snr", 
+        flux_format=None, flux_err_format=None, snr_format=None, nan_value=0.0):
+        if not isinstance(flux, list):
+            flux = [flux]
+        if not isinstance(flux_err, list):
+            if flux_err is not None:
+                flux_err = [flux_err]
+            else:
+                flux_err = [None for _ in flux]
+        if len(flux_err) != len(flux):
+            lf, lfe = len(flux), len(flux_err)
+            raise ValueError(
+                f"Provide same number of flux columns ({lf}) as flux_err columns ({lfe})"
+            )
+        if not isinstance(snr_name, list):
+            snr_name = [f"{fl}_{snr_name}" for fl in flux]
+        if len(snr_name) != len(flux):
+            lf, lsnr = len(flux), len(snr_name)
+            raise ValueError(
+                f"Provide same number of flux columns ({lf}) as flux_err columns ({lsnr})"
+            )            
+        catalog = Table.read(catalog_path)
+        for fl, fl_err, snr in zip(flux, flux_err, snr_name):
+            if flux_format is not None:
+                flux_col = flux_format.format(**{"flux": fl, "flux_err": fl_err})
+            else:
+                flux_col = fl
+            if flux_err_format is not None:
+                flux_err_col = flux_err_format.format(**{"flux": fl, "flux_err": fl_err})
+            else:
+                flux_err_col = fl_err
+            if snr_format is not None:
+                snr_col = snr_format.format(
+                    **{"flux": fl, "flux_err": fl_err, "snr_name": snr_name}
+                )
+            else:
+                snr_col = snr
+            catalog[snr_col] = catalog[flux_col] / catalog[flux_err_col]
+            nan_mask = np.isnan(catalog[snr_col])
+            n_nans = nan_mask.sum()
+            if n_nans > 0:
+                logger.warn(f"add_snr - {flux_col} give {n_nans} nan values")
+            catalog[snr_col][ nan_mask ] = nan_value
+        catalog.write(catalog_path, overwrite=True)
+
 
 class CatalogMatcher:
+    """
+    Class for matching one catalog to another. Calls stilts.
+    Start with a "main" catalog, and match extras to it.
 
-    def __init__(self, catalog_path, output_path, ra="ra", dec="dec"):
+    Default to best (left) match for the main catalog.
+
+    Parameters
+    ----------
+    catalog_path
+        path to main catalog
+    output_path
+        path to output after matchers are made
+    ra, dec
+        the columns for the coordinates to use in the main catalog when doing matches.
+
+    >>> cat_matcher = CatalogMatcher(
+            "./catalog.fits", output_path="./catalog_with_matches.fits", 
+            ra="best_ra", dec="best_ra",
+        )
+    >>> cat_matcher.match_catalog("./gaia_data.fits", ra="gaia_ra", dec="gaia_dec")
+
+    """
+    
+    def __init__(self, catalog_path, output_path=None, ra="ra", dec="dec"):
         self.catalog_path = Path(catalog_path)
+        output_path = output_path or self.catalog_path
         self.output_path = Path(output_path)
         self.ra = ra
         self.dec = dec
@@ -198,12 +259,12 @@ class CatalogMatcher:
     ):
         catalog_dir = paths.get_catalog_dir(field, tile, band)
         catalog_stem = paths.get_catalog_stem(field, tile, band, prefix=prefix)
-        catalog_path = catalog_dir / f"{catalog_stem}.cat"
+        catalog_path = catalog_dir / f"{catalog_stem}.fits"
         suffix = suffix or ''
         prefix = prefix or ''
         if output_path is None:
             output_stem = f"{prefix}{catalog_stem}{suffix}"
-            output_path = catalog_dir / f"{output_stem}.cat"
+            output_path = catalog_dir / f"{output_stem}.fits"
         return cls(catalog_path, output_path, ra=ra, dec=dec)
 
     def match_catalog(
@@ -213,18 +274,13 @@ class CatalogMatcher:
         extra_catalog = Path(extra_catalog)
         output_path = output_path or self.output_path
         stilts = Stilts.tskymatch2_fits(
-            self.output_path, extra_catalog, output_path=output_path,
+            self.catalog_path, extra_catalog, output_path=output_path,
             flags={"join": "all1", "find": "best"},
             ra1=self.ra, dec1=self.dec,
             ra2=ra, dec2=dec,
             **kwargs
         )
         stilts.run()
-        fix_column_names(
-            self.output_path, 
-            input_columns=f"Separation", 
-            output_columns=f"{prefix}_separation"
-        )
         info = f"{stilts.flags['join']} match {extra_catalog.name}"
         logger.info(info)
         self.summary_info.append(info)
@@ -271,6 +327,9 @@ class CatalogMatcher:
         logger.info(info)
         self.summary_info.append(info)
 
+    def fix_column_names(self, **kwargs):
+        fix_column_names(self.output_path, **kwargs)
+
     def print_summary(self):
         summary = "Summary:"
         for info in self.summary_info:
@@ -285,18 +344,19 @@ class CatalogPairMatcher(CatalogMatcher):
 
     def __init__(
         self, catalog1_path, catalog2_path, output_path,
-        ra1="ra", dec1="dec", ra2="ra", dec2="dec",
+        ra1="ra", dec1="dec", ra2="ra", dec2="dec", best_ra="ra", best_dec="dec", 
     ):
         self.catalog1_path = Path(catalog1_path)
         self.catalog2_path = Path(catalog2_path)
+        self.catalog_path = Path(output_path)
         self.output_path = Path(output_path)
         self.ra1 = ra1
         self.dec1 = dec1
         self.ra2 = ra2
         self.dec2 = dec2
         # Somewhere to keep the best values when we need them.
-        self.ra = None
-        self.dec = None
+        self.best_ra = best_ra
+        self.best_dec = best_dec
         self.summary_info = []
 
         print("THIS IS", self.catalog1_path)
@@ -307,10 +367,10 @@ class CatalogPairMatcher(CatalogMatcher):
     ):
         catalog1_dir = paths.get_catalog_dir(field, tile, "J")
         catalog1_stem = paths.get_catalog_stem(field, tile, "J", prefix=prefix)
-        catalog1_path = catalog1_dir / f"{catalog1_stem}.cat"
+        catalog1_path = catalog1_dir / f"{catalog1_stem}.fits"
         catalog2_dir = paths.get_catalog_dir(field, tile, "K")
         catalog2_stem = paths.get_catalog_stem(field, tile, "K", prefix=prefix)
-        catalog2_path = catalog2_dir / f"{catalog2_stem}.cat"
+        catalog2_path = catalog2_dir / f"{catalog2_stem}.fits"
         return cls(
             catalog1_path, catalog2_path, output_path,
             ra1="J_ra", dec1="J_dec", prefix1="J", suffix1=suffix,
@@ -320,7 +380,7 @@ class CatalogPairMatcher(CatalogMatcher):
     def best_pair_match(self, **kwargs):
         print(dir(self))
         stilts = Stilts.tskymatch2_fits(
-            self.catalog1_path, self.catalog2_path, self.output_path,
+            self.catalog1_path, self.catalog2_path, self.catalog_path,
             ra1=self.ra1, dec1=self.dec1, ra2=self.ra2, dec2=self.dec2,
             flags={"join": "1or2", "find": "best"},
             **kwargs
@@ -331,12 +391,15 @@ class CatalogPairMatcher(CatalogMatcher):
         self.summary_info.append(info)
         
     def select_best_coords(
-        self, snr1, snr2, best_ra="ra", best_dec="dec", 
+        self, snr1, snr2, best_ra=None, best_dec=None, 
         ra1=None, dec1=None, ra2=None, dec2=None, 
     ):
-        catalog = Table.read(self.output_path)
-        catalog.add_column(-99.0, "ra")
-        catalog.add_column(-99.0, "dec")
+        catalog = Table.read(self.catalog_path)
+        print(catalog.colnames)
+        best_ra = best_ra or self.best_ra
+        best_dec = best_dec or self.best_dec
+        catalog.add_column(-99.0, name=best_ra)
+        catalog.add_column(-99.0, name=best_dec)
 
         ra1 = ra1 or self.ra1
         dec1 = dec1 or self.dec1
@@ -353,7 +416,7 @@ class CatalogPairMatcher(CatalogMatcher):
         catalog[best_dec][ keep_coord2 ] = catalog[dec2][ keep_coord2 ]
         assert len(catalog[ catalog["ra"] < -90.0 ]) == 0
         assert len(catalog[ catalog["dec"] < -90.0 ]) == 0
-        catalog.write(self.output_path, format="fits", overwrite=True)
+        catalog.write(self.catalog_path, overwrite=True)
         self.ra = best_ra
         self.dec = best_dec
 
@@ -363,8 +426,8 @@ def combine_catalogs(
     catalog_list = create_file_backups(catalog_list, paths.temp_sextractor_path)
     catalog_path1 = catalog_list[0]
     output_path = Path(output_path)
-    temp_overlap_path = paths.temp_sextractor_path / "{output_path.stem}_overlap.cat"
-    temp_output_path = paths.temp_sextractor_path / "{output_path.stem}_combined.cat"
+    temp_overlap_path = paths.temp_sextractor_path / "{output_path.stem}_overlap.fits"
+    temp_output_path = paths.temp_sextractor_path / "{output_path.stem}_combined.fits"
     for ii, catalog_path in enumerate(catalog_list):
         id_modifier = int("1{ii+1:02d}")*1_000_000
         _modify_id_value(catalog_path, id_modifier)
@@ -376,7 +439,7 @@ def combine_catalogs(
             ra=ra_col, dec=dec_col, error=error, join="1and2", find="best"
         )
         stilts.run() # Find objects which appear in both (and only both) catalogs.
-
+        # Now keep the unique catalogs. 
         catalog1 = Table.read(catalog_path1)
         overlap = Table.read(temp_overlap_path)
         catalog2 = Table.read(catalog_path2)
@@ -410,13 +473,13 @@ if __name__ == "__main__":
     extractor.extract()
 
     star_table_path = (
-        paths.input_data_path / "external_catalogs/tmass/tmass_ElaisN1_stars.csv"
+        paths.input_data_path / "external/tmass/tmass_ElaisN1_stars.csv"
     )
     star_catalog = Table.read(star_table_path, format="ascii")
     star_catalog = star_catalog[ star_catalog["k_m"] < 12.0 ]
 
     processor = CrosstalkProcessor.from_dxs_spec("EN", 4, "K", star_catalog)
-    crosstalk_catalog_path = paths.temp_data_path / "EN04K_crosstalks.cat"
+    crosstalk_catalog_path = paths.temp_data_path / "EN04K_crosstalks.fits"
     #processor.collate_crosstalks(save_path=crosstalk_catalog_path)
     processor.match_crosstalks_to_catalog(
         extractor.catalog_path, ra="X_WORLD", dec="Y_WORLD", error=1.0,

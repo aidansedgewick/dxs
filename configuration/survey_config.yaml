@@ -1,2 +1,27 @@
+### dxs basic stuff
+
 ccds: [1, 2, 3, 4]
 pixel_scale: 0.2 # arcsec.
+field_names: [SA22, Lockman, ElaisN1, XMM-LSS]
+field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
+code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
+
+
+# some error catching?
+
+max_mosaic_size: [25000,25000]
+
+
+
+###===== external catalogs =====###
+
+## panstarrs
+
+# arxiv.org/pdf/1612.05560.pdf --table7 (p18)
+panstarrs:
+  fields: [md01, md05, md08, md09]
+  from_dxs_field: {SA: md09, LH: md05, EN: md08, XM: md01}
+  bands: [g, r, i, z, y]
+
+  ab_to_vega: {g: -0.08, r: 0.16, i: 0.37, z: 0.54, y: 0.634}
+  apertures: [1.04, 1.76, 3.00, 4.64, 7.44, 11.42, 18.20, 28.20, 44.22 ]

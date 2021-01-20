@@ -2,6 +2,8 @@ from pathlib import Path
 
 file_path = Path(__file__).absolute()
 
+base_path = file_path.parent
+
 # INPUT DATA
 input_data_path = file_path.parent.parent / "input_data"
 stack_data_path = input_data_path / "stacks"
@@ -24,8 +26,15 @@ header_data_path = config_path / "dxs_header_data.csv"
 
 # (OUTPUT) DATA
 data_path = file_path.parent.parent / "data"
+data_path.mkdir(exist_ok=True, parents=True)
 mosaics_path =  data_path / "mosaics"
+mosaics_path.mkdir(exist_ok=True, parents=True)
 catalogs_path = data_path / "catalogs"
+catalogs_path.mkdir(exist_ok=True, parents=True)
+
+# RUNNER
+runner_path = file_path.parent.parent / "runner"
+runner_path.mkdir(exist_ok=True, parents=True)
 
 print(f"input_data_path {input_data_path}")
 print(f"config_path {config_path}")

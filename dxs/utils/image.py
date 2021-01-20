@@ -46,6 +46,24 @@ def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0,
     ds9_command = build_ds9_command([save_path, path1, path2])
     print(f"view image with \n    {ds9_command} &")
 
+def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
+    path1 = Path(path1)
+    if save_path is None:
+        save_path = paths.temp_swarp_path / f"diff_{path1.stem}_{path2.stem}.fits"
+    path2
+
+def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
+    path = Path(path)
+    save_path = Path(save_path)
+    with fits.open(path) as mosaic:
+        data = mosaic[hdu].data
+        data = data*value
+        if round_val is not None:
+            data = np.around(data, decimals=round_val)
+        header = mosaic[hdu].header
+    output_hdu = fits.PrimaryHDU(data, header)
+    output_hdu.writeto(save_path, overwrite=True)
+    
 
 def build_ds9_command(paths, flags=None, relative=True):
     flags = flags or default_ds9_flags 
