@@ -9,7 +9,7 @@ email: False
 extra_header_lines: []
     
 modules: # load everything. order is purge, load, source, extra.
-  purge:
+  purge: # commands to clear the system.
     - module purge
   modules_to_load:
     - python/3.6.5
@@ -18,5 +18,5 @@ modules: # load everything. order is purge, load, source, extra.
   modules_to_source:
     # also include your python env.
     - /cosma5/data/durham/dc-sedg2/dxs/dxsenv/bin/activate 
-  # extra: # also inlcude "module load", "source" or whatever.
+  # extra: # also inlcude "module load", "source" or whatever the prefix is.
     

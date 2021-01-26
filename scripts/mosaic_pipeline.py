@@ -1,4 +1,5 @@
 import json
+import logging
 import yaml
 from argparse import ArgumentParser
 
@@ -18,7 +19,7 @@ from dxs import (
     CrosstalkProcessor
 )
 from dxs.utils.misc import check_modules
-from dxs.utils.table import fix_column_names, fix_sextractor_column_names
+from dxs.utils.table import fix_column_names
 from dxs.utils.image import scale_mosaic
 from dxs.quick_plotter import QuickPlotter, Plot
 from dxs import paths
@@ -26,6 +27,8 @@ from dxs import paths
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
+
+logger = logging.getLogger("main")
 
 if __name__ == "__main__":
     
@@ -36,21 +39,20 @@ if __name__ == "__main__":
     parser.add_argument("--n_cpus", type=int)
 
     args = parser.parse_args()
-
     spec = (args.field, args.tile, args.band)
 
-    print(f"mosaic for {spec} with {args.n_cpus}")
+    logger.info(f"Mosaic for {spec} with {args.n_cpus} threads")
     
     builder = MosaicBuilder.from_dxs_spec(
         args.field, args.tile, args.band, n_cpus=args.n_cpus
     )
     if builder is None: # ie, if there are no stacks to build
-        print("Builder is None. Exiting")
+        logger.info("Builder is None. Exiting")
         sys.exit()
     builder.build()
     builder.add_extra_keys()
 
-    pixel_scale = survey_config["pixel_scale"] * 10.0
+    pixel_scale = survey_config["pixel_scale"]# * 10.0
     cov_builder = MosaicBuilder.coverage_from_dxs_spec(
         args.field, args.tile, args.band, pixel_scale=pixel_scale, n_cpus=args.n_cpus
     )
@@ -60,21 +62,24 @@ if __name__ == "__main__":
         cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
     )
     
+    ### get segementation image to use as mask.
+
     seg_name = paths.get_mosaic_stem(*spec)
     mosaic_dir = paths.get_mosaic_dir(*spec)
-    catalog_dir = paths.get_catalog_dir(*spec)
+    catalog_dir = paths.get_mosaic_dir(*spec)
     seg_config = {
-        "checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits"
-        "catalog_name": catalog_dir / f"{seg_name}_segmenation.cat"
+        "checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits",
+        "catalog_name": catalog_dir / f"{seg_name}_segmenation.cat",
     }
-    
     extractor = CatalogExtractor.from_dxs_spec(
         *spec, 
         sextractor_config=seg_config, 
-        sextractor_config_file=paths.config_path / f"segmentation.sex"
-        sextractor_parameter_file=paths.config_path / f"segmentation.param"
+        sextractor_config_file=paths.config_path / f"sextractor/segmentation.sex",
+        sextractor_parameter_file=paths.config_path / f"sextractor/segmentation.param",
     )
     extractor.extract()
+
+    ### make masked mosaic
 
     with fits.open(extractor.segmentation_mosaic_path) as f:
         mask_map = f[0].data

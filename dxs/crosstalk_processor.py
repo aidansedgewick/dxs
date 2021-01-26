@@ -32,6 +32,7 @@ class CrosstalkProcessor:
         self, stack_list, star_catalog: Table, crosstalk_catalog_path=None, 
         max_order=8, crosstalk_separation=256, n_cpus=None
     ):
+        # TODO URGENT: does not correctly find all crosstalks...!
         self.stack_list = stack_list
         self.star_catalog = star_catalog
         self.star_catalog.add_column(np.arange(len(star_catalog)), name="parent_id")
@@ -67,7 +68,7 @@ class CrosstalkProcessor:
         self, mag_column, mag_limit=15.0, ra="ra", dec="dec", save_path=None
     ):
         crosstalk_table_list = []
-        logger.info(f"collate crosstalks from {len(self.stack_list)}")
+        logger.info(f"collate crosstalks from {len(self.stack_list)} stacks")
         if self.n_cpus is None:
             for ii, stack_path in tqdm.tqdm(enumerate(self.stack_list)):
                 stack_crosstalks = self.get_crosstalks_in_stack(
@@ -208,23 +209,15 @@ class CrosstalkProcessor:
             catalog_path,
             crosstalk_catalog_path,
             output_path=output_path,
-            ra1=ra, 
+            ra1=ra,
             dec1=dec,
             join="all1",
             find="best1",
-            ra2="crosstalk_ra", 
+            ra2="crosstalk_ra",
             dec2="crosstalk_dec",
             error=error
         )
         stilts.run()
-        column_lookup = {
-            "GroupID": "crosstalk_group_id",
-            "GroupSize": "crosstalk_group_size",
-            "Separation": "crosstalk_separation",
-        }
-        fix_column_names(
-            output_path, band=band, column_lookup=column_lookup
-        )
         self.flag_crosstalks_in_catalog(output_path)
 
     def flag_crosstalks_in_catalog(self, catalog_path, coeffs=None):

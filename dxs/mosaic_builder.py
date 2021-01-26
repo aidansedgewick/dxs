@@ -48,32 +48,6 @@ class MosaicBuilder:
     """
     Class for building mosiacs. Calls SWarp.
     """
-    """
-    def __init__(
-        self, field: str, tile: int, band: str, prefix: str=None,
-        mosaic_stem=None, mosaic_dir=None, n_cpus=None, 
-        swarp_config=None, swarp_config_path=None
-    ):
-        check_modules("swarp") # do we have swarp available?
-        self.field = field
-        self.tile = tile
-        self.band = band
-        
-        self.mosaic_stem = mosaic_stem or paths.get_mosaic_stem(field, tile, band, prefix=prefix)
-        if mosaic_dir is not None:
-            mosaic_dir = Path(mosaic_dir)
-        self.mosaic_dir = mosaic_dir or paths.get_mosaic_dir(field, tile, band)
-        self.mosaic_dir.mkdir(exist_ok=True, parents=True)
-        self.mosaic_path = self.mosaic_dir / f"{self.mosaic_stem}.fits"
-
-        self.swarp_list_path  = self.mosaic_dir / "swarp_list.txt"
-        self.swarp_run_parameters_path = self.mosaic_dir / "swarp_run_parameters.json"
-        self.swarp_config = swarp_config or {}
-        self.swarp_config_file = swarp_config_path or paths.config_path / "swarp/mosaic.swarp"
-
-        self.relevant_stacks = get_stack_data(self.field, self.tile, self.band)
-
-        self.n_cpus = n_cpus"""
 
     def __init__(
         self, 
@@ -98,10 +72,12 @@ class MosaicBuilder:
     
         self.mosaic_dir = self.mosaic_path.parent
         self.mosaic_dir.mkdir(exist_ok=True, parents=True)
-        self.swarp_list_path = self.mosaic_dir / "swarp_list.txt"
-        parameter_out_name = str(self.mosaic_path.stem).replace(".", "_")
-        print("parameter out name", parameter_out_name)
-        self.swarp_run_parameters_path = self.mosaic_dir / f"{parameter_out_name}_swarp_run_parameters.json"        
+
+        string_name = str(self.mosaic_path.stem).replace(".", "_")
+        self.swarp_list_path = self.mosaic_dir / f"{string_name}_swarp_list.txt"
+        self.swarp_run_parameters_path = (
+            self.mosaic_dir / f"{string_name}_swarp_run_parameters.json"
+        )
 
     @classmethod
     def from_dxs_spec(
@@ -146,17 +122,10 @@ class MosaicBuilder:
     ):
         swarp_config = swarp_config or {}
         coverage_config = {
-            "combine_type": "sum", 
             "pixel_scale": pixel_scale,
-            "back_type": "manual",
-            "back_default": 0.0,
-            "gain_default": 1.0,
-            "interpolate": "nearest",
-            "fscalastro_type": None,
-            "gain_keyword": "None",
         }
+        swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
         swarp_config.update(coverage_config)
-        
         return cls.from_dxs_spec(
             field, tile, band, prefix=prefix, 
             extension="cov", swarp_config=swarp_config, swarp_config_file=swarp_config_file,
@@ -173,13 +142,14 @@ class MosaicBuilder:
             kwargs that are passed to HDUPreparer.prepare_stack() 
         """
         if prepare_hdus:
-            self.prepare_all_hdus(self.stack_list, **kwargs)
+            hdu_list = self.prepare_all_hdus(self.stack_list, **kwargs)
+            self.write_swarp_list(hdu_list)
         config = self.build_swarp_config()
         config.update(self.swarp_config)
         config = format_flags(config)
         self.swarp = Astromatic(
             "SWarp", 
-            str(paths.temp_swarp_path), # I think this is ignored anyway?!
+            str(paths.temp_swarp_path), # I think this is ignored by Astromatic() anyway?!
             config=config, 
             config_file=str(self.swarp_config_file),
             store_output=True,
@@ -215,7 +185,7 @@ class MosaicBuilder:
                 hdu_list = [p for result in results for p in result]
         for hdu_path in hdu_list:
             assert hdu_path.exists()
-        self.write_swarp_list(hdu_list)
+        return hdu_list
 
     def write_swarp_list(self, hdu_list):
         with open(self.swarp_list_path, "w+") as f:
@@ -244,26 +214,6 @@ class MosaicBuilder:
         keys["branch"] = branch
         keys["localSHA"] = local_sha.replace("'","")
         add_keys(self.mosaic_path, keys, hdu=0, verbose=True)
-
-def get_stack_data(field, tile, band, pointing=None):
-    """
-    
-    """
-    queries = [f"(field=='{field}')"]
-    if tile is not None:
-        if not isinstance(tile, list):
-            tile = [tile]
-        queries.append(f"(tile in @tile)")
-    if band is not None:
-        if not isinstance(band, list):
-            band = [band]
-        queries.append(f"(band in @band)")
-    if pointing is not None:
-        if not isinstance(pointing, list):
-            pointing = [pointing]
-        queries.append(f"(pointing in @pointing)")    
-    query = "&".join(q for q in queries)
-    return stack_data.query(query)
 
 
 class HDUPreparer:
@@ -346,8 +296,6 @@ class HDUPreparer:
         assert True # check reprojected_footprint isclose self.data?
         mask = reprojected_map
         mask = mask.astype(bool) # Background2D expects True for masked pixels.
-        #plt.imshow(mask)
-        #plt.show()
         return mask
 
     def get_background(self, source_mask=None):
@@ -368,9 +316,9 @@ class HDUPreparer:
         stack_path = Path(stack_path)
         results = []
         with fits.open(stack_path) as f:
-            print(stack_path)
             for ii, ccd in enumerate(survey_config["ccds"]):
                 hdu_name = get_hdu_name(stack_path, ccd, prefix=hdu_prefix)
+                print(hdu_name)
                 hdu_path = paths.temp_hdus_path / hdu_name # includes ".fits" already...
                 results.append(hdu_path)
                 if not overwrite and hdu_path.exists():
@@ -378,6 +326,27 @@ class HDUPreparer:
                 p = cls(f[ccd], hdu_path, exptime=f[0].header["EXP_TIME"], **kwargs)
                 p.prepare_hdu()
         return results
+
+
+def get_stack_data(field, tile, band, pointing=None):
+    """
+    
+    """
+    queries = [f"(field=='{field}')"]
+    if tile is not None:
+        if not isinstance(tile, list):
+            tile = [tile]
+        queries.append(f"(tile in @tile)")
+    if band is not None:
+        if not isinstance(band, list):
+            band = [band]
+        queries.append(f"(band in @band)")
+    if pointing is not None:
+        if not isinstance(pointing, list):
+            pointing = [pointing]
+        queries.append(f"(pointing in @pointing)")    
+    query = "&".join(q for q in queries)
+    return stack_data.query(query)
 
 def _hdu_prep_wrapper(arg):
     args, kwargs = arg
@@ -391,10 +360,7 @@ def get_hdu_name(stack_path, ccd, weight=False, prefix=None):
 def calculate_mosaic_geometry(
     stack_list, ccds=None, factor=None, border=None, pixel_scale=None
 ):
-
-
     logger.info("Calculating mosaic geometry")
-
     ccds = ccds or [0]
     ra_values = []
     dec_values = []

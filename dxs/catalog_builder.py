@@ -3,14 +3,16 @@ import logging
 import shutil
 import yaml
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 
 import astropy.io.fits as fits
-from astropy.table import Table, Column
+from astropy.table import Table, Column, vstack
 from astropy.wcs import WCS
 
 from astromatic_wrapper.api import Astromatic
+from easyquery import Query
 
 from dxs.crosstalk_processor import CrosstalkProcessor
 #from dxs.mosaic_builder import get_mosaic_dir, get_mosaic_stem
@@ -103,7 +105,7 @@ class CatalogExtractor:
         detection_mosaic_path = detection_mosaic_dir / f"{detection_mosaic_stem}.fits"
         if measurement_band is not None:
             measurement_mosaic_dir = paths.get_mosaic_dir(field, tile, measurement_band)
-            measurement_mosaic_stem = paths.get_mosaic_stem(field, tile, measurement_band)
+            measurement_mosaic_stem = paths.get_mosaic_stem(field, tile, measurement_band, prefix=prefix)
             measurement_mosaic_path = (
                 measurement_mosaic_dir / f"{measurement_mosaic_stem}.fits"
             )
@@ -130,7 +132,6 @@ class CatalogExtractor:
         config = self.build_sextractor_config()
         config.update(self.sextractor_config) # overwrite the inbuilt stuff with the input.
         config = format_flags(config) # this capitalises stuff too.
-        print(config)
         self.sextractor = Astromatic(
             "SExtractor", 
             str(paths.temp_sextractor_path), # I think Astromatic() ignores anyway?!
@@ -139,22 +140,13 @@ class CatalogExtractor:
         )
         filenames = [str(self.detection_mosaic_path)]
         if self.measurement_mosaic_path is not None:
-            filenames.append(str(self.detection_mosaic_path))
+            filenames.append(str(self.measurement_mosaic_path))
         cmd, cmd_kwargs = self.sextractor.build_cmd(filenames)
         cmd_kwargs["cmd"] = cmd
-        self.sextractor.run(filenames)
-        self.add_snr(
-            self.catalog_path, 
-            flux=["AUTO", "ISO", "APER"], 
-            flux_format="FLUX_{flux}", 
-            flux_err_format="FLUXERR_{flux}",
-            snr_format="SNR_{flux}"
-        )
-            
+        self.sextractor.run(filenames)   
         with open(self.sextractor_run_parameters_path, "w+") as f:
             json.dump(cmd_kwargs, f, indent=2)
         
-
     def build_sextractor_config(self,):
         config = {}
         config["catalog_name"] = self.catalog_path
@@ -174,8 +166,16 @@ class CatalogExtractor:
         return config
 
     def add_snr(
-        self, catalog_path, flux, flux_err=None, snr_name="snr", 
-        flux_format=None, flux_err_format=None, snr_format=None, nan_value=0.0):
+        self, flux, flux_err=None, catalog_path=None, snr_name="snr", 
+        flux_format=None, flux_err_format=None, snr_format=None, nan_value=0.0
+    ):
+        # TODO: this is unpleasant - fix!
+        """
+        fix
+        """
+
+        if catalog_path is None:
+            catalog_path = self.catalog_path
         if not isinstance(flux, list):
             flux = [flux]
         if not isinstance(flux_err, list):
@@ -219,6 +219,18 @@ class CatalogExtractor:
             catalog[snr_col][ nan_mask ] = nan_value
         catalog.write(catalog_path, overwrite=True)
 
+    def add_map_value(
+        self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0,
+    ):
+        info = _add_map_value(
+            self.catalog_path, mosaic_path, column_name, 
+            ra=ra, dec=dec, xpix=xpix, ypix=ypix, hdu=hdu,        
+        )
+        logger.info(info)
+
+    def add_column(self, column_data: Dict):
+        info = _add_column(self.catalog_path, column_data)
+        logger.info(info)
 
 class CatalogMatcher:
     """
@@ -295,39 +307,20 @@ class CatalogMatcher:
             )
             stilts.run()
         elif engine=="astropy":
-            raise NotImplementedError("DIY for now.")
+            raise NotImplementedError("DIY for now - or just use tskymatch2_fits.")
 
     def add_map_value(
-        self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0
+        self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0,
     ):
-        catalog = Table.read(self.output_path)
-        with fits.open(mosaic_path) as mosaic:
-            mosaic_data = mosaic[hdu].data
-            header = mosaic[hdu].header
-        use_coords = all([ra, dec])
-        use_pixels = all([xpix, ypix])
-        err_msg = "Must provide xpix, ypix column names OR ra, dec column names -- not both."
-        if use_coords and use_pixels:
-            raise ValueError(err_msg)
-        if use_coords:
-            mosaic_wcs = WCS(header)
-            image_positions = table_to_numpynd( catalog[[ra, dec]] )  # TODO: use SkyCoord?
-            pixels = mosaic_wcs.wcs_world2pix(image_positions)
-            x_values = pixels[:,0].astype(int)
-            y_values = pixels[:,1].astype(int)
-        elif xpix is not None and ypix is not None:
-            x_values = catalog[xpix].astype(int)
-            y_values = catalog[ypix].astype(int)
-        else:
-            raise ValueError(err_msg)
-    
-        map_values = mosaic_data[ y_values, x_values ]
-        col = Column(map_values, column_name)
-        catalog.add_column(col)
-        catalog.writeto(self.output_path, format="fits", overwrite=True)
-        info = f"added map data {column_name} from {mosaic_path.stem}"
+        info = _add_map_value(
+            self.output_path, mosaic_path, column_name, 
+            ra=ra, dec=dec, xpix=xpix, ypix=ypix, hdu=hdu,        
+        )
         logger.info(info)
         self.summary_info.append(info)
+
+    def add_column(self, column_data: Dict):
+        _add_column(self.output_path, column_data)
 
     def fix_column_names(self, **kwargs):
         fix_column_names(self.output_path, **kwargs)
@@ -380,7 +373,6 @@ class CatalogPairMatcher(CatalogMatcher):
         )
 
     def best_pair_match(self, **kwargs):
-        print(dir(self))
         stilts = Stilts.tskymatch2_fits(
             self.catalog1_path, self.catalog2_path, self.catalog_path,
             ra1=self.ra1, dec1=self.dec1, ra2=self.ra2, dec2=self.dec2,
@@ -423,24 +415,25 @@ class CatalogPairMatcher(CatalogMatcher):
         self.dec = best_dec
 
 def combine_catalogs(
-    self, catalog_list, output_path, id_col, ra_col, dec_col, snr_col, error=1.0
+    catalog_list, output_path, id_col, ra_col, dec_col, snr_col, error=1.0
 ):
     catalog_list = create_file_backups(catalog_list, paths.temp_sextractor_path)
-    catalog_path1 = catalog_list[0]
     output_path = Path(output_path)
     temp_overlap_path = paths.temp_sextractor_path / "{output_path.stem}_overlap.fits"
     temp_output_path = paths.temp_sextractor_path / "{output_path.stem}_combined.fits"
+    catalog_path1 = catalog_list[0] # changed to temp_output_path at the end of loop 1.
     for ii, catalog_path in enumerate(catalog_list):
-        id_modifier = int("1{ii+1:02d}")*1_000_000
-        _modify_id_value(catalog_path, id_modifier)
+        id_modifier = int(f"1{ii+1:02d}")*1_000_000
+        _modify_id_value(catalog_path, id_modifier, id_col=id_col)
     for catalog_path2 in catalog_list:
-        if catalog_path == result_catalog_path:
-            continue         
+        if catalog_path2 == catalog_path1:
+            continue
+        # Find objects which appear in both (and only both) catalogs.
         stilts = Stilts.tskymatch2_fits(
-            output_catalog_path, catalog_path, output_path=temp_overlap_path,
+            catalog_path1, catalog_path2, output_path=temp_overlap_path,
             ra=ra_col, dec=dec_col, error=error, join="1and2", find="best"
         )
-        stilts.run() # Find objects which appear in both (and only both) catalogs.
+        stilts.run()
         # Now keep the unique catalogs. 
         catalog1 = Table.read(catalog_path1)
         overlap = Table.read(temp_overlap_path)
@@ -453,21 +446,71 @@ def combine_catalogs(
         )
         catalog1 = catalog1[ catalog1_unique_mask ]
         catalog2 = catalog2[ catalog2_unique_mask ]
-        columns = catalog1.columns
-        overlap1 = overlap[ overlap[snr_col+"_1"] > overlap[snr_col+"_2"] ][columns]
-        overlap2 = overlap[ overlap[snr_col+"_2"] > overlap[snr_col+"_1"] ][columns]
+
+        catalog_columns = list(catalog1.colnames)
+        overlap1_columns = [f"{col}_1" for col in catalog_columns]# + ["Separation"]
+        overlap2_columns = [f"{col}_2" for col in catalog_columns]# + ["Separation"]
+        
+        overlap1 = Query(f"{snr_col}_1 >= {snr_col}_2").filter(overlap)[overlap1_columns]
+        overlap2 = Query(f"{snr_col}_2 > {snr_col}_1").filter(overlap)[overlap2_columns]
+        
+        for old_col, new_col in zip(overlap1_columns, catalog_columns):
+            overlap1.rename_column(old_col, new_col)
+        for old_col, new_col in zip(overlap2_columns, catalog_columns):
+            overlap2.rename_column(old_col, new_col)
+
+        print(len(overlap1), len(overlap2), len(overlap))
         assert len(overlap1) + len(overlap2) == len(overlap)
         combined_catalog = vstack(
             [catalog1, overlap1, overlap2, catalog2], join_type="exact"
         )
-        combined_catalog.write(temp_output_path)
-        catalog1_path = temp_output_path
+        combined_catalog.write(temp_output_path, overwrite=True)
+        catalog_path1 = temp_output_path # only really does anything on the first loop!
     shutil.copy2(temp_output_path, output_path)
+
+def _add_map_value(
+    catalog_path, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0
+):
+    catalog = Table.read(catalog_path)
+    with fits.open(mosaic_path) as mosaic:
+        mosaic_data = mosaic[hdu].data
+        header = mosaic[hdu].header
+    use_coords = all([ra, dec])
+    use_pixels = all([xpix, ypix])
+    err_msg = "Must provide xpix, ypix column names OR ra, dec column names -- not both."
+    if use_coords and use_pixels:
+        raise ValueError(err_msg)
+    if use_coords:
+        mosaic_wcs = WCS(header)
+        image_positions = table_to_numpynd( catalog[[ra, dec]] )  # TODO: use SkyCoord?
+        pixels = mosaic_wcs.wcs_world2pix(image_positions, 0)
+        x_values = pixels[:,0].astype(int)
+        y_values = pixels[:,1].astype(int)
+    elif xpix is not None and ypix is not None:
+        x_values = catalog[xpix].astype(int)
+        y_values = catalog[ypix].astype(int)
+    else:
+        raise ValueError(err_msg)
+
+    map_values = mosaic_data[ y_values, x_values ]
+    col = Column(map_values, column_name)
+    catalog.add_column(col)
+    catalog.write(catalog_path, overwrite=True)
+    info = f"added map data {column_name} from {mosaic_path.stem}"
+    return info
+
+def _add_column(catalog_path, column_data: Dict):
+    catalog = Table.read(catalog_path)
+    for column_name, column_values in column_data.items():
+        catalog.add_column(column_values, name=column_name)
+    catalog.write(catalog_path, overwrite=True)
+    return f"add {len(column_data)} columns: " + " ".join(c for c in column_data.keys())
+
 
 def _modify_id_value(catalog_path, id_modifier, id_col="id",):
     catalog = Table.read(catalog_path)
     catalog[id_col] = id_modifier + catalog[id_col]
-    catalog.write(catalog_path, format="fits", overwrite=True)
+    catalog.write(catalog_path, overwrite=True)
 
 
 if __name__ == "__main__":

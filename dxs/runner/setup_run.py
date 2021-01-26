@@ -1,3 +1,4 @@
+import yaml
 from argparse import ArgumentParser
 from itertools import product
 from pathlib import Path
@@ -25,11 +26,14 @@ for t in tile_ranges:
         tiles.append(int(t))
 bands = [x for x in args.bands.split(",")]
 
+system_config_path = paths.config_path / "system_config.yaml"
+with open(system_config_path, "r") as f:
+    system_config = yaml.load(f, Loader=yaml.FullLoader)
 
 combinations = product(fields, tiles, bands)
 combinations = [x for x in combinations] # don't want generator here
-print(len(combinations))
-kwargs = [{"n_cpus": 16} for _ in combinations]
+print(f"\n\nWriting {len(combinations)} scripts.")
+kwargs = [{"n_cpus": system_config["cpus_per_node"]} for _ in combinations]
 
 base_dir = paths.runner_path / f"runs/{args.run_name}"
 base_dir.mkdir(exist_ok=True, parents=True)

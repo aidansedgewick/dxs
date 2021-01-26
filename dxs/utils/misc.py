@@ -12,6 +12,9 @@ logger = logging.getLogger("utils.misc")
 class ModuleMissingError(Exception):
     pass
 
+class AstropyFilter(logging.Filter):
+    def filter(self, message):
+        return not "FITSFixedWarning" in message.getMessage()
 
 module_suggestions = {
     "swarp": "try   module load swarp",
@@ -124,9 +127,7 @@ def calc_mids(arr):
 def calc_widths(arr):
     return arr[1:] - arr[:-1]
 
-class AstropyFilter(logging.Filter):
-    def filter(self, message):
-        return not "FITSFixedWarning" in message.getMessage()
+
 
 
 

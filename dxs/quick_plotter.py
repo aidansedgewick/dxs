@@ -85,6 +85,7 @@ class Plot:
 class QuickPlotter:
 
     def __init__(self):
+        self.plot_list = []
         pass
 
     @classmethod
@@ -140,8 +141,28 @@ class QuickPlotter:
 
     def create_plot(self, name: str, plot_layout=(1,1), figsize=None):
         plot = Plot(plot_layout=plot_layout, figsize=figsize)
+        self.plot_list.append(name)
         setattr(self, name, plot)
 
+    def save_all_plots(self, save_dir=None, extension=".png", prefix="", **kwargs):
+
+        save_dir = save_dir or Path.cwd()
+        save_dir = Path(save_dir)
+        plot_paths = []
+        for plot_name in self.plot_list:
+            plot = getattr(self, plot_name)
+            plot_path = save_dir / f"{prefix}{plot_name}{extension}"
+            plot.fig.savefig(plot_path, **kwargs)
+        try:
+            print_dir = save_dir.relative_to(Path.cwd())
+        except:
+            print_dir = save_dir
+
+        print_path = print_dir / f"*{extension}"
+        plot_viewers = {".png": "eog", ".pdf": "evince"}
+        viewer = plot_viewers[extension]
+        command = "view plots with \n" + f"   {viewer} {print_path}"
+        print(command)
 
 
 
