@@ -25,13 +25,16 @@ Make sure `SWarp`, `SExtractor` and `stilts` are in the path (eg. `module load s
 If you're running on a cluster with a scheduler, there is a "runner script" to help with this.
 Modify `configuration/system_config.yaml` to suit your system.
 
-Then: `python3 dxs/runner/setup_run.py [field_list] [tile_list] [band_list] scripts/mosaic_pipeline.py --run_name [some_meaningful_name]`
+Then create a "run_config". (See example in dxs/runner/blank_config.yaml).
+Or, there are couple of pre-made ones in eg dxs/runner/configs/EN_mosaics.yaml
+
+Then: `python3 dxs/runner/setup_run.py -c /path/to/run_config.yaml`
 Follow the instructions on screen. 
 For all mosaics, use:
-  field_list `EN,LH,SA,XM`
-  tile_list 1-12
-  band_list `J,H,K`
-Subsets also work. eg EN,SA 1,2,4,8, J
+  fields `EN,LH,SA,XM`
+  tiles 1-12
+  bands `J,H,K`
+Subsets also work. eg EN,SA 1,2,4,8 J
 
 You need lots (O(10Tb)!) of scratch space to do this all in one go,
 so probably best to do this in a few parts,
@@ -45,12 +48,17 @@ It took me about 1hr per mosaic to run the full "pipeline" on a 16 core node.
 
 ### Creating catalogs.
 
-These don't take so long.
+These don't take as long.
 
 You can still create them with the scheduler, however:
-    `python3 dxs/runner/setup_run.py [field_list] [tile_list] [band_list] scripts/basic_pipeline.py --run_name [meaningful_name]`
+    `python3 dxs/runner/setup_run.py -c /path/to/run_config.yaml`
 and follow the instructions again.
 
 To match other optical/MIR catalogs, you'll need to modify `scripts/basic_pipeline.py`
 
 Should be as easy as adding a new `pair_matcher.match_catalog("path/to/catalog.fits")`
+(Adding extra kwargs as required.)
+
+### Analysis.
+
+to be added.
