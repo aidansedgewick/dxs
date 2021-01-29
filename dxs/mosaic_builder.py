@@ -150,7 +150,7 @@ class MosaicBuilder:
                 survey_config["ccds"] for _ in range(len(mosaic_stacks))
             ]
             neighbor_stacks = get_neighbor_stacks(field, tile, band)
-            print("including neighbors", neighbor_stacks)
+            logger.info(f"including neighbors {len(neighbor_stacks)}")
         else:
             neighbor_stacks = None
         return cls(
@@ -568,7 +568,7 @@ def add_keys(mosaic_path, data, hdu=0, verbose=False):
             #mosaic[hdu].header[key.upper()] = val
             if not isinstance(data, tuple):
                 data = (data,)
-            header.set(key.upper(), *data)
+            mosaic[hdu].header.set(key.upper(), *val)
         mosaic.flush()
 
 if __name__ == "__main__":
