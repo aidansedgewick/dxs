@@ -127,11 +127,6 @@ def calc_mids(arr):
 def calc_widths(arr):
     return arr[1:] - arr[:-1]
 
-
-
-
-
-
-
-
+def calc_range(arr, axis=None):
+    return (arr.min(axis=axis), arr.max(axis=axis))
 

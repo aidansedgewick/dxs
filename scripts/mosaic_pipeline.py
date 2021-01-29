@@ -21,7 +21,7 @@ from dxs import (
 from dxs.utils.misc import check_modules
 from dxs.utils.table import fix_column_names
 from dxs.utils.image import scale_mosaic
-from dxs.quick_plotter import QuickPlotter, Plot
+from dxs.quick_plotter import QuickPlotter
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -49,14 +49,14 @@ if __name__ == "__main__":
     if builder is None: # ie, if there are no stacks to build
         logger.info("Builder is None. Exiting")
         sys.exit()
-    builder.build()
+    builder.build(hdu_prefix=f"{builder.mosaic_path.stem}_")
     builder.add_extra_keys()
 
-    pixel_scale = survey_config["pixel_scale"]# * 10.0
+    pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
     cov_builder = MosaicBuilder.coverage_from_dxs_spec(
         args.field, args.tile, args.band, pixel_scale=pixel_scale, n_cpus=args.n_cpus
     )
-    cov_builder.build(value=1.0, hdu_prefix="ones_")
+    cov_builder.build(value=1.0, hdu_prefix=f"{builder.mosaic_path.stem}_u")
     cov_builder.add_extra_keys() 
     scale_mosaic(
         cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
@@ -89,11 +89,11 @@ if __name__ == "__main__":
         *spec, prefix="m", n_cpus=args.n_cpus
     )
     masked_builder.build(
-        hdu_prefix="m",
+        hdu_prefix="{builder.mosaic_path.stem}_m",
         #resize=True, edges=25.0,
         mask_sources=True, mask_wcs=mask_wcs, mask_map=mask_map,
         normalise_exptime=True,
         subtract_bgr=True, bgr_size=32,           
     )
-    masked_builder.add_extra_keys(normalise_exptime=True)
+    masked_builder.add_extra_keys(magzpt_inc_exptime=True)
     

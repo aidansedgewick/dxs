@@ -16,12 +16,12 @@ from dxs import (
     CatalogExtractor, 
     CatalogMatcher, 
     CatalogPairMatcher, 
-    CrosstalkProcessor
+    CrosstalkProcessor,
+    QuickPlotter
 )
 from dxs.utils.misc import check_modules
 from dxs.utils.table import fix_column_names, remove_objects_in_bad_coverage
-from dxs.utils.image import calc_survey_area
-from dxs.quick_plotter import QuickPlotter, Plot
+from dxs.utils.image import calc_survey_area, make_normalised_weight_map
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -123,13 +123,19 @@ if __name__ == "__main__":
     ##============================Extract catalog from J-image.
     
     J_ex = CatalogExtractor.from_dxs_spec(field, args.tile, "J")
-    J_cov_map_path = J_ex.detection_mosaic_path.with_suffix(".cov.fits")
+    J_coverage_map_path = J_ex.detection_mosaic_path.with_suffix(".cov.fits")
+    J_weight_map_path = J_ex.detection_mosaic_path.with_suffix(".weight.fits")
+    J_norm_weight_map = J_ex.detection_mosaic_path.with_suffix(".norm_weight.fits")
     if args.extract:
         mark("J photom")
         J_ex.extract()
         J_ex.add_snr(snr_fluxes, **snr_flux_formats)     
         fix_sextractor_column_names(J_ex.catalog_path, band="J")
-        J_ex.add_map_value(J_cov_map_path, "J_coverage", ra="J_ra", dec="J_dec")
+        J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
+        make_normalised_weight_map(
+            J_weight_map_path, J_coverage_map_path, J_norm_weight_map
+        )
+        J_ex.add_map_value(J_norm_weight_map, "J_norm_weight", ra="J_ra", dec="J_dec")
         J_ex.add_column({"tile": args.tile})
     ## Match its crosstalks
     J_xproc = CrosstalkProcessor.from_dxs_spec(
@@ -166,7 +172,9 @@ if __name__ == "__main__":
         )
         fix_column_names(J_output_path, column_lookup={"Separation": "Jfp_separation"})
         remove_objects_in_bad_coverage(
-            J_output_path, J_cov_map_path, "J_coverage", N_pixels=4000*4000
+            J_output_path, J_coverage_map_path, "J_coverage", 
+            weight_map_path=J_norm_weight_map, weight_column="J_norm_weight",
+            N_pixels=4000*4000
         )
 
 
@@ -175,13 +183,19 @@ if __name__ == "__main__":
     ##=========================Extract catalog from K-image.
 
     K_ex = CatalogExtractor.from_dxs_spec(field, tile, "K")
-    K_cov_map_path = K_ex.detection_mosaic_path.with_suffix(".cov.fits")
+    K_coverage_map_path = K_ex.detection_mosaic_path.with_suffix(".cov.fits")
+    K_weight_map_path = K_ex.detection_mosaic_path.with_suffix(".weight.fits")
+    K_norm_weight_map = K_ex.detection_mosaic_path.with_suffix(".norm_weight.fits")
     if args.extract:
         mark("K photom")
         K_ex.extract()
         K_ex.add_snr(snr_fluxes, **snr_flux_formats)      
         fix_sextractor_column_names(K_ex.catalog_path, band="K")
-        K_ex.add_map_value(K_cov_map_path, "K_coverage", ra="K_ra", dec="K_dec")
+        K_ex.add_map_value(K_coverage_map_path, "K_coverage", ra="K_ra", dec="K_dec")
+        make_normalised_weight_map(
+            K_weight_map_path, K_coverage_map_path, K_norm_weight_map
+        )
+        K_ex.add_map_value(K_norm_weight_map, "K_norm_weight", ra="K_ra", dec="K_dec")
         K_ex.add_column({"tile": args.tile})
     ## Match its crosstalks
     K_xproc = CrosstalkProcessor.from_dxs_spec(
@@ -216,11 +230,13 @@ if __name__ == "__main__":
         )
         fix_column_names(K_output_path, column_lookup={"Separation": "Kfp_separation"})
         remove_objects_in_bad_coverage(
-            K_output_path, K_cov_map_path, "K_coverage", N_pixels=3500*3500 # ~size of one stack hdu?
+            K_output_path, K_coverage_map_path, "K_coverage", 
+            weight_map_path=K_norm_weight_map, weight_column="K_norm_weight",
+            N_pixels=4000*4000
         )
 
     ##===========================Match pair of outputs.
-    mark("quick plots")
+    mark("match extras")
     pair_output_stem = paths.get_catalog_stem(field, tile, "")
     pair_output_dir = paths.get_catalog_dir(field, tile, "")
     pair_output_path = pair_output_dir / f"{pair_output_stem}.fits"
@@ -257,6 +273,7 @@ if __name__ == "__main__":
         pair_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=2.0)
         pair_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
 
+    """
     # Make some quick plots.
     bins = np.arange(14, 22, 0.5)
 
@@ -312,7 +329,7 @@ if __name__ == "__main__":
     qp.n_plot.axes.legend()
 
     #print(qp.catalog.colnames)
-    """
+    
     qp.create_plot("jk_plot")
     qp.jk_plot.color_magnitude(
         c1="J_mag_auto", c2="K_mag_auto", mag="K_mag_auto", selection=qp.catalog,
@@ -340,12 +357,12 @@ if __name__ == "__main__":
             c_x1="J_mag_auto", c_x2="H_mag_auto", c_y1="H_mag_auto", c_y2="K_mag_auto",
             selection=qp.catalog,
             s=1, color="k",
-        )"""
-    plt.show()
+        )
+    plt.show()"""
     
     #qp.save_all_plots()
 
-
+    print("done!")
 
 
 

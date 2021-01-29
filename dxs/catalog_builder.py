@@ -153,6 +153,8 @@ class CatalogExtractor:
         config["parameters_name"] = self.sextractor_parameter_file
         config["checkimage_type"] = "SEGMENTATION"
         config["checkimage_name"] = self.segmentation_mosaic_path
+        config["weight_type"] = "background"
+        config["weight_image"] = self.detection_mosaic_path.with_suffix(".weight.fits")
         with fits.open(self.detection_mosaic_path) as mosaic:
             header = mosaic[0].header
             config["seeing_fwhm"] = header["SEEING"]

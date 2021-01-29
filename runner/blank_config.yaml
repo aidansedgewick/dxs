@@ -1,0 +1,12 @@
+
+base_dir: "/cosma5/data/durham/dc-sedg2/dxs/"
+python_script_path: "@base_dir/path/to/script" # required!
+run_name: # required! meaningful name...
+
+args:
+    #fields: EN,SA
+    #tiles: 1-5,9,11
+    #bands: J,K
+    
+#kwargs:
+    

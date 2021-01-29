@@ -1,15 +1,17 @@
 ### dxs basic stuff
 
 ccds: [1, 2, 3, 4]
-pixel_scale: 0.2 # arcsec.
+
 field_names: [SA22, Lockman, ElaisN1, XMM-LSS]
 field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
 code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
 
 
 # some error catching?
-
-max_mosaic_size: [25000,25000]
+mosaics:
+  border: 100
+  max_size: [25000,25000]
+  pixel_scale: 0.2 # arcsec.
 
 
 

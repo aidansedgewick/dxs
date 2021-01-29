@@ -1,0 +1,15 @@
+
+system: "cosma5" # allowed: cosma5
+
+base_dir: "/cosma5/data/durham/dc-sedg2/dxs/"
+python_script_path: "@base_dir/scripts/mosaic_pipeline.py" # required!
+run_name: "EN_neighbor_mosaics_210127" # required! meaningful name...
+
+args:
+    fields: EN
+    tiles: 1-12
+    bands: J,K
+    
+kwargs:
+    n_cpus: 16
+    #full: None

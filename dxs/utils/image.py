@@ -21,6 +21,7 @@ import dxs.paths as paths
 
 import matplotlib.pyplot as plt
 
+### bits related to survey area/randoms.
 
 def uniform_sphere(ra_limits, dec_limits, size=1):
     """
@@ -62,9 +63,7 @@ def objects_in_coverage(image_path, ra, dec, minimum_coverage=0.0, hdu=0):
     pix_mask = xmask & ymask
 
     pix = pix[ pix_mask ]
-    print(pix)
     mask[ pix_mask ] = data[pix[:,1], pix[:,0]] > minimum_coverage
-    print(mask.sum(), "sum")
     return mask
 
 def objects_in_multi_coverage(image_list, ra, dec, minimum_coverage=0.0, hdu=0):
@@ -99,7 +98,6 @@ def calc_survey_area(image_list, ra_limits=None, dec_limits=None, N=100_000):
     randoms = uniform_sphere(ra_limits, dec_limits, size=N)
     survey_mask = objects_in_multi_coverage(image_list, randoms[:,0], randoms[:,1])
     factor = len(randoms[ survey_mask ]) / len(randoms)
-    print(factor)
     survey_area = factor * area_box
     return survey_area
 
@@ -152,6 +150,25 @@ def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
     output_hdu = fits.PrimaryHDU(data, header)
     output_hdu.writeto(save_path, overwrite=True)
 
+def make_normalised_weight_map(weight_path, coverage_path, output_path):
+
+    with fits.open(weight_path) as weight:
+        #shape = weight[0].data.shape
+        data = weight[0].data #.flatten()
+        with fits.open(coverage_path) as coverage:
+            cov = coverage[0].data.astype(int) #.flatten()
+            cov_vals = np.unique(cov)
+            for cval in cov_vals:
+                print(cval)
+                if cval < 1:
+                    continue
+                mask = (cov == cval)
+                cdat = data[ mask ].flatten()
+                med = np.median(cdat)
+                data[ mask ] = data[ mask ] / med
+        #data = data.reshape(shape)
+        new_hdu = fits.PrimaryHDU(data=data, header=weight[0].header)
+    new_hdu.writeto(output_path, overwrite=True)
 
 ### other
 

@@ -85,9 +85,12 @@ def remove_objects_in_bad_coverage(
     catalog_path, 
     coverage_map_path, 
     coverage_column, 
+    weight_map_path=None,
+    weight_column=None,
     N_pixels=3500*3500,
     absolute_minimum=3, 
-    frac=0.9, 
+    frac=1.0,
+    weight_minimum=0.7,
     hdu=0
 ):
     catalog_path = Path(catalog_path)
@@ -101,6 +104,10 @@ def remove_objects_in_bad_coverage(
         min_coverage = np.ceil(frac*min_coverage)
         minimum_coverage = int(np.max([absolute_minimum, min_coverage, 1]))
         data[data < minimum_coverage] = 0
+        if weight_map_path is not None:
+            with fits.open(weight_map_path) as weight:
+                wdat = weight[0].data
+                data[ wdat < weight_minimum ] = 0
 
         new_image = fits.PrimaryHDU(data=data, header=f[hdu].header)
         new_image_path = coverage_map_path.with_suffix(".good_cov.fits")
@@ -109,7 +116,14 @@ def remove_objects_in_bad_coverage(
 
     catalog = Table.read(catalog_path)
     clen = len(catalog)
-    new_catalog = Query(f"{coverage_column} >= {minimum_coverage}").filter(catalog)
+    if weight_column and weight_map_path:
+        queries = (
+            f"{coverage_column} >= {minimum_coverage}", 
+            f"{weight_column} >= {weight_minimum}",
+        )
+    else:
+        queries = (f"{coverage_column} >= {minimum_coverage}")
+    new_catalog = Query(*queries).filter(catalog)
     nclen = len(new_catalog)
     logger.info(f"remove {clen-nclen} objects")
     new_catalog.write(catalog_path, overwrite=True)

@@ -71,7 +71,7 @@ class ScriptMaker:
         python_args = python_args or []
         python_kwargs = python_kwargs or {}
         for k, v in python_kwargs.items():
-            if python_kwargs is None:
+            if v is None:
                 python_kwargs[k] = ""
         header = self.make_header(
             stdout_name=script_path.stem, 
