@@ -55,7 +55,7 @@ class MosaicBuilderError(Exception):
 class MosaicBuilder:
 
     """
-    Class for building mosiacs. Calls SWarp.
+    Class for building mosaics. Calls SWarp.
     """
 
     def __init__(
@@ -129,7 +129,7 @@ class MosaicBuilder:
             paths.stack_data_path / f"{x}.fit" for x in geom_mosaic_stacks["filename"]
         ]
         border = survey_config["mosaics"].get("border", None)
-        factor = survey_config["mosiacs"].get("factor", None)
+        factor = survey_config["mosaics"].get("factor", None)
         center, size = calculate_mosaic_geometry(
             geom_stack_list, ccds=survey_config["ccds"],
             pixel_scale=swarp_config.get("pixel_scale", None),
@@ -275,7 +275,7 @@ class MosaicBuilder:
         this DOESN'T include any seeing values for neighbor stacks, as they're
         only on the very edges
         """
-        seeing_cols = ["seeing_{ccd}" for ccd in survey_ccds["ccds"]]
+        seeing_cols = [f"seeing_{ccd}" for ccd in survey_config["ccds"]]
         seeing_df = self.mosaic_stacks[ seeing_cols ]
         seeing = np.median(seeing_df.stack().values)
         return seeing
@@ -285,7 +285,7 @@ class MosaicBuilder:
         If counts per second (ie, exptime = 1), DON't include exptime.
         Else: we'll have T times more flux per obeject. so need to add 
         """
-        magzpt_cols = ["magzpt_{ccd}" for ccd in survey_ccds["ccds"]]
+        magzpt_cols = [f"magzpt_{ccd}" for ccd in survey_config["ccds"]]
         if magzpt_inc_exptime:
             exptime_factor = 2.5*np.log10(self.mosaic_stacks["exptime"])
             magzpt_df = self.mosaic_stacks[ magzpt_cols ] + exptime_factor
@@ -353,17 +353,19 @@ class HDUPreparer:
             )
             self.data = cutout.data
             self.header.update(cutout.wcs.to_header())
+
         hdu = fits.PrimaryHDU(data=self.data, header=self.header)
         hdu.writeto(self.hdu_path)
 
     def get_source_mask(self):
         approx_size = (self.ylen + 50, self.xlen + 50)
+        # do better by taking the max, min of the stack footprint in mask wcs pix.
         apx_map = Cutout2D(
             self.mask_map, 
             position=self.center_coords,
             size=approx_size,
             wcs=self.mask_wcs,
-            mode="trim",
+            mode="partial", # definitely want PARTIAL. 
             fill_value=0
         )
         reprojected_map, reprojected_footprint = rpj.reproject_interp(
@@ -371,7 +373,7 @@ class HDUPreparer:
             output_projection=self.header, 
             order="nearest-neighbor"
         )
-        assert True # check reprojected_footprint isclose self.data?
+        assert reprojected_map.shape == self.data.shape
         mask = reprojected_map
         mask = mask.astype(bool) # Background2D expects True for masked pixels.
         return mask
@@ -485,8 +487,6 @@ def get_neighbor_tiles(field, tile):
 def get_new_position(start, move):
     return (start[0] + move[0], start[1] + move[1])
 
-
-
 def calculate_mosaic_geometry(
     stack_list, ccds=None, factor=None, border=None, pixel_scale=None
 ):
@@ -520,7 +520,7 @@ def calculate_mosaic_geometry(
         mosaic_size = (mosaic_size[0]*factor, mosaic_size[1]*factor)
     if border is not None:
         mosaic_size = (mosaic_size[0]+border, mosaic_size[1]+border)
-    max_size = [int(x) for x in survey_config["max_mosaic_size"]]
+    max_size = [int(x) for x in survey_config["mosaics"]["max_size"]]
     if mosaic_size[0] > max_size[0] or mosaic_size[1] > max_size[1]:
         raise MosaicBuilderError(
             f"Mosaic too large: {mosaic_size[0]},{mosaic_size[1]}"
@@ -529,7 +529,36 @@ def calculate_mosaic_geometry(
         )
     logger.info(f"geom - size {mosaic_size[0]},{mosaic_size[1]}")
     logger.info(f"geom - center {center[0]:.3f}, {center[1]:.3f}")
-    return center, mosaic_size    
+    return center, mosaic_size
+
+
+
+def build_mosaic_header(center, size, pixel_scale, proj="TAN"):
+    """
+    NOT for use in FITS files. Useful for cropping input stacks down to size.
+    """
+    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj)
+    h = w.to_header()
+    h.insert(0, "SIMPLE", "T")
+    h.insert(1, "BITPIX", -32)
+    h.insert(2, "NAXIS", 2)
+    h.insert(3, "NAXIS1", size[0])
+    h.insert(4, "NAXIS2", size[1])
+    return h
+    
+
+def build_mosaic_wcs(center, size, pixel_scale, proj="TAN"):
+    
+    w = WCS(naxis=2)
+    w.wcs.crpix = [size[0]/2, size[1]/2]
+    w.wcs.cdelt = [pixel_scale / 3600., pixel_scale / 3600.]
+    w.wcs.crval = list(center)
+    w.wcs.ctype = [
+        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
+    ]
+    w.fix()
+    return w
+    
 
 def add_keys(mosaic_path, data, hdu=0, verbose=False):
     with fits.open(mosaic_path, mode="update") as mosaic:

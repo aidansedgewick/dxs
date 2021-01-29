@@ -49,14 +49,14 @@ if __name__ == "__main__":
     if builder is None: # ie, if there are no stacks to build
         logger.info("Builder is None. Exiting")
         sys.exit()
-    builder.build(hdu_prefix=f"{builder.mosaic_path.stem}_")
+    builder.build()
     builder.add_extra_keys()
 
     pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
     cov_builder = MosaicBuilder.coverage_from_dxs_spec(
         args.field, args.tile, args.band, pixel_scale=pixel_scale, n_cpus=args.n_cpus
     )
-    cov_builder.build(value=1.0, hdu_prefix=f"{builder.mosaic_path.stem}_u")
+    cov_builder.build(value=1.0, hdu_prefix=f"u")
     cov_builder.add_extra_keys() 
     scale_mosaic(
         cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
