@@ -355,7 +355,9 @@ class HDUPreparer:
             self.header.update(cutout.wcs.to_header())
 
         hdu = fits.PrimaryHDU(data=self.data, header=self.header)
-        hdu.writeto(self.hdu_path)
+        if self.hdu_path.exists():
+            logger.warn(f"{self.hdu_path.stem} is being overwritten!")
+        hdu.writeto(self.hdu_path, overwrite=True)
 
     def get_source_mask(self):
         approx_size = (self.ylen + 50, self.xlen + 50)
@@ -401,7 +403,7 @@ class HDUPreparer:
         with fits.open(stack_path) as f:
             for ii, ccd in enumerate(ccds):
                 hdu_name = get_hdu_name(stack_path, ccd, prefix=hdu_prefix)
-                print(hdu_name)
+                logger.info(f"prep - {hdu_name}")
                 hdu_path = paths.temp_hdus_path / hdu_name # includes ".fits" already...
                 results.append(hdu_path)
                 if not overwrite and hdu_path.exists():
@@ -568,7 +570,10 @@ def add_keys(mosaic_path, data, hdu=0, verbose=False):
             #mosaic[hdu].header[key.upper()] = val
             if not isinstance(data, tuple):
                 data = (data,)
-            mosaic[hdu].header.set(key.upper(), *val)
+            try:
+                mosaic[hdu].header.set(key.upper(), *val)
+            except:
+                pass
         mosaic.flush()
 
 if __name__ == "__main__":
