@@ -70,5 +70,6 @@ def get_catalog_dir(field, tile, detection_band):
     return catalogs_path / get_catalog_stem(field, tile, "")
 
 if __name__ == "__main__":
+    print("creating all paths")
     create_all_paths()
 
