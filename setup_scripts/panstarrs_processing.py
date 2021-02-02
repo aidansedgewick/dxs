@@ -190,9 +190,9 @@ if __name__ == "__main__":
         aperture_catalog_path = catalog_dir / f"stackapflx_{ps_field}.fit"
         output_catalog_path = catalog_dir / f"{field}_panstarrs.fits"
         
-        #process_panstarrs_catalog(
-        #    primary_catalog_path, aperture_catalog_path, output_catalog_path
-        #)
+        process_panstarrs_catalog(
+            primary_catalog_path, aperture_catalog_path, output_catalog_path
+        )
 
         mask_dir = paths.input_data_path / f"external/panstarrs/masks"
         mask_dir.mkdir(exist_ok=True, parents=True)

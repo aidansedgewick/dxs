@@ -65,7 +65,6 @@ class MosaicBuilder:
         neighbor_stacks=None,
         swarp_config=None, 
         swarp_config_file= None,
-        n_cpus=None
     ):
         check_modules("swarp") # do we have swarp available?
         if isinstance(mosaic_stacks, pd.DataFrame):
@@ -90,13 +89,11 @@ class MosaicBuilder:
                 raise MosaicBuilderError(
                     "to use BOTH, mosaic_stacks and neighbor_stacks must be pd.DataFrame (with \"filename\" column"
                 )
-            self.ccds_list = [None for _ in range(len(mosaic_stacks))]
-                
+            self.ccds_list = [None for _ in range(len(mosaic_stacks))]                
 
         self.mosaic_path = Path(mosaic_path)
         self.swarp_config = swarp_config or {}
         self.swarp_config_file = swarp_config_file or paths.config_path / "swarp/mosaic.swarp"
-        self.n_cpus = n_cpus
     
         self.mosaic_dir = self.mosaic_path.parent
         self.mosaic_dir.mkdir(exist_ok=True, parents=True)
@@ -115,7 +112,6 @@ class MosaicBuilder:
         extension=None, 
         swarp_config=None, 
         swarp_config_file=None, 
-        n_cpus=None,
     ):
         mosaic_dir = paths.get_mosaic_dir(field, tile, band)
         mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix)
@@ -158,8 +154,7 @@ class MosaicBuilder:
             mosaic_path, 
             neighbor_stacks=neighbor_stacks,
             swarp_config=swarp_config, 
-            swarp_config_file=swarp_config_file, 
-            n_cpus=n_cpus
+            swarp_config_file=swarp_config_file,
         )
 
     @classmethod
@@ -170,8 +165,11 @@ class MosaicBuilder:
         prefix=None, 
         swarp_config=None, 
         swarp_config_file=None, 
-        n_cpus=None,
     ):
+        """
+        similar to from_dxs_spec but uses coverage.swarp config, option to include pixel scale
+        Value should be set to 1
+        """
         swarp_config = swarp_config or {}
         coverage_config = {
             "pixel_scale": pixel_scale,
@@ -181,22 +179,30 @@ class MosaicBuilder:
         return cls.from_dxs_spec(
             field, tile, band, prefix=prefix, include_neighbors=True,
             extension="cov", swarp_config=swarp_config, swarp_config_file=swarp_config_file,
-            n_cpus=n_cpus
         )
 
-    def build(self, prepare_hdus=True, **kwargs):
+    def build(self, prepare_hdus=True, n_cpus=None, **kwargs):
         """
         Parameters
         ----------
         stack_list
             list of stacks to build mosaic from
+        prepare_hdus
+            bool, whether to prepare the hdus or not.
+        n_cpus
+            defaults to whatever is passed at init (or None).
         kwargs
             kwargs that are passed to HDUPreparer.prepare_stack() 
         """
         if prepare_hdus:
-            hdu_list = self.prepare_all_hdus(self.stack_list, **kwargs)
+            if self.swarp_config_file == paths.config_path / "swarp/coverage.swarp":
+                if "value" not in kwargs:
+                    kwargs["value"] = 1.0
+                    logger.info("map values for HDUs set value to 1.0")
+            hdu_list = self.prepare_all_hdus(self.stack_list, n_cpus=n_cpus, **kwargs)
             self.write_swarp_list(hdu_list)
         config = self.build_swarp_config()
+        config["nthreads"] = n_cpus or 1    
         config.update(self.swarp_config)
         config = format_flags(config)
         self.swarp = Astromatic(
@@ -213,7 +219,7 @@ class MosaicBuilder:
         with open(self.swarp_run_parameters_path, "w+") as f:
             json.dump(kwargs, f, indent=2)
        
-    def prepare_all_hdus(self, stack_list=None, **kwargs):
+    def prepare_all_hdus(self, stack_list=None, n_cpus=None, **kwargs):
         """
         Parameters
         ----------
@@ -224,7 +230,7 @@ class MosaicBuilder:
         """
         if stack_list is None:
             stack_list = self.stack_list
-        if self.n_cpus is None:    
+        if n_cpus is None:    
             hdu_list = []
             for ii, stack_path in enumerate(stack_list):
                 results = HDUPreparer.prepare_stack(
@@ -236,7 +242,7 @@ class MosaicBuilder:
             arg_list = [(sp, kw) for sp, kw in zip(stack_list, kwarg_list)]
             # This is a bit ugly, but essentially we need to make a single object (tuple)
             # that we can give to a single-arg function for pool.map(). 
-            with Pool(self.n_cpus) as pool:
+            with Pool(n_cpus) as pool:
                 results = pool.map(_hdu_prep_wrapper, arg_list)
                 hdu_list = [p for result in results for p in result]
         for hdu_path in hdu_list:
@@ -247,14 +253,13 @@ class MosaicBuilder:
         with open(self.swarp_list_path, "w+") as f:
             f.writelines([str(hdu_path)+"\n" for hdu_path in hdu_list])        
     
-    def build_swarp_config(self):
+    def build_swarp_config(self,):
         config = {}
         config["imageout_name"] = self.mosaic_path
         weightout_name = self.mosaic_dir / f"{self.mosaic_path.stem}.weight.fits"
         config["weightout_name"] = weightout_name
         config["resample_dir"] = paths.temp_swarp_path
         config["pixel_scale"] = survey_config["mosaics"].get("pixel_scale", 0.2) #f"{pixel_scale:.6f}"        
-        config["nthreads"] = self.n_cpus
         return config
 
     def add_extra_keys(self, keys=None, magzpt_inc_exptime=False):

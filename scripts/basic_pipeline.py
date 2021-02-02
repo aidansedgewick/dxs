@@ -1,7 +1,9 @@
 import json
 import logging
+import time
 import yaml
 from argparse import ArgumentParser
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -119,6 +121,7 @@ if __name__ == "__main__":
     star_catalog = Table.read(star_catalog_path, format="ascii")
     print(f"Match crosstalk stars in {star_catalog_path.name}")
 
+    t1 = time.time()
 
     ##============================Extract catalog from J-image.
     
@@ -131,12 +134,12 @@ if __name__ == "__main__":
         J_ex.extract()
         J_ex.add_snr(snr_fluxes, **snr_flux_formats)     
         fix_sextractor_column_names(J_ex.catalog_path, band="J")
-        J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
-        make_normalised_weight_map(
-            J_weight_map_path, J_coverage_map_path, J_norm_weight_map
-        )
-        J_ex.add_map_value(J_norm_weight_map, "J_norm_weight", ra="J_ra", dec="J_dec")
-        J_ex.add_column({"tile": args.tile})
+        #J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
+        #make_normalised_weight_map(
+        #    J_weight_map_path, J_coverage_map_path, J_norm_weight_map
+        #)
+        #J_ex.add_map_value(J_norm_weight_map, "J_norm_weight", ra="J_ra", dec="J_dec")
+        J_ex.add_column({"J_tile": args.tile})
     ## Match its crosstalks
     J_xproc = CrosstalkProcessor.from_dxs_spec(
         field, tile, "J", star_catalog.copy(), n_cpus=args.n_cpus
@@ -171,11 +174,11 @@ if __name__ == "__main__":
             JKfp_ex.catalog_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
         )
         fix_column_names(J_output_path, column_lookup={"Separation": "Jfp_separation"})
-        remove_objects_in_bad_coverage(
-            J_output_path, J_coverage_map_path, "J_coverage", 
-            weight_map_path=J_norm_weight_map, weight_column="J_norm_weight",
-            N_pixels=4000*4000
-        )
+        #remove_objects_in_bad_coverage(
+        #    J_output_path, J_coverage_map_path, "J_coverage", 
+        #    weight_map_path=J_norm_weight_map, weight_column="J_norm_weight",
+        #    N_pixels=4000*4000
+        #)
 
 
 
@@ -191,12 +194,12 @@ if __name__ == "__main__":
         K_ex.extract()
         K_ex.add_snr(snr_fluxes, **snr_flux_formats)      
         fix_sextractor_column_names(K_ex.catalog_path, band="K")
-        K_ex.add_map_value(K_coverage_map_path, "K_coverage", ra="K_ra", dec="K_dec")
-        make_normalised_weight_map(
-            K_weight_map_path, K_coverage_map_path, K_norm_weight_map
-        )
-        K_ex.add_map_value(K_norm_weight_map, "K_norm_weight", ra="K_ra", dec="K_dec")
-        K_ex.add_column({"tile": args.tile})
+        #K_ex.add_map_value(K_coverage_map_path, "K_coverage", ra="K_ra", dec="K_dec")
+        #make_normalised_weight_map(
+        #    K_weight_map_path, K_coverage_map_path, K_norm_weight_map
+        #)
+        #K_ex.add_map_value(K_norm_weight_map, "K_norm_weight", ra="K_ra", dec="K_dec")
+        K_ex.add_column({"K_tile": args.tile})
     ## Match its crosstalks
     K_xproc = CrosstalkProcessor.from_dxs_spec(
         field, tile, "K", star_catalog.copy(), n_cpus=args.n_cpus
@@ -229,24 +232,25 @@ if __name__ == "__main__":
             KJfp_ex.catalog_path, ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
         )
         fix_column_names(K_output_path, column_lookup={"Separation": "Kfp_separation"})
-        remove_objects_in_bad_coverage(
-            K_output_path, K_coverage_map_path, "K_coverage", 
-            weight_map_path=K_norm_weight_map, weight_column="K_norm_weight",
-            N_pixels=4000*4000
-        )
+        #remove_objects_in_bad_coverage(
+        #    K_output_path, K_coverage_map_path, "K_coverage", 
+        #    weight_map_path=K_norm_weight_map, weight_column="K_norm_weight",
+        #    N_pixels=4000*4000
+        #)
 
     ##===========================Match pair of outputs.
-    mark("match extras")
+
     pair_output_stem = paths.get_catalog_stem(field, tile, "")
     pair_output_dir = paths.get_catalog_dir(field, tile, "")
     pair_output_path = pair_output_dir / f"{pair_output_stem}.fits"
     pair_matcher = CatalogPairMatcher(
         J_output_path, K_output_path, pair_output_path, 
-        best_ra="ra", best_dec="dec",
+        output_ra="ra", output_dec="dec",
         ra1="J_ra", dec1="J_dec", 
         ra2="K_ra", dec2="K_dec",
     )
     if args.match_pair:
+        mark("Match pair")
         pair_matcher.best_pair_match(error=2.0)
         pair_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
         pair_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
@@ -254,16 +258,18 @@ if __name__ == "__main__":
     ## Extract catalog from H-image.
     H_ex = CatalogExtractor.from_dxs_spec(field, tile, "H")
     if H_ex.detection_mosaic_path.exists() and args.extract:
+        mark("H-band")
         H_ex.extract()
         fix_sextractor_column_names(H_ex.catalog_path, band="H")
         H_cov_map_path = K_ex.detection_mosaic_path.with_suffix(".cov.fits")
-        H_ex.add_map_value(H_cov_map_path, "H_coverage", ra="H_ra", dec="H_dec")
-        remove_objects_in_bad_coverage(
-            H_ex.catalog_path, H_cov_map_path, "H_coverage", N_pixels=3500*3500 # ~size of one stack hdu?
-        )
-        H_ex.add_column({"tile": args.tile})
+        #H_ex.add_map_value(H_cov_map_path, "H_coverage", ra="H_ra", dec="H_dec")
+        #remove_objects_in_bad_coverage(
+        #    H_ex.catalog_path, H_cov_map_path, "H_coverage", N_pixels=3500*3500 # ~size of one stack hdu?
+        #)
+        H_ex.add_column({"H_tile": args.tile})
 
     if args.match_extras:
+        mark("match extras")
         if H_ex.catalog_path.exists():
             pair_matcher.match_catalog(H_ex.catalog_path, ra="H_ra", dec="H_dec", error=2.0)
             pair_matcher.fix_column_names(column_lookup={"Separation": "H_separation"})
@@ -363,6 +369,16 @@ if __name__ == "__main__":
     #qp.save_all_plots()
 
     print("done!")
+    t2 = time.time()
+
+    if t2 - t1 < 5.:
+        path = Path(__file__).absolute()
+        try:
+            print_path = path.relative_to(Path.cwd())
+        except:
+            print_path = path
+        cmd = f"python3 {print_path} {args.field} {args.tile} --full"
+        print(f"try:\n    {cmd}")
 
 
 

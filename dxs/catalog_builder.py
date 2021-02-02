@@ -336,12 +336,31 @@ class CatalogMatcher:
 
 class CatalogPairMatcher(CatalogMatcher):
     """
-    Class for matching catalogs. Calls stilts.
+    Class for matching catalogs. Calls stilts. Inherits (?) from CatalogMatcher.
+    This means that once you've done the pair matching for the two catalogs, you
+    can treat it like a CatalogMatcher and add extra catalogs on easily with the
+    same methods, etc.
+
+    Parameters
+    ----------
+    catalog1_path, catalog2_path
+        catalogs to match
+    ra1, dec1
+        name of ra, dec column in catalog 1
+    ra2, dec2
+        name of ra, dec column in catalog 1
+    output_ra, output_dec
+        the name of the column to be created when selecting the best coordinate pair 
+        value to use from the above column.
+    
+    >>> pair_matcher = CatalogPairMatcher(
+            "Jcat.fits", "Kcat.fits", "./matched_cat.fits", ra1="Jra", dec1="Jdec"
+
     """
 
     def __init__(
         self, catalog1_path, catalog2_path, output_path,
-        ra1="ra", dec1="dec", ra2="ra", dec2="dec", best_ra="ra", best_dec="dec", 
+        ra1="ra", dec1="dec", ra2="ra", dec2="dec", output_ra="ra", output_dec="dec", 
     ):
         self.catalog1_path = Path(catalog1_path)
         self.catalog2_path = Path(catalog2_path)
@@ -352,11 +371,11 @@ class CatalogPairMatcher(CatalogMatcher):
         self.ra2 = ra2
         self.dec2 = dec2
         # Somewhere to keep the best values when we need them.
-        self.best_ra = best_ra
-        self.best_dec = best_dec
+        self.output_ra = output_ra
+        self.output_dec = output_dec
         self.summary_info = []
 
-        print("THIS IS", self.catalog1_path)
+        logger.info(f"pair matcher - {self.catalog1_path.name} and {self.catalog2_path.name}")
 
     @classmethod
     def from_dxs_spec(
@@ -387,15 +406,20 @@ class CatalogPairMatcher(CatalogMatcher):
         self.summary_info.append(info)
         
     def select_best_coords(
-        self, snr1, snr2, best_ra=None, best_dec=None, 
+        self, snr1, snr2, output_ra=None, output_dec=None, 
         ra1=None, dec1=None, ra2=None, dec2=None, 
     ):
+        """
+        Choose ra1, dec1 as the "output_ra", "output_dec" if value of  snr1 > snr2
+        snr_1
+        Set this value 
+        """
         catalog = Table.read(self.catalog_path)
-        print(catalog.colnames)
-        best_ra = best_ra or self.best_ra
-        best_dec = best_dec or self.best_dec
-        catalog.add_column(-99.0, name=best_ra)
-        catalog.add_column(-99.0, name=best_dec)
+        logger.info("pair catalog has {len(catalog.colnames)} cols")
+        output_ra = output_ra or self.output_ra
+        output_dec = output_dec or self.output_dec
+        catalog.add_column(-99.0, name=output_ra)
+        catalog.add_column(-99.0, name=output_dec)
 
         ra1 = ra1 or self.ra1
         dec1 = dec1 or self.dec1
@@ -406,23 +430,23 @@ class CatalogPairMatcher(CatalogMatcher):
         keep_coord2 = (catalog[snr2] >  catalog[snr1]) | (np.isnan(catalog[snr1]))
         assert np.sum(keep_coord1) + np.sum(keep_coord2) == len(catalog)
         # Select the right coordinates
-        catalog[best_ra][ keep_coord1 ] = catalog[ra1][ keep_coord1 ]
-        catalog[best_dec][ keep_coord1 ] = catalog[dec1][ keep_coord1 ]
-        catalog[best_ra][ keep_coord2 ] = catalog[ra2][ keep_coord2 ]
-        catalog[best_dec][ keep_coord2 ] = catalog[dec2][ keep_coord2 ]
+        catalog[output_ra][ keep_coord1 ] = catalog[ra1][ keep_coord1 ]
+        catalog[output_dec][ keep_coord1 ] = catalog[dec1][ keep_coord1 ]
+        catalog[output_ra][ keep_coord2 ] = catalog[ra2][ keep_coord2 ]
+        catalog[output_dec][ keep_coord2 ] = catalog[dec2][ keep_coord2 ]
         assert len(catalog[ catalog["ra"] < -90.0 ]) == 0
         assert len(catalog[ catalog["dec"] < -90.0 ]) == 0
         catalog.write(self.catalog_path, overwrite=True)
-        self.ra = best_ra
-        self.dec = best_dec
+        self.ra = output_ra
+        self.dec = output_dec
 
 def combine_catalogs(
     catalog_list, output_path, id_col, ra_col, dec_col, snr_col, error=1.0
 ):
     catalog_list = create_file_backups(catalog_list, paths.temp_sextractor_path)
     output_path = Path(output_path)
-    temp_overlap_path = paths.temp_sextractor_path / "{output_path.stem}_overlap.fits"
-    temp_output_path = paths.temp_sextractor_path / "{output_path.stem}_combined.fits"
+    temp_overlap_path = paths.temp_sextractor_path / f"{output_path.stem}_overlap.fits"
+    temp_output_path = paths.temp_sextractor_path / f"{output_path.stem}_combined.fits"
     catalog_path1 = catalog_list[0] # changed to temp_output_path at the end of loop 1.
     for ii, catalog_path in enumerate(catalog_list):
         id_modifier = int(f"1{ii+1:02d}")*1_000_000
@@ -453,6 +477,12 @@ def combine_catalogs(
         overlap1_columns = [f"{col}_1" for col in catalog_columns]# + ["Separation"]
         overlap2_columns = [f"{col}_2" for col in catalog_columns]# + ["Separation"]
         
+        med_separation = np.median(overlap["Separation"])
+        max_separation = np.max(overlap["Separation"])
+        
+        logger.info(f"combiner - med sep {med_separation:.3f} deg")
+        logger.info(f"combiner - max sep {max_separation:.3f} deg")
+
         overlap1 = Query(f"{snr_col}_1 >= {snr_col}_2").filter(overlap)[overlap1_columns]
         overlap2 = Query(f"{snr_col}_2 > {snr_col}_1").filter(overlap)[overlap2_columns]
         
@@ -469,6 +499,11 @@ def combine_catalogs(
         combined_catalog.write(temp_output_path, overwrite=True)
         catalog_path1 = temp_output_path # only really does anything on the first loop!
     shutil.copy2(temp_output_path, output_path)
+
+def _modify_id_value(catalog_path, id_modifier, id_col="id",):
+    catalog = Table.read(catalog_path)
+    catalog[id_col] = id_modifier + catalog[id_col]
+    catalog.write(catalog_path, overwrite=True)
 
 def _add_map_value(
     catalog_path, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0
@@ -509,10 +544,7 @@ def _add_column(catalog_path, column_data: Dict):
     return f"add {len(column_data)} columns: " + " ".join(c for c in column_data.keys())
 
 
-def _modify_id_value(catalog_path, id_modifier, id_col="id",):
-    catalog = Table.read(catalog_path)
-    catalog[id_col] = id_modifier + catalog[id_col]
-    catalog.write(catalog_path, overwrite=True)
+
 
 
 if __name__ == "__main__":
