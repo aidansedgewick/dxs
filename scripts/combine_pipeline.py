@@ -71,10 +71,10 @@ if __name__ == "__main__":
             ra_col = f"{band}_ra"
             dec_col = f"{band}_dec"
             snr_col = f"{band}_snr_auto"
-            #combine_catalogs(
-            #    catalog_list, combined_output_path, 
-            #    id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col
-            #)
+            combine_catalogs(
+                catalog_list, combined_output_path, 
+                id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col
+            )
             catalog_lists.append(catalog_list)
 
             output_key = f"{band}_output"
@@ -103,6 +103,11 @@ if __name__ == "__main__":
             pair_matcher.best_pair_match(error=2.0) # arcsec
             pair_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
             pair_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
+
+            ps_name = f"{field}_panstarrs"
+            ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
+            pair_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=2.0)
+            pair_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
 
             
 

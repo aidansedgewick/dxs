@@ -1,0 +1,8 @@
+nbins: 10
+min_sep: 1.0
+max_sep: 7200.0 # 3 degrees.
+sep_units: "arcsec"
+brute: True
+verbose: 2
+metric: "Arc" # ie, great circle distance.
+var_method: "shot"

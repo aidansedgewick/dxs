@@ -80,6 +80,36 @@ def fix_column_names(
             catalog.flush()
         else:
             catalog.writeto(output_path, overwrite=True)
+
+def explode_column(
+    catalog_path: str, column_name: str, new_names=None, suffixes=None, remove=True
+):
+    catalog = Table.read(catalog_path)
+    _explode(catalog, column_name, new_names=new_names, suffixes=suffixes, remove=remove)
+    logger.info(f"explode {column_name}")
+    catalog.writeto(catalog_path, overwrite=True)
+
+
+def _explode(
+    table: Table, column_name: str, new_names=None, suffixes=None, remove=True
+):
+    col = table[column_name]
+    if len(col.shape) != 2:
+        logger.info(f"Can't explode column {column_name}, shape {col.shape}")
+        return
+    N_cols = col.shape[1]
+    if new_names is None:
+        if suffixes is None:
+            suffixes = ["{ii}" for ii in range(N_cols)]
+        assert len(suffixes) == N_cols
+        column_names = [f"{column_name}_{suffix}" for suffix in suffixes]
+    assert len(new_names) == N_cols
+
+    for ii, col_name in enumerate(column_names):
+        new_col = col[:, ii]
+        table.add_column(new_col, name=col_name)
+    if remove:
+        table.remove_column(column_name)
         
 def remove_objects_in_bad_coverage(
     catalog_path, 
@@ -97,10 +127,12 @@ def remove_objects_in_bad_coverage(
     coverage_map_path = Path(coverage_map_path)
     with fits.open(coverage_map_path) as f:
         data = f[hdu].data.astype(int)
-        coverage_hist = np.bincount(data.flatten())        
-        coverage_vals = np.arange(len(coverage_hist))
+        # bincount is VERY fast for integer data.
+        coverage_hist = np.bincount(data.flatten())[1:] # Ignore the zero count!
+        coverage_vals = np.arange(len(coverage_hist))[1:] 
         print({k:v for k,v in zip(coverage_vals, coverage_hist)})
-        min_coverage = coverage_vals[ coverage_hist > N_pixels ][0]
+        min_coverage = coverage_vals[ coverage_hist[1:] > N_pixels ][0]
+        print(min_coverage)
         min_coverage = np.ceil(frac*min_coverage)
         minimum_coverage = int(np.max([absolute_minimum, min_coverage, 1]))
         data[data < minimum_coverage] = 0
@@ -122,7 +154,8 @@ def remove_objects_in_bad_coverage(
             f"{weight_column} >= {weight_minimum}",
         )
     else:
-        queries = (f"{coverage_column} >= {minimum_coverage}")
+        queries = (f"{coverage_column} >= {minimum_coverage}", )
+    print(queries)
     new_catalog = Query(*queries).filter(catalog)
     nclen = len(new_catalog)
     logger.info(f"remove {clen-nclen} objects")

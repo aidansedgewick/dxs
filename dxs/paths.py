@@ -24,11 +24,11 @@ header_data_path = config_path / "dxs_header_data.csv"
 data_path = file_path.parent.parent / "data"
 mosaics_path =  data_path / "mosaics"
 catalogs_path = data_path / "catalogs"
+masks_path = data_path / "masks"
 
 
 # RUNNER
 runner_path = file_path.parent.parent / "runner"
-
 
 print(f"input_data_path {input_data_path}")
 print(f"config_path {config_path}")
@@ -44,6 +44,7 @@ def create_all_paths():
     data_path.mkdir(exist_ok=True, parents=True)
     mosaics_path.mkdir(exist_ok=True, parents=True)
     catalogs_path.mkdir(exist_ok=True, parents=True)
+    masks_path.mkdir(exist_ok=True, parents=True)
 
     runner_path.mkdir(exist_ok=True, parents=True)
 

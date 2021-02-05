@@ -119,6 +119,8 @@ class MosaicBuilder:
         mosaic_path = mosaic_dir / f"{mosaic_stem}{extension}.fits"
         swarp_config = swarp_config or {}
 
+        logger.info(f"mosaic for {field} {tile} {band}")
+
         # Get a list of all the stacks in this tile (ignoring band) for geometry.
         geom_mosaic_stacks = get_stack_data(field, tile, band=None)
         geom_stack_list = [
@@ -126,12 +128,13 @@ class MosaicBuilder:
         ]
         border = survey_config["mosaics"].get("border", None)
         factor = survey_config["mosaics"].get("factor", None)
-        center, size = calculate_mosaic_geometry(
-            geom_stack_list, ccds=survey_config["ccds"],
-            pixel_scale=swarp_config.get("pixel_scale", None),
-            border=border,
-            factor=factor,
-        )
+        #center, size = calculate_mosaic_geometry(
+        #    geom_stack_list, ccds=survey_config["ccds"],
+        #    pixel_scale=swarp_config.get("pixel_scale", None),
+        #    border=border,
+        #    factor=factor,
+        #)
+        center, size = (0.0, 333.0), (10000, 10000)
         swarp_config["center_type"] = "MANUAL"
         swarp_config["center"] = center #f"{center[0]:.6f},{center[1]:.6f}"
         swarp_config["image_size"] = size #f"{size[0]},{size[1]}"
@@ -201,6 +204,8 @@ class MosaicBuilder:
                     logger.info("map values for HDUs set value to 1.0")
             hdu_list = self.prepare_all_hdus(self.stack_list, n_cpus=n_cpus, **kwargs)
             self.write_swarp_list(hdu_list)
+        else:
+            self.write_swarp_list(self.stack_list)
         config = self.build_swarp_config()
         config["nthreads"] = n_cpus or 1    
         config.update(self.swarp_config)
@@ -291,11 +296,13 @@ class MosaicBuilder:
         Else: we'll have T times more flux per obeject. so need to add 
         """
         magzpt_cols = [f"magzpt_{ccd}" for ccd in survey_config["ccds"]]
+        magzpt_df = pd.DataFrame() # Try to avoid setting with copy warning...!
         if magzpt_inc_exptime:
-            exptime_factor = 2.5*np.log10(self.mosaic_stacks["exptime"])
-            magzpt_df = self.mosaic_stacks[ magzpt_cols ] + exptime_factor
+            exptime_col = 2.5*np.log10(self.mosaic_stacks["exptime"])
         else:
-            magzpt_df = self.mosaic_stacks[ magzpt_cols ]
+            exptime_col = 0.
+        for col in magzpt_cols:
+            magzpt_df[col] = self.mosaic_stacks[col] + exptime_col
         magzpt = np.median(magzpt_df.stack().values)
         return magzpt
 
@@ -498,7 +505,9 @@ def calculate_mosaic_geometry(
     stack_list, ccds=None, factor=None, border=None, pixel_scale=None
 ):
     """
-    How big should the mosaic be?
+    How big should the mosaic be to fit all the stacks in stack_list?
+    
+    Returns two tuples: centre (ra, dec) in degrees, and mosaic_size (x, y) in pxiels.
     """
     logger.info("Calculating mosaic geometry")
     ccds = ccds or [0]

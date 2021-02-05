@@ -204,7 +204,7 @@ class CrosstalkProcessor:
         crosstalk_catalog_path = Path(crosstalk_catalog_path)
         if output_path is None:
             output_path = catalog_path
-        logger.info("match crosstalks {crosstalk_catalog_path.name} to {catalog_path.name}")
+        logger.info(f"match crosstalks {crosstalk_catalog_path.name} to {catalog_path.name}")
         stilts = Stilts.tskymatch2_fits(
             catalog_path,
             crosstalk_catalog_path,

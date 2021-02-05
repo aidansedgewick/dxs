@@ -6,6 +6,8 @@
 
 1. Clone this repo
 2. Preferably start a new python3.6 virtualenv
+   - `python3 -m virtualenv dxsenv`
+   - `source dxsenv/bin/activate` (do this step every time)
 3. Install this repository (and requirements):
    - `python3 -m pip install -r requirements.txt`
    - `python3 -m pip install -e .`
@@ -62,5 +64,3 @@ Should be as easy as adding a new `pair_matcher.match_catalog("path/to/catalog.f
 ### Analysis.
 
 to be added.
-
-This is a test change.

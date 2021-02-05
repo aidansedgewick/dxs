@@ -121,6 +121,14 @@ def get_git_info():
         local_SHA = "unavailable"
     return branch, local_SHA
 
+def print_header(string, edge="###", newlines=3):
+    try:
+        columns = shutil.get_terminal_size((80,20)).columns
+    except:
+        columns = 80
+    N = int(columns - len(string) - 2 - 2*len(edge)) // 2
+    print("\n"*newlines + edge + N*"=" + f" {string} " + N*"=" + edge + "\n")
+
 def calc_mids(arr):
     return 0.5*(arr[:-1]+arr[1:])
 

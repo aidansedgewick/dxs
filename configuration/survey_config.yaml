@@ -1,11 +1,11 @@
-### dxs basic stuff
+###===== dxs basic stuff =====###
 
-ccds: [1, 2, 3, 4]
+ccds: [1, 2, 3, 4] # which ccds in stacks contain the data.
 
 field_names: [SA22, Lockman, ElaisN1, XMM-LSS]
 field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
 code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
-
+tiles_per_field: {SA: 12, LH: 11, EN: 12, XM: 8}
 
 # some error catching?
 mosaics:
@@ -13,11 +13,65 @@ mosaics:
   max_size: [25000,25000]
   pixel_scale: 0.2 # arcsec.
 
+#catalogs:
+
+masks:
+  mosaic_extensions:
+    "data": ".fits"
+    "cov": ".cov.fits"
+    "good_cov": ".cov.good_cov.fits"
+
+help:
+  ccds: "ccds idxs in stacks which contain data - ie, in DXS, hdu 0 is only a header..."
+  ab_vega_offset: "offset defined such that m_Ab = m_Vega + offset"
+  zeropoint_flux: "Flux Fv is Fv0*10**(-m_Vega/2.5). Fv0 should be in Jy!!"
+
+###====== photometry stuff ======###
+
+ab_vega_offset:
+  g: -0.08
+  z: 0.16
+  i: 0.37
+  z: 0.54
+  y: 0.634
+  J: 0.91
+  H: 1.39
+  K: 1.85
+  w1: 2.699
+  w2: 3.339
+  "[3.6]": "NONE"
+  "[4.5]": "NONE"
+
+zeropoint_flux:
+  g: 3991.0
+  z: 3174.0
+  i: 2593.0
+  z: 2232.0
+  y: 2026.0
+  J: 1530.0
+  H: 1019.0
+  K: 631.0
+  w1: 309.54
+  w2: 171.79
+  "[3.6]": "NONE"
+  "[4.5]": "NONE"
+  
+wavelengths:
+  g: 475.0
+  r: 622.0
+  i: 763.0
+  z: 905.0, 
+  y: 1005.0
+  J: 1248.0
+  H: 1631.0
+  K: 2201.0
+  w1: 3368.0
+  w2: 4618.0
+  "[3.6]": 3600.0
+  "[4.5]": 4500.0
 
 
 ###===== external catalogs =====###
-
-## panstarrs
 
 # arxiv.org/pdf/1612.05560.pdf --table7 (p18)
 panstarrs:

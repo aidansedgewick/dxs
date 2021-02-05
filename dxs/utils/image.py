@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 
 ### bits related to survey area/randoms.
 
-def uniform_sphere(ra_limits, dec_limits, size=1):
+def uniform_sphere(ra_limits, dec_limits, size: int = 1, density: float = None):
     """
     Get points randomly distributed on the surface of a (unit) sphere.
     Returns Nx2 numpy array with columns [ra, dec].
@@ -37,9 +37,15 @@ def uniform_sphere(ra_limits, dec_limits, size=1):
         declination limits to generate points in.
     size
         number of points (default 1)
+    density
+        if provided, generate this many points per sq. deg.
     """
-    zlim = np.sin(np.pi * np.asarray(dec_limits) / 180.)
 
+    if density is not None:
+        area_box = calc_spherical_rectangle_area(ra_limits, dec_limits)
+        size = int(area_box * density)
+
+    zlim = np.sin(np.pi * np.asarray(dec_limits) / 180.) # sin(dec) is uniformly distributed.
     z = zlim[0] + (zlim[1] - zlim[0]) * np.random.random(size=size)
     DEC = (180. / np.pi) * np.arcsin(z)
     #DEC = DEClim[0] + (DEClim[1] - DEClim[0]) * np.random.random(size) # NO!
@@ -132,11 +138,8 @@ def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0,
     ds9_command = build_ds9_command([save_path, path1, path2])
     print(f"view image with \n    {ds9_command} &")
 
-#def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
-#    path1 = Path(path1)
-#    if save_path is None:
-#        save_path = paths.temp_swarp_path / f"diff_{path1.stem}_{path2.stem}.fits"
-#    path2
+def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
+    raise NotImplementedError
 
 def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
     path = Path(path)
@@ -169,6 +172,7 @@ def make_normalised_weight_map(weight_path, coverage_path, output_path):
         #data = data.reshape(shape)
         new_hdu = fits.PrimaryHDU(data=data, header=weight[0].header)
     new_hdu.writeto(output_path, overwrite=True)
+    
 
 ### other
 

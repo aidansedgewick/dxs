@@ -21,8 +21,8 @@ from dxs import (
     CrosstalkProcessor,
     QuickPlotter
 )
-from dxs.utils.misc import check_modules
-from dxs.utils.table import fix_column_names, remove_objects_in_bad_coverage
+from dxs.utils.misc import check_modules, print_header
+from dxs.utils.table import fix_column_names, explode_column, remove_objects_in_bad_coverage
 from dxs.utils.image import calc_survey_area, make_normalised_weight_map
 from dxs import paths
 
@@ -74,9 +74,7 @@ def fix_sextractor_column_names(catalog_path, band=None, prefix=None, suffix=Non
         suffix=suffix
     )
 
-def mark(string, twidth=80, edge="###"):
-    N = int(twidth - len(string) - 2 - 2*len(edge)) // 2
-    print("\n\n\n" + edge + N*"=" + f" {string} " + N*"=" + edge + "\n")
+
 
 if __name__ == "__main__":
 
@@ -130,11 +128,11 @@ if __name__ == "__main__":
     J_weight_map_path = J_ex.detection_mosaic_path.with_suffix(".weight.fits")
     J_norm_weight_map = J_ex.detection_mosaic_path.with_suffix(".norm_weight.fits")
     if args.extract:
-        mark("J photom")
+        print_header("J photom")
         J_ex.extract()
         J_ex.add_snr(snr_fluxes, **snr_flux_formats)     
         fix_sextractor_column_names(J_ex.catalog_path, band="J")
-        #J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
+        J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
         #make_normalised_weight_map(
         #    J_weight_map_path, J_coverage_map_path, J_norm_weight_map
         #)
@@ -149,16 +147,20 @@ if __name__ == "__main__":
         J_xproc.collate_crosstalks(mag_column="j_m", mag_limit=13.0)
     J_with_xtalks_path = J_ex.catalog_path.parent / f"{J_ex.catalog_path.stem}_x.fits"
     if args.match_crosstalks:
-        mark("J crosstalks")
+        print_header("J crosstalks")
         J_xproc.match_crosstalks_to_catalog(
             J_ex.catalog_path, ra="J_ra", dec="J_dec", 
             output_path=J_with_xtalks_path, band="J"
         )
         fix_crosstalk_column_names(J_with_xtalks_path, band="J")
+        explode_column(K_with_xtalks_path, "J_flux_radius", suffixes=[20, 50, 90])
+        for col in ["J_flux_aper", "J_fluxerr_aper", "J_mag_aper", "J_magerr_aper"]:
+            explode_column(K_with_xtalks_path, col, suffixes=[10, 18, 20, 30], remove=True)
+
     ## Now do K-forced photometry from J image.
     JKfp_ex = CatalogExtractor.from_dxs_spec(field, tile, "J", measurement_band="K")
     if args.extract:
-        mark("J ap fp on K")
+        print_header("J ap fp on K")
         JKfp_ex.extract()
         fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="_Jfp")
     # stick them together.
@@ -169,16 +171,16 @@ if __name__ == "__main__":
         J_with_xtalks_path, output_path=J_output_path, ra="J_ra", dec="J_dec"
     )
     if args.match_fp:
-        mark("match J and K forced")
+        print_header("match J and K forced")
         J_matcher.match_catalog(
             JKfp_ex.catalog_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
         )
         fix_column_names(J_output_path, column_lookup={"Separation": "Jfp_separation"})
-        #remove_objects_in_bad_coverage(
-        #    J_output_path, J_coverage_map_path, "J_coverage", 
-        #    weight_map_path=J_norm_weight_map, weight_column="J_norm_weight",
-        #    N_pixels=4000*4000
-        #)
+        remove_objects_in_bad_coverage(
+            J_output_path, J_coverage_map_path, "J_coverage", 
+            #weight_map_path=J_norm_weight_map, weight_column="J_norm_weight",
+            N_pixels=400*400
+        )
 
 
 
@@ -190,11 +192,11 @@ if __name__ == "__main__":
     K_weight_map_path = K_ex.detection_mosaic_path.with_suffix(".weight.fits")
     K_norm_weight_map = K_ex.detection_mosaic_path.with_suffix(".norm_weight.fits")
     if args.extract:
-        mark("K photom")
+        print_header("K photom")
         K_ex.extract()
         K_ex.add_snr(snr_fluxes, **snr_flux_formats)      
         fix_sextractor_column_names(K_ex.catalog_path, band="K")
-        #K_ex.add_map_value(K_coverage_map_path, "K_coverage", ra="K_ra", dec="K_dec")
+        K_ex.add_map_value(K_coverage_map_path, "K_coverage", ra="K_ra", dec="K_dec")
         #make_normalised_weight_map(
         #    K_weight_map_path, K_coverage_map_path, K_norm_weight_map
         #)
@@ -209,15 +211,19 @@ if __name__ == "__main__":
         K_xproc.collate_crosstalks(mag_column="k_m", mag_limit=13.0)
     K_with_xtalks_path = K_ex.catalog_path.parent / f"{K_ex.catalog_path.stem}_x.fits"
     if args.match_crosstalks:
-        mark("K crosstalks")
+        print_header("K crosstalks")
         K_xproc.match_crosstalks_to_catalog(
             K_ex.catalog_path, ra="K_ra", dec="K_dec", output_path=K_with_xtalks_path, 
         )
         fix_crosstalk_column_names(K_with_xtalks_path, band="K")
+        explode_column(K_with_xtalks_path, "K_flux_radius", suffixes=[20, 50, 90])
+        for col in ["K_flux_aper", "K_fluxerr_aper", "K_mag_aper", "K_magerr_aper"]:
+            explode_column(K_with_xtalks_path, col, suffixes=[10, 18, 20, 30], remove=True)
+            
     ## Now do K-forced photometry from J image.
     KJfp_ex = CatalogExtractor.from_dxs_spec(field, tile, "K", measurement_band="J")
     if args.extract:
-        mark("K ap fp on J")
+        print_header("K ap fp on J")
         KJfp_ex.extract()
         fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="_Kfp")
     ## stick them together.
@@ -232,11 +238,11 @@ if __name__ == "__main__":
             KJfp_ex.catalog_path, ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
         )
         fix_column_names(K_output_path, column_lookup={"Separation": "Kfp_separation"})
-        #remove_objects_in_bad_coverage(
-        #    K_output_path, K_coverage_map_path, "K_coverage", 
-        #    weight_map_path=K_norm_weight_map, weight_column="K_norm_weight",
-        #    N_pixels=4000*4000
-        #)
+        remove_objects_in_bad_coverage(
+            K_output_path, K_coverage_map_path, "K_coverage", 
+            #weight_map_path=K_norm_weight_map, weight_column="K_norm_weight",
+            N_pixels=400*400 # approx size of one tile?
+        )
 
     ##===========================Match pair of outputs.
 
@@ -250,7 +256,7 @@ if __name__ == "__main__":
         ra2="K_ra", dec2="K_dec",
     )
     if args.match_pair:
-        mark("Match pair")
+        print_header("Match pair")
         pair_matcher.best_pair_match(error=2.0)
         pair_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
         pair_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
@@ -258,7 +264,7 @@ if __name__ == "__main__":
     ## Extract catalog from H-image.
     H_ex = CatalogExtractor.from_dxs_spec(field, tile, "H")
     if H_ex.detection_mosaic_path.exists() and args.extract:
-        mark("H-band")
+        print_header("H-band")
         H_ex.extract()
         fix_sextractor_column_names(H_ex.catalog_path, band="H")
         H_cov_map_path = K_ex.detection_mosaic_path.with_suffix(".cov.fits")
@@ -269,7 +275,7 @@ if __name__ == "__main__":
         H_ex.add_column({"H_tile": args.tile})
 
     if args.match_extras:
-        mark("match extras")
+        print_header("match extras")
         if H_ex.catalog_path.exists():
             pair_matcher.match_catalog(H_ex.catalog_path, ra="H_ra", dec="H_dec", error=2.0)
             pair_matcher.fix_column_names(column_lookup={"Separation": "H_separation"})

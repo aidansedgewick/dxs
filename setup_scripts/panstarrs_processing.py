@@ -46,9 +46,12 @@ Aperture = namedtuple(
 
 
 def process_panstarrs_catalog(
-    input_primary_catalog_path, input_aperture_catalog_path, output_catalog_path
+    input_primary_catalog_path, 
+    input_aperture_catalog_path, 
+    output_catalog_path, 
+    band_priority="izryg"
 ):
-    err_factor = 2.5 / np.log(10) # natural log!
+
 
     # Primary catalog.
     full_primary_catalog = Table.read(input_primary_catalog_path, format="fits")
@@ -97,10 +100,12 @@ def process_panstarrs_catalog(
         }
         apertures.append(Aperture(**d))
 
+    err_factor = 2.5 / np.log(10) # natural log!
+
     for ap in apertures:
         flux_col = jcat[ap.flux]
         flux_err_col = jcat[ap.flux_err]
-        flux_mask = (flux_col > 0)
+        flux_mask = (0 < flux_col) & (flux_col < 10e10)
 
         snr_col = np.full(len(jcat), 0.0)
         mag_col = np.full(len(jcat), 99.0)
@@ -111,7 +116,7 @@ def process_panstarrs_catalog(
             print(f"{ap} has {missing_err} missing flux_err values.")
 
         snr_col[flux_mask] = flux_col[flux_mask] / flux_err_col[flux_mask]
-        mag_col[flux_mask] = jcat["zp"][flux_mask] -2.5*np.log10( flux_col[flux_mask] )
+        mag_col[flux_mask] = jcat["zp"][flux_mask] - 2.5*np.log10( flux_col[flux_mask] )
         mag_err_col[flux_mask] = np.sqrt(
             jcat["zp_err"][flux_mask]**2 + ( err_factor * 1. / snr_col[flux_mask] )**2 
         )
@@ -135,9 +140,24 @@ def process_panstarrs_catalog(
         f_cat.remove_columns([f"{band}_filterID"])
         for col in f_cat.colnames:
             if col.endswith("mag"):
-                dM = ps_config["ab_to_vega"][band]
-                f_cat[col] = ab_to_vega(f_cat[col], dM)
+                #dM = ps_config["ab_to_vega"][band]
+                f_cat[col] = ab_to_vega(f_cat[col], band=band)
         output_catalog = join(output_catalog, f_cat, keys="objID", join_type="left")
+
+    ra_col = np.full(len(output_catalog), -99.0)
+    dec_col = np.full(len(output_catalog), -99.0)
+
+    for band in band_priority:
+        if not any(ra_col < -90.0):
+            break
+        band_ra = f"{band}_ra"
+        band_dec = f"{band}_dec"
+        mask = output_catalog[band_ra] > -99. & output_catalog[band_dec] > -99.)
+        ra_col[mask] = output_catalog[band_ra][ mask ]
+        dec_col[mask] = output_catalog[band_ra][ mask ]
+    output_catalog.add_column(ra_col, name="panstarrs_ra")
+    output_catalog.add_column(dec_col, name="panstarrs_dec")
+
     output_catalog.write(output_catalog_path, overwrite=True)
 
 def process_panstarrs_mosaic_mask(
