@@ -1,3 +1,4 @@
+import logging
 import os
 import yaml
 from pathlib import Path
@@ -13,21 +14,18 @@ from astropy.wcs import WCS
 
 import dxs.paths as paths
 
-#survey_config = paths.config_path / "survey_config.yaml"
-#with open(survey_config, "r") as f:
-#    survey_config = yaml.load(f, Loader=yaml.FullLoader)
+logger = logging.getLogger("image_utils")
 
-#stack_data = pd.read_csv(paths.header_data_path)
 
-import matplotlib.pyplot as plt
+###============= bits related to survey area/randoms. =============###
 
-### bits related to survey area/randoms.
-
-def uniform_sphere(ra_limits, dec_limits, size: int = 1, density: float = None):
+def uniform_sphere(
+    ra_limits, dec_limits, size: int = 1, density: float = None,
+):
     """
     Get points randomly distributed on the surface of a (unit) sphere.
     Returns Nx2 numpy array with columns [ra, dec].
-    Use this over astropy as astropy only does the whole sphere...
+    Use this over astropy, as astropy only does the whole sphere...
 
     Parameters
     ----------
@@ -44,25 +42,26 @@ def uniform_sphere(ra_limits, dec_limits, size: int = 1, density: float = None):
     if density is not None:
         area_box = calc_spherical_rectangle_area(ra_limits, dec_limits)
         size = int(area_box * density)
-
+    logger.info(f"generate {size} randoms")
     zlim = np.sin(np.pi * np.asarray(dec_limits) / 180.) # sin(dec) is uniformly distributed.
     z = zlim[0] + (zlim[1] - zlim[0]) * np.random.random(size=size)
     DEC = (180. / np.pi) * np.arcsin(z)
-    #DEC = DEClim[0] + (DEClim[1] - DEClim[0]) * np.random.random(size) # NO!
+    #DEC = dec_limits[0] + (dec_limits[1] - dec_limits[0]) * np.random.random(size) # NO!
     RA = ra_limits[0] + (ra_limits[1] - ra_limits[0]) * np.random.random(size)
     return np.column_stack([RA, DEC])
 
-def objects_in_coverage(image_path, ra, dec, minimum_coverage=0.0, hdu=0):
+def _single_image_coverage(
+    image_path, ra, dec, minimum_coverage=0.0, absolute_value=True, hdu=0
+):
     with fits.open(image_path) as img:
         header = img[hdu].header
         fwcs = WCS(header)
-        data = abs(img[hdu].data)
+        if absolute_value:
+            data = abs(img[hdu].data)
     ra = ra.flatten()
     dec = dec.flatten()
     coord = np.column_stack([ra, dec])
     pix = fwcs.wcs_world2pix( coord, 0 ).astype(int)
-    #pix[:,0] = np.clip(pix[:,0], 0, header["NAXIS1"])
-    #pix[:,1] = np.clip(pix[:,1], 0, header["NAXIS2"])
     mask = np.full(len(pix), False)
     xmask = (0 < pix[:,0]) & (pix[:,0] < header["NAXIS1"])
     ymask = (0 < pix[:,1]) & (pix[:,1] < header["NAXIS2"])
@@ -72,20 +71,80 @@ def objects_in_coverage(image_path, ra, dec, minimum_coverage=0.0, hdu=0):
     mask[ pix_mask ] = data[pix[:,1], pix[:,0]] > minimum_coverage
     return mask
 
-def objects_in_multi_coverage(image_list, ra, dec, minimum_coverage=0.0, hdu=0):
+def objects_in_coverage(
+    image_list, ra, dec, minimum_coverage=0.0, absolute_value=True, hdu=0
+):
+    """
+    Given a [list of] image(s) and ra, dec coords (in degrees),
+    find out if each coord is "in the data" in each of the images - ie, is the value
+    of [all of] the images greater than some minimum value at each ra, dec.
+    Return a boolean array of len(ra)
+    
+    Parameters
+    ----------
+    image_list
+        list of fits images
+    ra
+        length N array
+    dec
+        length N array
+    minimum_coverage
+        what value(s) do the data need to be greater than at the coordinate?
+        can provide single value, or list of len(image_list)
+    absolute_value
+        take the absolute value for the data? bool (or list of bool, len(image_list))
+    hdu
+        hdu to use in each image (single value, or list len(image_list)).
+    """
+    # TODO use skycoord?
+
+    if len(ra) != len(dec):
+        lra, dec = len(ra), len(dec)
+        raise ValueError(f"len(ra) ({lra}) not equal to len(dec) ({ldec})")
+    
     full_mask = np.full(len(ra), True)
+    if not isinstance(image_list, list):
+        image_list = [image_list]
     if not isinstance(minimum_coverage, list):
         minimum_coverage = [minimum_coverage] * len(image_list)
+    if not isinstance(absolute_value, list):
+        absolute_value = [absolute_value] * len(image_list)
     if not isinstance(hdu, list):
         hdu = [hdu] * len(image_list)
     for ii, image_path in enumerate(image_list):
-        mask = objects_in_coverage(
-            image_path, ra, dec, minimum_coverage=minimum_coverage[ii], hdu=hdu[ii]
+        mask = _single_image_coverage(
+            image_path, ra, dec, 
+            minimum_coverage=minimum_coverage[ii], 
+            absolute_value=absolute_value[ii],
+            hdu=hdu[ii],
         )
         full_mask = full_mask * mask
     return full_mask
 
-def calc_survey_area(image_list, ra_limits=None, dec_limits=None, N=100_000):
+def calc_survey_area(
+    image_list, ra_limits=None, dec_limits=None, density=1e4
+):
+    """
+    Monte-carlo to find survey area from list of fits files.
+    Calculate the area of the spherical rectangle which bounds all of the images.
+    Generate N random points (on the surface of a sphere), 
+    where N is density * area_rectangle.
+    See what fraction of them fall within the data,
+    Return fraction * area_recangle. 
+
+    Paramters
+    ---------
+    image_list
+        list of fits files to calculate survey area from.
+    ra_limits
+        optionally provide a tuple of min/max of the survey ra - else calculated
+        from the footprint of the fits files - values in degrees!
+    dec_limits
+        optionally provide a tuple of min/max of the survey dec - else calculated
+        from the footprint of the fits files - values in degrees!
+    density
+        number of points per sq. deg. used for monte carlo.
+    """
     if not isinstance(image_list, list):
         image_list = [image_list]
     if not all([ra_limits, dec_limits]):
@@ -101,8 +160,8 @@ def calc_survey_area(image_list, ra_limits=None, dec_limits=None, N=100_000):
         dec_limits = (np.min(dec_values), np.max(dec_values))
 
     area_box = calc_spherical_rectangle_area(ra_limits, dec_limits)
-    randoms = uniform_sphere(ra_limits, dec_limits, size=N)
-    survey_mask = objects_in_multi_coverage(image_list, randoms[:,0], randoms[:,1])
+    randoms = uniform_sphere(ra_limits, dec_limits, density=density)
+    survey_mask = objects_in_coverage(image_list, randoms[:,0], randoms[:,1])
     factor = len(randoms[ survey_mask ]) / len(randoms)
     survey_area = factor * area_box
     return survey_area
@@ -112,6 +171,10 @@ def calc_spherical_rectangle_area(ra_limits, dec_limits):
     ddec = np.sin(dec_limits[1] * np.pi / 180.) - np.sin(dec_limits[0] * np.pi / 180.)
     area_box = dra * ddec * 180. / np.pi
     return area_box    
+
+
+
+###=================== modify mosaics ===================###
 
 def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0, hdu2=0):
     path1 = Path(path1)

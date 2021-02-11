@@ -1,0 +1,9 @@
+parent_dir="$(dirname $PWD)"
+output_dir=$parent_dir/input_data/external/cfhtls
+mkdir -p $output_dir
+
+echo $output_dir
+
+sdasdd
+
+wget https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/data/pub/CFHTSG/W.I.cat.gz -O $output_dir/W.I.cat.gz

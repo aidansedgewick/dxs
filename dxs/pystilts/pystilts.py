@@ -1,5 +1,7 @@
 import logging
 import subprocess
+import yaml
+from pathlib import Path
 
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
 
@@ -10,23 +12,14 @@ logger = logging.getLogger("stilts_wrapper")
 class StiltsError(Exception):
     pass
 
-table_processing_commands = (
-    "tcopy tpipe tmatch2 tskymatch2 tmatch1 tmatchn tjoin tcube".split()
-    + "tcat tcatn tmulti tmultin tloop".split()
-)
-plotting_commands = "plot2plane plot2sky plot2cube plot2sphere plot2time".split()
-vot_commands = "votcopy votlint".split()
-vo_commands = (
-    "cone tapquery tapresume tapskymatch cdsskymatch taplint".split()
-    + "datalinklint regquery coneskymatch".split()
-)
-skypix_commands = "tskymap pixfoot pixsample".split()
-sql_commands = "sqlskymatch sqlclient sqlupdate".split()
-misc_commands = "server calc funcs".split()
-all_commands = (
-    table_processing_commands + plotting_commands + vot_commands + vo_commands
-    + skypix_commands + sql_commands + misc_commands
-)
+def _load_known_tasks():
+    known_tasks_path = Path(__file__).absolute().parent / "known_tasks.yaml"
+    with open(known_tasks_path, "r") as f:
+        known_tasks= yaml.load(f, Loader=yaml.FullLoader)
+        known_tasks["all_tasks"] = [
+            task for task_type in known_tasks.values() for task in task_type
+        ]
+    return known_tasks
 
 docs_url = "http://www.star.bris.ac.uk/~mbt/stilts/"
 
@@ -65,25 +58,26 @@ class Stilts:
         self.flags = flags or {}
         self.stilts_exe = stilts_exe
         self.flags.update(kwargs)
-        print(kwargs)
         print("FLAGS ARE", self.flags)
         self.cmd = None
         
         if "out" not in flags:
-            flags
+            flags["out"] = Path.cwd() / f"{task}.out"
 
     @staticmethod
     def _task_check(task):
-        if task not in all_commands:
-            raise StiltsError("task {task} not recognised")
-        if task not in table_processing_commands:
+        known_tasks = _load_known_tasks()
+        if task not in known_tasks["all_tasks"]:
+            print(f"known_tasks are", known_tasks["all_tasks"])
+            raise StiltsError(f"task {task} not recognised")
+        if task not in known_tasks["table_processing_commands"]:
             logger.warn(f"task {task} behaviour not tested with this wrapper...")
 
     def run(self, strict=True):
         if self.cmd is None:
             self.build_cmd()
         print("\n")
-        print("RUN CMD", self.cmd)
+        logger.info(f"RUN CMD:\n  {self.cmd}")
         status = subprocess.call(self.cmd, shell=True)
         if strict:    
             if status > 0:

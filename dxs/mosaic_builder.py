@@ -53,7 +53,6 @@ class MosaicBuilderError(Exception):
     pass
 
 class MosaicBuilder:
-
     """
     Class for building mosaics. Calls SWarp.
     """
@@ -74,7 +73,8 @@ class MosaicBuilder:
                 relevant_stacks = pd.concat([mosaic_stacks, neighbor_stacks])
             else:
                 relevant_stacks = mosaic_stacks
-            print(relevant_stacks.groupby(["tile", "pointing"]).size())
+            logger.info("stacks to use: \n")
+            print(relevant_stacks.groupby(["tile", "pointing"]).size())          
             self.stack_list = [
                 paths.stack_data_path / f"{x}.fit" for x in relevant_stacks["filename"]
             ]
@@ -84,7 +84,8 @@ class MosaicBuilder:
                 self.ccds_list = [None for _ in range(len(relevant_stacks))]
             
         elif isinstance(mosaic_stacks, list):
-            self.stack_list = mosaic_stacks
+            self.mosaic_stacks = None # Assume that the input list is NOT with seeing, etc.
+            self.stack_list = mosaic_stacks # 
             if neighbor_stacks is not None:
                 raise MosaicBuilderError(
                     "to use BOTH, mosaic_stacks and neighbor_stacks must be pd.DataFrame (with \"filename\" column"
@@ -100,6 +101,7 @@ class MosaicBuilder:
 
         string_name = str(self.mosaic_path.stem).replace(".", "_")
         self.swarp_list_path = self.mosaic_dir / f"{string_name}_swarp_list.txt"
+        self.swarp_xml_path = self.mosaic_dir / f"{string_name}.xml"
         self.swarp_run_parameters_path = (
             self.mosaic_dir / f"{string_name}_swarp_run_parameters.json"
         )
@@ -128,13 +130,12 @@ class MosaicBuilder:
         ]
         border = survey_config["mosaics"].get("border", None)
         factor = survey_config["mosaics"].get("factor", None)
-        #center, size = calculate_mosaic_geometry(
-        #    geom_stack_list, ccds=survey_config["ccds"],
-        #    pixel_scale=swarp_config.get("pixel_scale", None),
-        #    border=border,
-        #    factor=factor,
-        #)
-        center, size = (0.0, 333.0), (10000, 10000)
+        center, size = calculate_mosaic_geometry(
+            geom_stack_list, ccds=survey_config["ccds"],
+            pixel_scale=swarp_config.get("pixel_scale", None),
+            border=border,
+            factor=factor,
+        )
         swarp_config["center_type"] = "MANUAL"
         swarp_config["center"] = center #f"{center[0]:.6f},{center[1]:.6f}"
         swarp_config["image_size"] = size #f"{size[0]},{size[1]}"
@@ -248,7 +249,13 @@ class MosaicBuilder:
             # This is a bit ugly, but essentially we need to make a single object (tuple)
             # that we can give to a single-arg function for pool.map(). 
             with Pool(n_cpus) as pool:
-                results = pool.map(_hdu_prep_wrapper, arg_list)
+                results = list(
+                    tqdm.tqdm(
+                        pool.map(_crosstalks_in_stack_wrapper, arg_list),
+                        total=len(arg_list)
+                    )    
+                )
+                #results = pool.map(_hdu_prep_wrapper, arg_list)
                 hdu_list = [p for result in results for p in result]
         for hdu_path in hdu_list:
             assert hdu_path.exists()
@@ -264,24 +271,29 @@ class MosaicBuilder:
         weightout_name = self.mosaic_dir / f"{self.mosaic_path.stem}.weight.fits"
         config["weightout_name"] = weightout_name
         config["resample_dir"] = paths.temp_swarp_path
-        config["pixel_scale"] = survey_config["mosaics"].get("pixel_scale", 0.2) #f"{pixel_scale:.6f}"        
+        config["pixel_scale"] = survey_config["mosaics"].get("pixel_scale", 0.2) #f"{pixel_scale:.6f}" 
+        config["pixelscale_type"] = "manual"       
+        config["xml_name"] = self.swarp_xml_path
         return config
 
-    def add_extra_keys(self, keys=None, magzpt_inc_exptime=False):
+    def add_extra_keys(self, keys=None, magzpt_inc_exptime=True):
         keys = keys or {}
-        keys["seeing"] = (self.calc_seeing(), "median seeing of stacks, in arcsec")
-        includes = "does" if magzpt_inc_exptime else "does not"
-        keys["magzpt"] = (
-            self.calc_magzpt(magzpt_inc_exptime=magzpt_inc_exptime),
-            f"median; {includes} inc. 2.5log(t_exp)"
-        )
+        if self.mosaic_stacks is not None:
+            keys["seeing"] = (self.calc_seeing(), "median seeing of stacks, in arcsec")
+            includes = "does" if magzpt_inc_exptime else "does not"
+            keys["magzpt"] = (
+                self.calc_magzpt(magzpt_inc_exptime=magzpt_inc_exptime),
+                f"median; {includes} inc. 2.5log(t_exp)"
+            )
         branch, local_sha = get_git_info()
         keys["branch"] = (branch, "pipeline branch")
-        keys["localSHA"] = (local_sha.replace("'",""), "pipeline SHA")
+        keys["localSHA"] = (local_sha.replace("'",""), "local pipeline SHA")
+        keys["pipevers"] = (0.0, "pipeline version")
         add_keys(self.mosaic_path, keys, hdu=0, verbose=True)
 
     def calc_seeing(self,):
         """
+        Median seeing value 
         this DOESN'T include any seeing values for neighbor stacks, as they're
         only on the very edges
         """
@@ -580,7 +592,7 @@ def add_keys(mosaic_path, data, hdu=0, verbose=False):
     with fits.open(mosaic_path, mode="update") as mosaic:
         for key, val in data.items():
             if verbose:
-                print(f"Update {key} to {val}")
+                logger.info(f"add keys - {mosaic_path.name} update {key} to {val}")
             #mosaic[hdu].header[key.upper()] = val
             if not isinstance(data, tuple):
                 data = (data,)

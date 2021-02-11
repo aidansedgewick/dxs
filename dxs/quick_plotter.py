@@ -16,8 +16,8 @@ logger = logging.getLogger("quick_plotter")
 
 class QPlot:
     def __init__(self, plot_layout=(1,1), figsize=None):
-        fig, axes = plt.subplots(*plot_layout, figsize=None)
-        self.fig = fig
+        figure, axes = plt.subplots(*plot_layout, figsize=None)
+        self.figure = figure
         self.axes = axes
 
     def plot_number_density(
@@ -48,7 +48,7 @@ class QPlot:
         ax.scatter(data[xcol], data[ycol], **kwargs)
 
     def color_magnitude(self, c1, c2, mag, selection=None, ax=None, **kwargs):
-        """ american spelling for mpl consistency"""
+        """ EN-US spelling for mpl consistency"""
         if ax is not None:
             ax = self.axes[ax]
         else:
@@ -77,9 +77,29 @@ class QPlot:
         ax.scatter(data[xcol], data[ycol], **kwargs)
 
     def plot_positions(
-        self, column, xpos, ypos, selection=None,
+        self, xpos, ypos, ax=None, xlim=None, ylim=None, **kwargs
     ):
-        pass
+        if ax is not None:
+            ax = self.axes[ax]
+        else:
+            ax = self.axes
+        ax.scatter(xpos, ypos, **kwargs)
+
+    def plot_coordinates(
+        self, ra, dec, selection=None, ax=None, xlim=None, ylim=None, **kwargs
+    ):
+        self.plot_positions(
+            selection[ra], 
+            selection[dec], 
+            ax=ax, xlim=None, ylim=None, **kwargs
+        )
+        if selection is None:
+            raise ValueError("must provide selection")
+        if ax is not None:
+            ax = self.axes[ax]
+        else:
+            ax = self.axes
+        ax.set_xlim(ax.get_xlim()[::-1])
 
 class QuickPlotter:
 
@@ -88,17 +108,45 @@ class QuickPlotter:
         pass
 
     @classmethod
-    def from_fits(cls, catalog_path):
+    def from_fits(cls, catalog_path, *queries):
         qp = cls()
-        qp.selection_from_fits(catalog_path, "full_catalog")
+        qp.selection_from_fits(catalog_path, "full_catalog", *queries)
         return qp
+
+    def selection_from_fits(self, catalog_path, name: str, *queries):
+        catalog_path = Path(catalog_path)
+        logger.info(f"read from {catalog_path.stem}")
+        catalog = Table.read(catalog_path)
+        self.create_selection(name, *queries, catalog=catalog)
+        #setattr(self, name, catalog)
+
+    def create_selection(self, name: str, *queries: Tuple[str], catalog: Table = None):
+        
+        if catalog is None:
+            catalog = self.catalog
+        elif isinstance(catalog, str):
+            catalog = self.get_selection(catalog)
+        selection = Query(*queries).filter(catalog)
+        if len(selection) == 0:
+            logger.warn(f"create_selection - len selection {name} is zero")
+        else:
+            logger.info(f"{name}: {len(selection)} objects")
+        setattr(self, name, selection)
+
+    def get_selection(self, name):
+        return getattr(self, name)
+
+    def del_selection(self, name):
+        delattr(self, name)
+
+    def selection_in_coverage(self, ra, dec, image_list, selection=None):
+        selection
 
     def remove_crosstalks(self, crosstalk_query=None, name="catalog", catalog=None):
         if crosstalk_query is None:
             q_J = Query("J_crosstalk_flag > 0")
             q_K = Query("K_crosstalk_flag > 0")
             crosstalk_query = (~q_J | ~q_K)
-        logger.info(crosstalk_query)
         if catalog is None:
             catalog = self.full_catalog
         selection = crosstalk_query.filter(catalog)
@@ -122,32 +170,8 @@ class QuickPlotter:
         
         selection = Query(*queries).filter(catalog)
         logger.info(f"Discard {len(catalog)-len(selection)} objects mag>{mag_limit:.2f}")
-        setattr(self, name, selection)        
-
-    def selection_from_fits(self, catalog_path, name: str):
-        catalog_path = Path(catalog_path)
-        catalog = Table.read(catalog_path)
-        setattr(self, name, catalog)
-
-    def create_selection(self, name: str, *queries: Tuple[str], catalog: Table = None):
-        
-        if catalog is None:
-            catalog = self.catalog
-        elif isinstance(catalog, str):
-            catalog = self.get_selection(catalog)
-        selection = Query(*queries).filter(catalog)
-        if len(selection) == 0:
-            logger.warn(f"create_selection - len selection {name} is zero")
-        else:
-            logger.info(f"{name}: {len(selection)} objects")
         setattr(self, name, selection)
 
-    def get_selection(self, name):
-        selection = getattr(self, name)
-        return selection
-
-    def del_selection(self, name):
-        delattr(self, name)
 
     def create_plot(self, name: str, plot_layout=(1,1), figsize=None):
         plot = QPlot(plot_layout=plot_layout, figsize=figsize)

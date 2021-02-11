@@ -47,6 +47,7 @@ class CatalogExtractor:
         self, detection_mosaic_path, measurement_mosaic_path=None, catalog_path=None,
         sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
     ):
+        check_modules("sex")
         self.detection_mosaic_path = Path(detection_mosaic_path)
         d_stem = self.detection_mosaic_path.stem
         detection_mosaic_dir = self.detection_mosaic_path.parent
@@ -415,7 +416,7 @@ class CatalogPairMatcher(CatalogMatcher):
         Set this value 
         """
         catalog = Table.read(self.catalog_path)
-        logger.info("pair catalog has {len(catalog.colnames)} cols")
+        logger.info(f"pair cat has {len(catalog.colnames)} cols")
         output_ra = output_ra or self.output_ra
         output_dec = output_dec or self.output_dec
         catalog.add_column(-99.0, name=output_ra)
@@ -441,7 +442,7 @@ class CatalogPairMatcher(CatalogMatcher):
         self.dec = output_dec
 
 def combine_catalogs(
-    catalog_list, output_path, id_col, ra_col, dec_col, snr_col, error=1.0
+    catalog_list, output_path, id_col, ra_col, dec_col, snr_col, error=0.5
 ):
     catalog_list = create_file_backups(catalog_list, paths.temp_sextractor_path)
     output_path = Path(output_path)
@@ -480,8 +481,8 @@ def combine_catalogs(
         med_separation = np.median(overlap["Separation"])
         max_separation = np.max(overlap["Separation"])
         
-        logger.info(f"combiner - med sep {med_separation:.3f} deg")
-        logger.info(f"combiner - max sep {max_separation:.3f} deg")
+        logger.info(f"combiner - med sep {med_separation:.3f} arcsec")
+        logger.info(f"combiner - max sep {max_separation:.3f} arcsec")
 
         overlap1 = Query(f"{snr_col}_1 >= {snr_col}_2").filter(overlap)[overlap1_columns]
         overlap2 = Query(f"{snr_col}_2 > {snr_col}_1").filter(overlap)[overlap2_columns]

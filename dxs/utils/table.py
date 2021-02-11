@@ -4,14 +4,20 @@ from pathlib import Path
 
 import numpy as np
 
-import astropy.io.fits as fits
+from astropy.io import fits
 from astropy.table import Table
+from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 
 from easyquery import Query
 
 from dxs import paths
 
 logger = logging.getLogger("table_utils")
+
+survey_config_path = paths.config_path / "survey_config.yaml"
+with open(survey_config_path, "r") as f:
+    survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 def table_to_numpynd(table):
     return np.array([x.data for x in table.values()]).T
@@ -27,7 +33,7 @@ def fix_column_names(
     suffix=None,
     hdu=1
 ):
-    print(catalog_path)
+    logger.info(f"fix col names: {catalog_path.name}")
     with fits.open(catalog_path, mode="update") as catalog:
         header = catalog[hdu].header
         catalog_columns = {
@@ -87,7 +93,7 @@ def explode_column(
     catalog = Table.read(catalog_path)
     _explode(catalog, column_name, new_names=new_names, suffixes=suffixes, remove=remove)
     logger.info(f"explode {column_name}")
-    catalog.writeto(catalog_path, overwrite=True)
+    catalog.write(catalog_path, overwrite=True)
 
 
 def _explode(
@@ -102,10 +108,10 @@ def _explode(
         if suffixes is None:
             suffixes = ["{ii}" for ii in range(N_cols)]
         assert len(suffixes) == N_cols
-        column_names = [f"{column_name}_{suffix}" for suffix in suffixes]
+        new_names = [f"{column_name}_{suffix}" for suffix in suffixes]
     assert len(new_names) == N_cols
 
-    for ii, col_name in enumerate(column_names):
+    for ii, col_name in enumerate(new_names):
         new_col = col[:, ii]
         table.add_column(new_col, name=col_name)
     if remove:
@@ -117,7 +123,7 @@ def remove_objects_in_bad_coverage(
     coverage_column, 
     weight_map_path=None,
     weight_column=None,
-    N_pixels=3500*3500,
+    N_pixels=None,
     absolute_minimum=3, 
     frac=1.0,
     weight_minimum=0.7,
@@ -128,11 +134,24 @@ def remove_objects_in_bad_coverage(
     with fits.open(coverage_map_path) as f:
         data = f[hdu].data.astype(int)
         # bincount is VERY fast for integer data.
+        fwcs = WCS(f[hdu].header)
+        if N_pixels is None:
+            sidelength = survey_config.get("wfcam", {}).get("ccd_sidelength", None)
+            if sidelength is None:
+                raise ValueError(
+                    "provide wfcam: sidelength in survey config or provide N_pixels in "
+                    "remove_objects_in_bad_coverage()"
+                )
+            pixelscale = proj_plane_pixel_scales(fwcs)
+            Nx_pixels = (0.9 * sidelength / pixelscale[0])
+            Ny_pixels = (0.9 * sidelength / pixelscale[1])
+            N_pixels = int(Nx_pixels * Ny_pixels)
+        
         coverage_hist = np.bincount(data.flatten())[1:] # Ignore the zero count!
-        coverage_vals = np.arange(len(coverage_hist))[1:] 
-        print({k:v for k,v in zip(coverage_vals, coverage_hist)})
-        min_coverage = coverage_vals[ coverage_hist[1:] > N_pixels ][0]
-        print(min_coverage)
+        coverage_vals = np.arange(1, len(coverage_hist)+1)
+        logger.debug({k:v for k,v in zip(coverage_vals, coverage_hist)})
+        logger.debug(f"choose N_pixels > {N_pixels}")
+        min_coverage = coverage_vals[ coverage_hist > N_pixels ][0]
         min_coverage = np.ceil(frac*min_coverage)
         minimum_coverage = int(np.max([absolute_minimum, min_coverage, 1]))
         data[data < minimum_coverage] = 0

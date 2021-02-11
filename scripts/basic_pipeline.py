@@ -83,7 +83,7 @@ if __name__ == "__main__":
     parser.add_argument("tile", type=int)
     parser.add_argument("--extract", action="store_true", default=False)
     parser.add_argument("--collate_crosstalks", action="store_true", default=False)
-    parser.add_argument("--match_only", action="store_true", default=False)
+    parser.add_argument("--match_all", action="store_true", default=False)
     parser.add_argument("--match_crosstalks", action="store_true", default=False)
     parser.add_argument("--match_fp", action="store_true", default=False)
     parser.add_argument("--match_pair", action="store_true", default=False)
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     field = args.field
     tile = args.tile
 
-    if args.match_only:
+    if args.match_all:
         args.match_crosstalks = True
         args.match_fp = True
         args.match_pair = True
@@ -153,9 +153,9 @@ if __name__ == "__main__":
             output_path=J_with_xtalks_path, band="J"
         )
         fix_crosstalk_column_names(J_with_xtalks_path, band="J")
-        explode_column(K_with_xtalks_path, "J_flux_radius", suffixes=[20, 50, 90])
+        explode_column(J_with_xtalks_path, "J_flux_radius", suffixes=[20, 50, 90])
         for col in ["J_flux_aper", "J_fluxerr_aper", "J_mag_aper", "J_magerr_aper"]:
-            explode_column(K_with_xtalks_path, col, suffixes=[10, 18, 20, 30], remove=True)
+            explode_column(J_with_xtalks_path, col, suffixes=[10, 18, 20, 30], remove=True)
 
     ## Now do K-forced photometry from J image.
     JKfp_ex = CatalogExtractor.from_dxs_spec(field, tile, "J", measurement_band="K")
@@ -179,7 +179,7 @@ if __name__ == "__main__":
         remove_objects_in_bad_coverage(
             J_output_path, J_coverage_map_path, "J_coverage", 
             #weight_map_path=J_norm_weight_map, weight_column="J_norm_weight",
-            N_pixels=400*400
+            #N_pixels=400*400
         )
 
 
@@ -241,7 +241,7 @@ if __name__ == "__main__":
         remove_objects_in_bad_coverage(
             K_output_path, K_coverage_map_path, "K_coverage", 
             #weight_map_path=K_norm_weight_map, weight_column="K_norm_weight",
-            N_pixels=400*400 # approx size of one tile?
+            #N_pixels=400*400 # approx size of one tile?
         )
 
     ##===========================Match pair of outputs.

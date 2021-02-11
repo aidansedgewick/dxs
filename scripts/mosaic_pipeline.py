@@ -44,20 +44,18 @@ if __name__ == "__main__":
 
     logger.info(f"Mosaic for {spec}, use {args.n_cpus} threads")
     
-    builder = MosaicBuilder.from_dxs_spec(
-        args.field, args.tile, args.band
-    )
+    builder = MosaicBuilder.from_dxs_spec(*spec)
     if builder is None: # ie, if there are no stacks to build
         logger.info("Builder is None. Exiting")
         sys.exit()
-    builder.build(hdu_prefix=f"{builder.mosaic_path.stem}_", n_cpus=args.n_cpus)
-    builder.add_extra_keys()
+    #builder.build(hdu_prefix=f"{builder.mosaic_path.stem}_", n_cpus=args.n_cpus)
+    #builder.add_extra_keys()
 
     pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
-    cov_builder = MosaicBuilder.coverage_from_dxs_spec(
-        args.field, args.tile, args.band, pixel_scale=pixel_scale, n_cpus=args.n_cpus
+    cov_builder = MosaicBuilder.coverage_from_dxs_spec(*spec, pixel_scale=pixel_scale)
+    cov_builder.build(
+        value=1.0, hdu_prefix=f"{builder.mosaic_path.stem}_u", n_cpus=args.n_cpus
     )
-    cov_builder.build(value=1.0, hdu_prefix=f"{builder.mosaic_path.stem}_u", n_cpus=args.n_cpus)
     cov_builder.add_extra_keys() 
     scale_mosaic(
         cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
@@ -67,10 +65,10 @@ if __name__ == "__main__":
 
     seg_name = paths.get_mosaic_stem(*spec)
     mosaic_dir = paths.get_mosaic_dir(*spec)
-    catalog_dir = paths.get_mosaic_dir(*spec)
+    catalog_dir = paths.get_mosaic_dir(*spec) # so we can store the mask with the mosaic.
     seg_config = {
         "checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits",
-        "catalog_name": catalog_dir / f"{seg_name}_segmenation.cat",
+        "catalog_name": catalog_dir / f"{seg_name}_segmenation.fits",
     }
     extractor = CatalogExtractor.from_dxs_spec(
         *spec, 

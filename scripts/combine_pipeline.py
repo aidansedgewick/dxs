@@ -3,6 +3,8 @@ import yaml
 from argparse import ArgumentParser
 from itertools import product
 
+from astropy.table import Table
+
 from dxs import combine_catalogs, CatalogPairMatcher
 from dxs import paths
 
@@ -18,6 +20,9 @@ measurement_lookup = {
     "H": None,
 }
 
+external_data = ["panstarrs", "cfhtls"]
+
+
 if __name__ == "__main__":
 
     parser = ArgumentParser()
@@ -25,6 +30,10 @@ if __name__ == "__main__":
     parser.add_argument("tiles")
     parser.add_argument("bands")
     parser.add_argument("--output_code", action="store", default=0, type=int, required=False)
+    parser.add_argument("--skip_combine", action="store_true", default=False, required=False)
+    parser.add_argument(
+        "--external", action="store", nargs="+", default=["panstarrs"], required=False
+    )
     args = parser.parse_args()
 
     fields = [x for x in args.fields.split(",")]
@@ -60,6 +69,7 @@ if __name__ == "__main__":
                     field, tile, combined_band
                 )            
                 catalog_list.append(catalog_dir / f"{catalog_stem}.fits")
+                #t = Table.read(catalog_dir / f"{catalog_stem}.fits")
             print([x.stem for x in catalog_list])
             
             combined_dir = paths.get_catalog_dir(field, args.output_code, band)
@@ -71,10 +81,11 @@ if __name__ == "__main__":
             ra_col = f"{band}_ra"
             dec_col = f"{band}_dec"
             snr_col = f"{band}_snr_auto"
-            combine_catalogs(
-                catalog_list, combined_output_path, 
-                id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col
-            )
+            if args.skip_combine is False:
+                combine_catalogs(
+                    catalog_list, combined_output_path, 
+                    id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col
+                )
             catalog_lists.append(catalog_list)
 
             output_key = f"{band}_output"
@@ -92,6 +103,7 @@ if __name__ == "__main__":
 
         if J_output and K_output:
             pair_output_stem = paths.get_catalog_stem(field, args.output_code, "")
+            pair_output_stem += "_" + "_".join(args.external)
             pair_output_dir = paths.get_catalog_dir(field, args.output_code, "")
             pair_output_path = pair_output_dir / f"{pair_output_stem}.fits"
             pair_matcher = CatalogPairMatcher(
@@ -100,14 +112,22 @@ if __name__ == "__main__":
                 ra1="J_ra", dec1="J_dec",
                 ra2="K_ra", dec2="K_dec",
             )
-            pair_matcher.best_pair_match(error=2.0) # arcsec
+            pair_matcher.best_pair_match(error=0.5) # arcsec
             pair_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
             pair_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
 
-            ps_name = f"{field}_panstarrs"
-            ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
-            pair_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=2.0)
-            pair_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
+            if "panstarrs" in args.external:
+                ps_name = f"{field}_panstarrs"
+                ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
+                pair_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=1.0)
+                pair_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
+            if "cfhtls" in args.external:
+                cfhtls_name = f"{field}_i"
+                cfhtls_catalog_path = (
+                    paths.input_data_path / f"external/cfhtls/{cfhtls_name}.fits"
+                )
+                pair_matcher.match_catalog(cfhtls_catalog_path, ra="ra_cfhtls", dec="dec_cfhtls", error=0.5)
+                pair_matcher.fix_column_names(column_lookup={"Separation": "cfhtls_separation"})
 
             
 

@@ -7,6 +7,10 @@ field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
 code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
 tiles_per_field: {SA: 12, LH: 11, EN: 12, XM: 8}
 
+wfcam:
+  ccd_sidelength: 0.228 # degrees
+  ccd_spacing: 0.215 # degrees
+
 # some error catching?
 mosaics:
   border: 100

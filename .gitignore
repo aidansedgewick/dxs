@@ -1,10 +1,14 @@
 *.fit
 *.fits
 *.pyc
+*.cat
 **/swarp.xml
 
 *.egg-info
 dxsenv/
 data/
-
-
+input_data/
+!input_data/external/tmass
+!input_data/plotting
+safe/
+runner/runs

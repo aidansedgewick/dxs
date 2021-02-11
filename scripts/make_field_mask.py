@@ -16,6 +16,20 @@ from regions import PixCoord, CirclePixelRegion
 from dxs import MosaicBuilder
 from dxs import paths
 
+def split_int(x, side=0.25):
+    """
+    split an integer close to in half. 
+    eg: 
+    >>> split_int(13) 
+    (6, 7)
+    if side%1< 0.5, return the largest split first.
+    """
+
+    side = side % 1
+    if side < 0.5: 
+        return (int(np.floor(x/2)), int(np.ceil(x/2)))
+    else:
+        return (int(np.ceil(x/2)), int(np.floor(x/2)))
 
     
 def mask_stars_in_data(data, wcs, ra, dec, radii):
@@ -25,27 +39,36 @@ def mask_stars_in_data(data, wcs, ra, dec, radii):
     pix_coord = PixCoord.from_sky(sky_coord, wcs=wcs)
     pix_radii = radii / (pix_scale)
     ylen, xlen = wcs.array_shape # order bc zero-indexing...
-    print(data.shape)
+    #print(data.shape)
     for pix, rad in zip(pix_coord, pix_radii):
         xpix, ypix = pix.xy
         region = CirclePixelRegion(center=pix, radius=rad)
-        mask = np.invert(region.to_mask(mode="exact").data.astype(bool))
+        mask = np.invert(region.to_mask(mode="exact").data.astype(bool)).T
 
-        xgrid = np.arange(int(xpix-rad), int(xpix+rad) + 1)
-        ygrid = np.arange(int(ypix-rad), int(ypix+rad) + 1)
+        my1, my2 = split_int(mask.shape[0], side=ypix)
+        mx1, mx2 = split_int(mask.shape[1], side=xpix)
 
-        print(mask.shape, ygrid.shape, xgrid.shape, xpix, ypix, rad)
+        xgrid = np.arange(int(xpix - mx1), int(xpix + mx2))
+        ygrid = np.arange(int(ypix - my1), int(ypix + my2))
+
+        
+        new_shape = (len(ygrid), len(xgrid))
+        spix = f"{ypix:.3f}, {xpix:.3f}"
+
+        if mask.shape != new_shape:
+            print(mask.shape, new_shape, spix, (mx1, mx2), (my1, my2))
 
         # carefully select incase some parts of mask are outside data.
-        xm = (0<=xgrid) & (xgrid<xlen)
-        ym = (0<=ygrid) & (ygrid<ylen)
+        xm = (0 < xgrid) & (xgrid < xlen)
+        ym = (0 < ygrid) & (ygrid < ylen)
         mask = mask[ ym, : ][ :, xm ]
+        #print(mask.shape)
         # Mask is only big enough to include the circle region, so only mask that rectangle.
         xslicer = slice(
-            max(0, int(xpix - rad)), min(int(xpix + rad) + 1, xlen), 1
+            max(0, xgrid[0]), min(xgrid[-1], xlen)+1, 1
         )
         yslicer = slice(
-            max(0, int(ypix - rad)), min(int(ypix + rad) + 1, ylen), 1
+            max(0, ygrid[0]), min(ygrid[-1], ylen)+1, 1
         )
         data[ yslicer, xslicer ] = data[ yslicer, xslicer ] * mask
     return data
@@ -58,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("band")
     parser.add_argument("--ignore_stars", action="store_true", default=False)
     parser.add_argument("--mosaic_type", choices=["data", "cov", "good_cov"], default="cov")
+    parser.add_argument("--n_cpus", default=None, type=int)
 
     args = parser.parse_args()
 
@@ -72,17 +96,18 @@ if __name__ == "__main__":
     for tile in tiles:
         p = paths.get_mosaic_path(field, tile, band)
         use_path = p.with_suffix(suffix)
-        assert use_path.exists()
+        if not use_path.exists():
+            raise IOError(f"No file {use_path}")
         
         mosaic_list.append(use_path)
 
-    mask_path = paths.masks_path / f"{field}_{band}.fits"
+    mask_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_mask.fits"
     config_path = paths.config_path / "swarp/coverage.swarp"
-    config = {"combine_type": "max"}
+    config = {"combine_type": "max", "pixel_scale": 2.0}
     builder = MosaicBuilder(
         mosaic_list, mask_path, swarp_config=config, swarp_config_file=config_path
     )
-    #builder.build(prepare_hdus=False)
+    builder.build(prepare_hdus=False, n_cpus=args.n_cpus)
 
     if args.ignore_stars is True:
         print("Done!")
@@ -91,7 +116,9 @@ if __name__ == "__main__":
     catalog_path = paths.catalogs_path / f"{field}00/{field}00{band}.fits"
     catalog = Table.read(catalog_path)
 
-    stars = Query(f"{band}_mag_auto < 10").filter(catalog)
+    stars = Query(f"{band}_mag_auto < 11").filter(catalog)
+
+    star_mask_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_stars_mask.fits"
 
     with fits.open(mask_path) as mask:
         data = mask[0].data
@@ -101,11 +128,11 @@ if __name__ == "__main__":
             mask_wcs, 
             stars[f"{band}_ra"], 
             stars[f"{band}_dec"], 
-            2*stars[f"{band}_fwhm_world"]
+            8*stars[f"{band}_fwhm_world"]
         )
 
-        hdu = fits.PrimaryHDU(data=data, header = mask[0].header())
-        hdu.writeto(mask_path, overwrite=True)
+        hdu = fits.PrimaryHDU(data=data, header=mask[0].header)
+        hdu.writeto(star_mask_path, overwrite=True)
 
 
 

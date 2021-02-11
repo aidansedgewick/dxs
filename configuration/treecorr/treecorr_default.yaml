@@ -1,6 +1,7 @@
-nbins: 10
-min_sep: 1.0
+bin_type: "Log"
+min_sep: 0.9
 max_sep: 7200.0 # 3 degrees.
+bin_size: 0.47 # this is 0.2*log_e(10.0) - ie log10(dr) = 0.2...
 sep_units: "arcsec"
 brute: True
 verbose: 2
