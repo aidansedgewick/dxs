@@ -4,6 +4,7 @@ from itertools import product
 from pathlib import Path
 
 from dxs.runner import ScriptMaker
+from dxs.utils.misc import tile_parser
 from dxs import paths
 
 
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     run_name = run_config.get("run_name", None)
     if run_name is None:
         run_name = run_config_path.stem
-        print(f"set run_name to {run_name}...")
+        print(f"set run_name to {run_name}")
 
     base_dir = paths.runner_path / f"runs/{run_name}"
     base_dir.mkdir(exist_ok=True, parents=True)
@@ -55,22 +56,27 @@ if __name__ == "__main__":
 
     arg_list = []
     for k, v in run_config.get("args",{}).items():
-        init_list = v.split(",")
-        proc_list = []
-        for x in init_list:
-            if "-" in x:
-                spl = x.split("-")
-                proc_list.extend([i for i in range(int(spl[0]), int(spl[1])+1)])
-            else:
-                proc_list.append(int(x) if x.isnumeric() else x)
-        arg_list.append(proc_list)
+        if type(v) is str and not v[0] == "@":
+            init_list = v.split(",")
+            proc_list = []
+            for x in init_list:
+                if "-" in x:
+                    spl = x.split("-")
+                    proc_list.extend([i for i in range(int(spl[0]), int(spl[1])+1)])
+                else:
+                    proc_list.append(int(x) if x.isnumeric() else x)     
+            arg_list.append(proc_list)
+        else:
+            if v[0] == "@":
+                v = v[1:]
+            arg_list.append([v])
     
     arg_tuple = tuple(arg_list)
     combinations = product(*arg_tuple)
     combinations = [x for x in combinations] # no genexpr!
+    print(f"There are {len(combinations)} combinations")
 
     kwargs = [run_config.get("kwargs", {}) for _ in combinations]
 
     script_maker.write_all_scripts(combinations, kwargs)
-        
 

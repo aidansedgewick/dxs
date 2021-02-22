@@ -69,6 +69,15 @@ def get_catalog_stem(field, tile, detection_band, measurement_band=None, prefix=
 def get_catalog_dir(field, tile, detection_band):
     return catalogs_path / get_catalog_stem(field, tile, "")
 
+def get_catalog_path(
+    field, tile, detection_band, measurement_band=None, prefix=None, extension=".fits"
+):
+    catalog_dir = get_catalog_dir(field, tile, detection_band)
+    catalog_stem = get_catalog_stem(
+        field, tile, detection_band, measurement_band=measurement_band, prefix=prefix
+    )
+    return catalog_dir / f"{catalog_stem}{extension}"
+
 if __name__ == "__main__":
     print("creating all paths")
     create_all_paths()

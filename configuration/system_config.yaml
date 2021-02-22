@@ -19,6 +19,6 @@ modules: # load everything. order is purge, load, source, extra.
     - cosma/2018 # for stilts
   modules_to_source:
     # also include your python env.
-    - /cosma5/data/durham/dc-sedg2/dxs/dxsenv/bin/activate 
+    - /cosma/home/durham/dc-sedg2/dxsenv/bin/activate
   # extra: # also inlcude "module load", "source" or whatever the prefix is.
     

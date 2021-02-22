@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Dict
 
 import numpy as np
+import matplotlib.pyplot as plt
 
-import astropy.io.fits as fits
+from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from astropy.table import Table, Column, vstack
 from astropy.wcs import WCS
 
@@ -19,6 +21,7 @@ from dxs.crosstalk_processor import CrosstalkProcessor
 from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
 from dxs.utils.table import fix_column_names, table_to_numpynd
+from dxs.utils.region import in_only_one_tile
 
 from dxs import paths
 
@@ -80,7 +83,7 @@ class CatalogExtractor:
 
     @classmethod
     def from_dxs_spec(
-        cls, field, tile, detection_band, measurement_band=None, prefix=None,
+        cls, field, tile, detection_band, measurement_band=None, prefix=None, catalog_stem=None,
         sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
     ):
         """
@@ -115,9 +118,10 @@ class CatalogExtractor:
         # work out where the catalogs should live.
         catalog_dir = paths.get_catalog_dir(field, tile, detection_band)
         catalog_dir.mkdir(exist_ok=True, parents=True)
-        catalog_stem = paths.get_catalog_stem(
-            field, tile, detection_band, measurement_band=measurement_band
-        )
+        if catalog_stem is None:
+            catalog_stem = paths.get_catalog_stem(
+                field, tile, detection_band, measurement_band=measurement_band, prefix=prefix
+            )
         catalog_path = catalog_dir / f"{catalog_stem}.fits"
         return cls(
             detection_mosaic_path, 
@@ -225,6 +229,7 @@ class CatalogExtractor:
     def add_map_value(
         self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0,
     ):
+        logger.info("adding map value")
         info = _add_map_value(
             self.catalog_path, mosaic_path, column_name, 
             ra=ra, dec=dec, xpix=xpix, ypix=ypix, hdu=hdu,        
@@ -441,65 +446,78 @@ class CatalogPairMatcher(CatalogMatcher):
         self.ra = output_ra
         self.dec = output_dec
 
-def combine_catalogs(
-    catalog_list, output_path, id_col, ra_col, dec_col, snr_col, error=0.5
-):
+def merge_catalogs(
+    catalog_list, mosaic_list, output_path, id_col, ra_col, dec_col, snr_col, error=0.5, 
+    value_check_column=None, rtol=1e-5, atol=1e-8, tiles_to_ignore=None
+):   
+    output_path = Path(output_path)
+    temp_concat_path = paths.temp_sextractor_path / f"{output_path.stem}_concat.fits"
+    temp_overlap_path = paths.temp_sextractor_path / f"{output_path.stem}_overlap.fits"
+    temp_single_path = paths.temp_sextractor_path / f"{output_path.stem}_single.fits"
+    temp_output_path = paths.temp_sextractor_path / f"{output_path.name}"
+    # Backup all files
     catalog_list = create_file_backups(catalog_list, paths.temp_sextractor_path)
     output_path = Path(output_path)
-    temp_overlap_path = paths.temp_sextractor_path / f"{output_path.stem}_overlap.fits"
-    temp_output_path = paths.temp_sextractor_path / f"{output_path.stem}_combined.fits"
-    catalog_path1 = catalog_list[0] # changed to temp_output_path at the end of loop 1.
     for ii, catalog_path in enumerate(catalog_list):
         id_modifier = int(f"1{ii+1:02d}")*1_000_000
         _modify_id_value(catalog_path, id_modifier, id_col=id_col)
-    for catalog_path2 in catalog_list:
-        if catalog_path2 == catalog_path1:
-            continue
-        # Find objects which appear in both (and only both) catalogs.
-        stilts = Stilts.tskymatch2_fits(
-            catalog_path1, catalog_path2, output_path=temp_overlap_path,
-            ra=ra_col, dec=dec_col, error=error, join="1and2", find="best"
-        )
-        stilts.run()
-        # Now keep the unique catalogs. 
-        catalog1 = Table.read(catalog_path1)
-        overlap = Table.read(temp_overlap_path)
-        catalog2 = Table.read(catalog_path2)
-        catalog1_unique_mask = np.isin(
-            catalog1[id_col], overlap[id_col+"_1"], invert=True
-        )
-        catalog2_unique_mask = np.isin(
-            catalog2[id_col], overlap[id_col+"_2"], invert=True
-        )
-        catalog1 = catalog1[ catalog1_unique_mask ]
-        catalog2 = catalog2[ catalog2_unique_mask ]
+    # Concatenate them...
+    stilts = Stilts.tcat_fits(catalog_list, output_path=temp_concat_path)
+    stilts.run()
+    # Now select the objects which are in the overlapping regions.
+    concat = Table.read(temp_concat_path)
+    coords = SkyCoord(ra=concat[ra_col], dec=concat[dec_col], unit="degree")
+    single_tile_mask = in_only_one_tile(coords, mosaic_list)
+    single = concat[ single_tile_mask ]
+    overlap = concat[ ~single_tile_mask ]
 
-        catalog_columns = list(catalog1.colnames)
-        overlap1_columns = [f"{col}_1" for col in catalog_columns]# + ["Separation"]
-        overlap2_columns = [f"{col}_2" for col in catalog_columns]# + ["Separation"]
-        
-        med_separation = np.median(overlap["Separation"])
-        max_separation = np.max(overlap["Separation"])
-        
-        logger.info(f"combiner - med sep {med_separation:.3f} arcsec")
-        logger.info(f"combiner - max sep {max_separation:.3f} arcsec")
+    single.write(temp_single_path, overwrite=True)
+    overlap.write(temp_overlap_path, overwrite=True)
+    # Do internal match to select objects which appear in more than one frame.
+    stilts = Stilts.tmatch1_sky_fits(
+        temp_overlap_path, output_path=temp_overlap_path, 
+        ra=ra_col, dec=dec_col, error=error
+    )
+    stilts.run()
+    overlap = Table.read(temp_overlap_path)
+    # separate into unique objects in overlap region vs. grouped objects in overlap region.
+    overlap["GroupID"] = overlap["GroupID"].filled(-99)
+    overlap_groups = overlap[ overlap["GroupID"] >=0 ]
+    overlap_unique = overlap[ overlap["GroupID"] == -99 ]
+    logger.info(f"merge - {len(overlap_unique)} unique sources in in overlap region")
 
-        overlap1 = Query(f"{snr_col}_1 >= {snr_col}_2").filter(overlap)[overlap1_columns]
-        overlap2 = Query(f"{snr_col}_2 > {snr_col}_1").filter(overlap)[overlap2_columns]
-        
-        for old_col, new_col in zip(overlap1_columns, catalog_columns):
-            overlap1.rename_column(old_col, new_col)
-        for old_col, new_col in zip(overlap2_columns, catalog_columns):
-            overlap2.rename_column(old_col, new_col)
+    grouped = overlap_groups.group_by("GroupID")
+    split_at = grouped.groups.indices
+    group_lengths = np.diff(split_at)
+    n_groups = len(group_lengths)
+    # Have we matched the correct objects?!
+    val_check_maxima = np.maximum.reduceat(grouped[value_check_column], split_at[:-1])
+    val_check_minima = np.minimum.reduceat(grouped[value_check_column], split_at[:-1])
+    close = np.isclose(val_check_maxima, val_check_minima, atol=atol, rtol=rtol).sum()
+    if close != n_groups:
+        logger.warn(f"{n_groups-close} matches have {value_check_column} diff >tolerances")
 
-        print(len(overlap1), len(overlap2), len(overlap))
-        assert len(overlap1) + len(overlap2) == len(overlap)
-        combined_catalog = vstack(
-            [catalog1, overlap1, overlap2, catalog2], join_type="exact"
-        )
-        combined_catalog.write(temp_output_path, overwrite=True)
-        catalog_path1 = temp_output_path # only really does anything on the first loop!
+    snr_maxima = np.maximum.reduceat(grouped[snr_col], split_at[:-1]) # Find maxima split by group.
+    argmax_mask = (np.repeat(snr_maxima, group_lengths) == grouped[snr_col])
+    argmax_inds = np.arange(len(grouped[snr_col]))[ argmax_mask ]
+
+    grouped_best = grouped[ argmax_inds ]
+    assert len(grouped_best["GroupID"]) == len(np.unique(grouped_best["GroupID"]))
+    assert len(grouped_best) == n_groups
+
+    #index = np.repeat(np.arange(n_groups), group_lengths)
+    #all_argmax = np.flatnonzero(np.repeat(maxima, group_lengths) == arr) # Repeat each maximum the number of times in each group. 
+    #result = all_argmax[np.unique(index[all_argmax], return_index=True)[1]]
+
+    single = Table.read(temp_single_path)    
+    output = vstack([single, grouped_best, overlap_unique])
+    output.remove_columns(["GroupSize", "GroupID"])
+    output.write(temp_output_path, overwrite=True)
+
     shutil.copy2(temp_output_path, output_path)
+
+    logger.info(f"done merging - output {output_path}!")
+
 
 def _modify_id_value(catalog_path, id_modifier, id_col="id",):
     catalog = Table.read(catalog_path)
@@ -511,6 +529,7 @@ def _add_map_value(
 ):
     catalog = Table.read(catalog_path)
     with fits.open(mosaic_path) as mosaic:
+        logger.info(f"open {mosaic_path}")
         mosaic_data = mosaic[hdu].data
         header = mosaic[hdu].header
     use_coords = all([ra, dec])
@@ -529,9 +548,11 @@ def _add_map_value(
         y_values = catalog[ypix].astype(int)
     else:
         raise ValueError(err_msg)
-
+    logger.info(f"transform")
     map_values = mosaic_data[ y_values, x_values ]
+    logger.info(f"mapped")
     col = Column(map_values, column_name)
+    logger.info(f"adding col")
     catalog.add_column(col)
     catalog.write(catalog_path, overwrite=True)
     info = f"added map data {column_name} from {mosaic_path.stem}"

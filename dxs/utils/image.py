@@ -11,11 +11,15 @@ from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from astropy.nddata.utils import Cutout2D
 from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 
 import dxs.paths as paths
 
 logger = logging.getLogger("image_utils")
 
+survey_config_path = paths.config_path / "survey_config.yaml"
+with open(survey_config_path, "r") as f:
+    survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 ###============= bits related to survey area/randoms. =============###
 
@@ -42,7 +46,7 @@ def uniform_sphere(
     if density is not None:
         area_box = calc_spherical_rectangle_area(ra_limits, dec_limits)
         size = int(area_box * density)
-    logger.info(f"generate {size} randoms")
+    logger.info(f"generate {size:,} randoms")
     zlim = np.sin(np.pi * np.asarray(dec_limits) / 180.) # sin(dec) is uniformly distributed.
     z = zlim[0] + (zlim[1] - zlim[0]) * np.random.random(size=size)
     DEC = (180. / np.pi) * np.arcsin(z)
@@ -172,7 +176,79 @@ def calc_spherical_rectangle_area(ra_limits, dec_limits):
     area_box = dra * ddec * 180. / np.pi
     return area_box    
 
+###================== coverage mosaics ==================###
 
+def make_good_coverage_map(
+    coverage_map_path, 
+    output_path=None,
+    minimum_num_pixels=None, absolute_minimum=3, frac=1.0,
+    weight_map_path=None, weight_minimum=0.8, # ???
+    N_steps=100, step_size=1,
+    hdu=0
+):
+    coverage_map_path = Path(coverage_map_path)
+    logger.info(f"modify {coverage_map_path.name}")
+    with fits.open(coverage_map_path) as f:
+        data = f[hdu].data.astype(int)
+        fwcs = WCS(f[hdu].header)
+        if minimum_num_pixels is None:
+            minimum_num_pixels = estimate_minimum_num_pixels(fwcs)
+        minimum_coverage = get_minimum_coverage_value(
+            data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
+        )
+        data[data < minimum_coverage] = 0
+        if weight_map_path is not None:
+            with fits.open(weight_map_path) as weight:
+                wdat = weight[0].data
+                data[ wdat < weight_minimum ] = 0
+        if N_steps > 0:
+            data = expand_zero_regions(data, step_size=step_size, N_steps=N_steps)
+        good_coverage = fits.PrimaryHDU(data=data, header=f[hdu].header)
+        if output_path is None:
+            output_path = coverage_map_path.with_suffix(".good_cov.fits")
+        good_coverage.writeto(output_path, overwrite=True)
+
+def estimate_minimum_num_pixels(wcs):
+    sidelength = survey_config.get("wfcam", {}).get("ccd_sidelength", None)
+    if sidelength is None:
+        raise ValueError(
+            "provide wfcam: sidelength in survey config or "
+            "provide minimum_num_pixels as kwarg in "
+            "make_good_coverage_map()"
+        )
+    pixelscale = proj_plane_pixel_scales(wcs)
+    Nx_pixels = (0.8 * sidelength / pixelscale[0])
+    Ny_pixels = (0.8 * sidelength / pixelscale[1])
+    N_pixels = int(Nx_pixels * Ny_pixels)
+    sqrt = int(np.sqrt(N_pixels))
+    logger.info(f"min pix/mosaicked hdu ~{sqrt} pix. sq.")
+    return N_pixels
+
+def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, frac=1.0):
+    # bincount is VERY fast for integer data.
+    coverage_hist = np.bincount(data.flatten())[1:] # Ignore the zero count!
+    coverage_vals = np.arange(1, len(coverage_hist)+1)
+    min_coverage = coverage_vals[ coverage_hist > minimum_num_pixels ][0]
+    min_coverage = np.ceil(frac*min_coverage)
+    minimum_coverage = int(np.max([absolute_minimum, min_coverage, 1]))
+    logger.info(f"select minimum coverage as >{minimum_coverage}")
+    return minimum_coverage
+
+def expand_zero_regions(data, step_size=2, N_steps=50):
+    mask = (data == 0)
+    old_zeros = mask.sum()
+    c = slice(step_size, -step_size)
+    h = slice(2*step_size, None)
+    l = slice(None, -2*step_size)
+    # expand areas of zeros by N_steps*step_size in each direction left right up down.
+    for i in range(N_steps):
+        mask[c,c] = (mask[c,c] + mask[c,l] + mask[c,h] + mask[l,c] + mask[h,c])
+    mask = mask.astype(bool)
+    new_zeros = mask.sum()
+    data[ mask ] = 0
+    logger.info(f"mask further {new_zeros-old_zeros:,} pix")
+    return data
+    
 
 ###=================== modify mosaics ===================###
 

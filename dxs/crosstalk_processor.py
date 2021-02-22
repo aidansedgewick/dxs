@@ -231,13 +231,41 @@ class CrosstalkProcessor:
 
 
 
+def calc_crosstalk_magnitude_coeffs(cat, band):
+    """
+    """
+
+    fig,axes = plt.subplots(2,4, figsize=(10,6))
+    axes = axes.flatten()
+
+    crosstalks = cat[ cat[f"{band}_crosstalk_flag"] > 0 ]
+
+    cat = cat[ cat[f"{band}_mag_auto"] < 50. ]
+
+    for ii,order in enumerate(range(1,9)):
+        co = cat[ abs(cat[f"{band}_crosstalk_order"]) == order ]
+        col = np.sqrt(
+            (co[f"{band}_crosstalk_ra"]-co[f"{band}_ra"])**2
+            + (co[f"{band}_crosstalk_dec"]-co[f"{band}_dec"])**2
+        )
+        axes[ii].scatter(
+            co[f"{band}_parent_mag"], co[f"{band}_mag_auto"], s=1, c=col
+        )
+
+        for yoff in [6,7,8,9,10,11,12]:
+            axes[ii].plot((0,20), (yoff, 20+yoff), color="k", ls="--", alpha=0.2)
+        axes[ii].set_xlim(6,13)
+        axes[ii].set_ylim(14,22)
+
+    return fig
+
 if __name__ == "__main__":
 
 
     star_table_path = (
         paths.input_data_path / "external/tmass/tmass_ElaisN1_stars.csv"
     )
-    star_catalog = Table.read(star_table_path, format="ascii")
+    """star_catalog = Table.read(star_table_path, format="ascii")
     star_catalog = star_catalog[ star_catalog["k_m"] < 12.0 ]
     processor = CrosstalkProcessor.from_dxs_spec("EN", 4, "K", star_catalog=star_catalog)
     crosstalks = processor.collate_crosstalks(mag_column="k_m", mag_limit=12.0)
@@ -245,8 +273,15 @@ if __name__ == "__main__":
 
     plt.scatter(star_catalog["ra"], star_catalog["dec"], color="k", marker="x", s=8)
     plt.scatter(crosstalks["ra"], crosstalks["dec"], c=abs(crosstalks["order"]), s=4)
-    plt.show()
+    plt.show()"""
 
+    cat_path = paths.get_catalog_path("SA", 0, "_cfhtls", prefix="m")
+    cat = Table.read(cat_path)
+
+    Jfig = calc_crosstalk_magnitude_coeffs(cat, "J")
+    Kfig = calc_crosstalk_magnitude_coeffs(cat, "K")
+    
+    plt.show()
 
 
 

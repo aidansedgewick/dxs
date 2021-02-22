@@ -79,7 +79,7 @@ def format_flags(config, capitalise=True, float_precision=6):
             raise ValueError(f"Don't know how to format type {type(value)}")
     return formatted_config
 
-def create_file_backups(file_list: List[Path], temp_dir: Path, verbose=True):
+def create_file_backups(file_list: List[Path], temp_dir: Path):
     if not isinstance(file_list , list):
         file_list = [file_list]
     temp_dir = Path(temp_dir)
@@ -88,9 +88,10 @@ def create_file_backups(file_list: List[Path], temp_dir: Path, verbose=True):
     for file_path in file_list:
         file_path = Path(file_path)
         new_file_path = temp_dir / file_path.name
+        if file_path == new_file_path:
+            new_file_path = temp_dir / f"copy_{filepath.name}"
         new_paths.append(new_file_path)
-        if verbose:
-            logger.info(f"backup {file_path} to {temp_dir}")
+        logger.info(f"backup {file_path} to {new_file_path}")
         shutil.copy2(file_path, new_file_path)
     return new_paths
 
@@ -128,6 +129,17 @@ def print_header(string, edge="###", newlines=3):
         columns = 80
     N = int(columns - len(string) - 2 - 2*len(edge)) // 2
     print("\n"*newlines + edge + N*"=" + f" {string} " + N*"=" + edge + "\n")
+
+def tile_parser(s):
+    init_list = s.split(",")
+    out_list = []
+    for x in init_list:
+        if "-" in x:
+            x1, x2 = x.split("-")
+            out_list.extend([ x for x in range(int(x1), int(x2) + 1) ])
+        else:
+            out_list.append(int(x))
+    return out_list
 
 def calc_mids(arr):
     return 0.5*(arr[:-1]+arr[1:])

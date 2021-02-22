@@ -128,6 +128,7 @@ class Stilts:
     def tmatch2_fits(
         cls, file1, file2, output_path, flags=None, **kwargs
     ):
+        raise NotImplementedError
         if file1 == file2:
             raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
         if file1 == output and file1.exists():
@@ -147,6 +148,42 @@ class Stilts:
         flags["out"] = output
         
         return cls("tmatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)        
+
+    @classmethod
+    def tcat_fits(
+        cls, table_list, output_path, flags=None, stilts_exe="stilts", **kwargs
+    ):
+        flags = flags or {}
+        flags["in"] = "\"" + " ".join(str(t) for t in table_list) + "\""
+        flags["ifmt"] = "fits"
+        flags["omode"] = "out"
+        flags["ofmt"] = "fits"
+        flags["out"] = output_path
+
+        return cls("tcat", flags=flags, stilts_exe=stilts_exe, **kwargs)
+    
+    @classmethod
+    def tmatch1_sky_fits(
+        cls, table_path, output_path, ra, dec, error,
+        flags=None, stilts_exe="stilts", **kwargs
+    ):
+        if table_path == output_path:
+            new_paths = create_file_backups(table_path, paths.temp_data_path)
+            table_path = new_paths[0]
+
+        flags = flags or {}
+        flags["in"] = table_path
+        flags["ifmt"] = "fits"
+        flags["omode"] = "out"
+        flags["ofmt"] = "fits"
+        flags["out"] = output_path
+        flags["matcher"] = "sky"
+        flags["values"] = "\"" + f"{ra} {dec}" + "\""
+        flags["params"] = f"{error:.8f}"
+        flags["action"] = "identify"
+
+        return cls("tmatch1", flags=flags, stilts_exe=stilts_exe, **kwargs)        
+
 
 
 

@@ -5,7 +5,7 @@ from .catalog_builder import (
     CatalogExtractor, 
     CatalogMatcher, 
     CatalogPairMatcher, 
-    combine_catalogs
+    merge_catalogs
 )
 from .crosstalk_processor import CrosstalkProcessor
 from .mosaic_builder import (

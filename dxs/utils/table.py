@@ -6,8 +6,6 @@ import numpy as np
 
 from astropy.io import fits
 from astropy.table import Table
-from astropy.wcs import WCS
-from astropy.wcs.utils import proj_plane_pixel_scales
 
 from easyquery import Query
 
@@ -35,6 +33,7 @@ def fix_column_names(
 ):
     logger.info(f"fix col names: {catalog_path.name}")
     with fits.open(catalog_path, mode="update") as catalog:
+        logger.info("file opened")
         header = catalog[hdu].header
         catalog_columns = {
             f"TTYPE{ii}": header[f"TTYPE{ii}"] for ii in range(1, header["TFIELDS"]+1)
@@ -81,11 +80,11 @@ def fix_column_names(
         repeats = {k: v for k, v in counts.items() if v > 1}
         if len(repeats) > 0:
             raise ValueError(f"Can't have repeated column names, {repeats}.")
-
-        if output_path is None or output_path == catalog_path:
-            catalog.flush()
-        else:
-            catalog.writeto(output_path, overwrite=True)
+        logger.info("writing out")
+        #if output_path is None or output_path == catalog_path:
+        #    catalog.flush()
+        #else:
+        catalog.writeto(output_path, overwrite=True)
 
 def explode_column(
     catalog_path: str, column_name: str, new_names=None, suffixes=None, remove=True
@@ -118,72 +117,18 @@ def _explode(
         table.remove_column(column_name)
         
 def remove_objects_in_bad_coverage(
-    catalog_path, 
-    coverage_map_path, 
-    coverage_column, 
-    weight_map_path=None,
-    weight_column=None,
-    N_pixels=None,
-    absolute_minimum=3, 
-    frac=1.0,
-    weight_minimum=0.7,
-    hdu=0
+    catalog_path,
+    coverage_column=None,
+    minimum_coverage=1,
 ):
-    catalog_path = Path(catalog_path)
-    coverage_map_path = Path(coverage_map_path)
-    with fits.open(coverage_map_path) as f:
-        data = f[hdu].data.astype(int)
-        # bincount is VERY fast for integer data.
-        fwcs = WCS(f[hdu].header)
-        if N_pixels is None:
-            sidelength = survey_config.get("wfcam", {}).get("ccd_sidelength", None)
-            if sidelength is None:
-                raise ValueError(
-                    "provide wfcam: sidelength in survey config or provide N_pixels in "
-                    "remove_objects_in_bad_coverage()"
-                )
-            pixelscale = proj_plane_pixel_scales(fwcs)
-            Nx_pixels = (0.9 * sidelength / pixelscale[0])
-            Ny_pixels = (0.9 * sidelength / pixelscale[1])
-            N_pixels = int(Nx_pixels * Ny_pixels)
-        
-        coverage_hist = np.bincount(data.flatten())[1:] # Ignore the zero count!
-        coverage_vals = np.arange(1, len(coverage_hist)+1)
-        logger.debug({k:v for k,v in zip(coverage_vals, coverage_hist)})
-        logger.debug(f"choose N_pixels > {N_pixels}")
-        min_coverage = coverage_vals[ coverage_hist > N_pixels ][0]
-        min_coverage = np.ceil(frac*min_coverage)
-        minimum_coverage = int(np.max([absolute_minimum, min_coverage, 1]))
-        data[data < minimum_coverage] = 0
-        if weight_map_path is not None:
-            with fits.open(weight_map_path) as weight:
-                wdat = weight[0].data
-                data[ wdat < weight_minimum ] = 0
-
-        new_image = fits.PrimaryHDU(data=data, header=f[hdu].header)
-        new_image_path = coverage_map_path.with_suffix(".good_cov.fits")
-        new_image.writeto(new_image_path, overwrite=True)
-    logger.info(f"{catalog_path.stem}: keep objects with >={minimum_coverage} stack coverage.")
-
     catalog = Table.read(catalog_path)
     clen = len(catalog)
-    if weight_column and weight_map_path:
-        queries = (
-            f"{coverage_column} >= {minimum_coverage}", 
-            f"{weight_column} >= {weight_minimum}",
-        )
-    else:
-        queries = (f"{coverage_column} >= {minimum_coverage}", )
-    print(queries)
+
+    queries = (f"{coverage_column} >= {minimum_coverage}", )
     new_catalog = Query(*queries).filter(catalog)
     nclen = len(new_catalog)
-    logger.info(f"remove {clen-nclen} objects")
-    new_catalog.write(catalog_path, overwrite=True)
-
-    
-        
-
-
+    logger.info(f"remove {clen-nclen} objects in bad coverage")
+    new_catalog.write(catalog_path, overwrite=True)    
 
 
 
