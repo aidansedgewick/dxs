@@ -61,6 +61,51 @@ To match other optical/MIR catalogs, you'll need to modify `scripts/basic_pipeli
 Should be as easy as adding a new `pair_matcher.match_catalog("path/to/catalog.fits")`
 (Adding extra kwargs as required.)
 
+You can merge the catalogs with `scripts/merge_catalogs.py`
+Provide a field, (comma-sep) tile list and band(s). If band(s) is one of J/K,
+this will merge all the tiles together into one catalog. If bands is J,K, it will merge each,
+and then do a symmetric best match between them.
+
+Adding the flag `--external [cat1] [cat2] ...` will left-join external catalogs.
+
+
+### External catalogs.
+
+There are some scripts in setup_scripts to download and process data.
+
+## panstarrs - PS1MDS
+
+These catalogs need to be copied in "manually" (as far as I am aware, 
+they are not yet publicly available).
+Then run `python3 ./setup_scripts/panstarrs_processing.py`
+
+## cfhtls
+
+For SA22 field only. Publicly availably.
+Do `bash ./setup_scripts/cfhtls.wget`
+Then `python3 ./setup_scripts/cfhtls_processing.py`
+
+Each of these will take some time...
+
+## unwise
+
+W1, W2 bands available.
+For all 4 fields - although SERVS is better (but not avail in SA22)?
+Do `python3 ./setup_scripts/unwise_processing.py`
+Will also download masks of the unwise coadds (helpful for discarding bad matches).
+
+Fairly fast.
+
+## servs (coming soon...)
+
+XMM-Newton, Elais-N1, LockmanHole.
+
+## hsc (coming soon...)
+
+XMM-Newton and Elais-N1 only.
+
+
+
 ### Analysis.
 
 to be added.

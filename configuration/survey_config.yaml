@@ -17,6 +17,12 @@ mosaics:
   max_size: [25000,25000]
   pixel_scale: 0.2 # arcsec.
 
+field_limits:
+  SA: {ra: [333.0, 336.0], dec: [-1.0, 2.0]}
+  LH: {ra: [159.0, 165.0], dec: [56.0, 60.0]}
+  EN: {ra: [239.0, 247.0], dec: [53.0, 57.0]}
+  XM: {ra: [34.0, 38.0], dec: [-5.5, -2.0]}
+
 #catalogs:
 
 masks:
@@ -41,8 +47,8 @@ ab_vega_offset:
   J: 0.91
   H: 1.39
   K: 1.85
-  w1: 2.699
-  w2: 3.339
+  W1: 2.699 # https://catalog.unwise.me/catalogs.html#bandmerged 
+  W2: 3.339
   "[3.6]": "NONE"
   "[4.5]": "NONE"
 

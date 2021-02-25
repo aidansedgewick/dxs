@@ -65,6 +65,7 @@ class MosaicBuilder:
         neighbor_stacks=None,
         swarp_config=None, 
         swarp_config_file= None,
+        prep_kwargs=None
     ):
         check_modules("swarp") # do we have swarp available?
         if isinstance(mosaic_stacks, pd.DataFrame):
@@ -96,7 +97,8 @@ class MosaicBuilder:
         self.mosaic_path = Path(mosaic_path)
         self.swarp_config = swarp_config or {}
         self.swarp_config_file = swarp_config_file or paths.config_path / "swarp/mosaic.swarp"
-    
+        self.prep_kwargs = prep_kwargs or {}    
+
         self.mosaic_dir = self.mosaic_path.parent
         self.mosaic_dir.mkdir(exist_ok=True, parents=True)
 
@@ -111,17 +113,19 @@ class MosaicBuilder:
     def from_dxs_spec(
         cls, field, tile, band, 
         include_neighbors=True,
-        prefix=None, 
-        extension=None, 
+        prefix=None,
+        extension=None,
+        add_flux_scale=True,
         swarp_config=None, 
         swarp_config_file=None, 
+        prep_kwargs=None,
     ):
         mosaic_dir = paths.get_mosaic_dir(field, tile, band)
         mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix)
         extension = f".{extension}" if extension is not None else ""
         mosaic_path = mosaic_dir / f"{mosaic_stem}{extension}.fits"
         swarp_config = swarp_config or {}
-
+        prep_kwargs = prep_kwargs or {}
         logger.info(f"mosaic for {field} {tile} {band}")
 
         # Get a list of all the stacks in this tile (ignoring band) for geometry.
@@ -142,7 +146,7 @@ class MosaicBuilder:
             swarp_config["image_size"] = size #f"{size[0]},{size[1]}"
         swarp_config["center_type"] = "MANUAL"
         swarp_config["pixelscale_type"] = "MANUAL"
-        
+        # which stacks should go into the swarp?
         mosaic_stacks = get_stack_data(field, tile, band)
         if len(mosaic_stacks) == 0:
             logger.info("No stacks to build.")
@@ -155,12 +159,17 @@ class MosaicBuilder:
             logger.info(f"including neighbors {len(neighbor_stacks)}")
         else:
             neighbor_stacks = None
+        # sort some things for preparing
+
+        normalise_exptime = prep_kwargs.get("normalise_exptime", False) # check default in HDUPreparer
+        prep_kwargs["median_magzpt"] = cls.calc_magzpt(mosaic_stacks)
         return cls(
             mosaic_stacks, 
             mosaic_path, 
             neighbor_stacks=neighbor_stacks,
             swarp_config=swarp_config, 
             swarp_config_file=swarp_config_file,
+            prep_kwargs=prep_kwargs
         )
 
     @classmethod
@@ -171,6 +180,7 @@ class MosaicBuilder:
         prefix=None, 
         swarp_config=None, 
         swarp_config_file=None, 
+        prep_kwargs=None,
     ):
         """
         similar to from_dxs_spec but uses coverage.swarp config, option to include pixel scale
@@ -182,9 +192,14 @@ class MosaicBuilder:
         }
         swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
         swarp_config.update(coverage_config)
+        prep_kwargs = prep_kwargs or {}
+        prep_kwargs["fill_value"] = 1.0
         return cls.from_dxs_spec(
             field, tile, band, prefix=prefix, include_neighbors=True,
-            extension="cov", swarp_config=swarp_config, swarp_config_file=swarp_config_file,
+            extension="cov", 
+            swarp_config=swarp_config, 
+            swarp_config_file=swarp_config_file,
+            prep_kwargs=prep_kwargs,
         )
 
     def build(self, prepare_hdus=True, n_cpus=None, **kwargs):
@@ -200,12 +215,20 @@ class MosaicBuilder:
         kwargs
             kwargs that are passed to HDUPreparer.prepare_stack() 
         """
+        if len(kwargs) > 0:
+            logger.warn(
+                "please pass all prep_kwargs at initialisation as "
+                "prep_kwargs=<dict of prep kwargs>"
+            )
+            self.prep_kwargs.update(kwargs)
         if prepare_hdus:
             if self.swarp_config_file == paths.config_path / "swarp/coverage.swarp":
-                if "value" not in kwargs:
-                    kwargs["value"] = 1.0
+                if "value" not in self.prep_kwargs:
+                    self.prep_kwargs["fill_value"] = 1.0
                     logger.info("map values for HDUs set value to 1.0")
-            hdu_list = self.prepare_all_hdus(self.stack_list, n_cpus=n_cpus, **kwargs)
+            hdu_list = self.prepare_all_hdus(
+                self.stack_list, n_cpus=n_cpus, **self.prep_kwargs
+            )
             self.write_swarp_list(hdu_list)
         else:
             self.write_swarp_list(self.stack_list)
@@ -244,7 +267,8 @@ class MosaicBuilder:
             hdu_list = []
             for ii, stack_path in enumerate(stack_list):
                 results = HDUPreparer.prepare_stack(
-                    stack_path, ccds=self.ccds_list[ii], **kwargs)
+                    stack_path, ccds=self.ccds_list[ii], **kwargs
+                )
                 hdu_list.extend(results)
         else:
             # can do many threads of stacks...
@@ -255,8 +279,7 @@ class MosaicBuilder:
             with Pool(n_cpus) as pool:
                 results = list(
                     tqdm.tqdm(
-                        pool.map(_hdu_prep_wrapper, arg_list),
-                        total=len(arg_list)
+                        pool.map(_hdu_prep_wrapper, arg_list), total=len(arg_list)
                     )    
                 )
                 #results = pool.map(_hdu_prep_wrapper, arg_list)
@@ -283,30 +306,33 @@ class MosaicBuilder:
     def add_extra_keys(self, keys=None, magzpt_inc_exptime=True):
         keys = keys or {}
         if self.mosaic_stacks is not None:
-            keys["seeing"] = (self.calc_seeing(), "median seeing of stacks, in arcsec")
+            seeing_val = self.calc_seeing(self.mosaic_stacks)
+            keys["seeing"] = (seeing_val, "median seeing of stacks, in arcsec")
             includes = "does" if magzpt_inc_exptime else "does not"
-            keys["magzpt"] = (
-                self.calc_magzpt(magzpt_inc_exptime=magzpt_inc_exptime),
-                f"median; {includes} inc. 2.5log(t_exp)"
+            magzpt_val = self.calc_magzpt(
+                self.mosaic_stacks, magzpt_inc_exptime=magzpt_inc_exptime
             )
+            keys["magzpt"] = (magzpt_val,  f"median; {includes} inc. 2.5log(t_exp)")
         branch, local_sha = get_git_info()
         keys["branch"] = (branch, "pipeline branch")
         keys["localSHA"] = (local_sha.replace("'",""), "local pipeline SHA")
         keys["pipevers"] = (0.0, "pipeline version")
         add_keys(self.mosaic_path, keys, hdu=0, verbose=True)
 
-    def calc_seeing(self,):
+    @staticmethod
+    def calc_seeing(stack_data):
         """
         Median seeing value 
         this DOESN'T include any seeing values for neighbor stacks, as they're
         only on the very edges
         """
         seeing_cols = [f"seeing_{ccd}" for ccd in survey_config["ccds"]]
-        seeing_df = self.mosaic_stacks[ seeing_cols ]
+        seeing_df = stack_data[ seeing_cols ]
         seeing = np.median(seeing_df.stack().values)
         return seeing
 
-    def calc_magzpt(self, magzpt_inc_exptime=True):
+    @staticmethod
+    def calc_magzpt(stack_data, magzpt_inc_exptime=True):
         """
         If counts per second (ie, exptime = 1), DON't include exptime.
         Else: we'll have T times more flux per obeject. so need to add 2.5log(expT)
@@ -314,27 +340,30 @@ class MosaicBuilder:
         magzpt_cols = [f"magzpt_{ccd}" for ccd in survey_config["ccds"]]
         magzpt_df = pd.DataFrame() # Try to avoid setting with copy warning...!
         if magzpt_inc_exptime:
-            exptime_col = 2.5*np.log10(self.mosaic_stacks["exptime"])
+            exptime_col = 2.5*np.log10(stack_data["exptime"])
         else:
             exptime_col = 0.
         for col in magzpt_cols:
-            magzpt_df[col] = self.mosaic_stacks[col] + exptime_col
+            magzpt_df[col] = stack_data[col] + exptime_col
         magzpt = np.median(magzpt_df.stack().values)
         return magzpt
 
 class HDUPreparer:
     def __init__(
         self, hdu, hdu_path,
-        value=None,
+        fill_value=None,
         resize=False, edges=25.0, 
         mask_sources=False, mask_header=None, mask_map=None,
-        normalise_exptime=False, exptime=None,
+        normalise_exptime=False, exptime=None, # check from_dxs_spec prep_kwargs...
         subtract_bgr=False, bgr_size=None, filter_size=1, sigma=3.0,
+        add_flux_scale=True, median_magzpt=None
     ):
         self.data = hdu.data
-        if value is not None:
-            self.data = np.random.uniform(0.9999*value, 1.0001*value, hdu.data.shape)
-            #self.data = np.full(hdu.data.shape, value)
+        if fill_value is not None:
+            self.data = np.random.uniform(
+                0.9999*fill_value, 1.0001*fill_value, hdu.data.shape
+            )
+            # slight variations from fill_value - swarp doesn't like HDU full of constant.
         self.header = hdu.header
         self.hdu_path = hdu_path
         self.resize = resize
@@ -347,10 +376,16 @@ class HDUPreparer:
         # construct header inside function, else it goes weird with Pool?
         self.mask_map = mask_map
         self.normalise_exptime = normalise_exptime
+        if normalise_exptime:
+            self.magzpt = self.header["MAGZPT"]
+        else:
+            self.magzpt = self.header["MAGZPT"] + 2.5*np.log(exptime)
         self.exptime = exptime
         self.subtract_bgr = subtract_bgr
         self.bgr_size = bgr_size
         self.sigma = sigma
+        self.add_flux_scale = add_flux_scale
+        self.median_magzpt = median_magzpt
 
         self.hdu_wcs = WCS(hdu.header)
         self.hdu_wcs.fix()
@@ -361,6 +396,19 @@ class HDUPreparer:
         self.center_coords = SkyCoord.from_pixel(
             xp=self.center[1], yp=self.center[0], wcs=self.hdu_wcs, origin=1
         )
+
+    def modify_header(self):
+        if self.add_flux_scale:
+            if self.median_magzpt is None:
+                raise ValueError(
+                    "Can't add flux scale if no median_magzpt to scale to!\n"
+                    "Either provide median_magzpt= or set add_flux_scale=False"
+                )
+        if self.median_magzpt is not None:
+            print(self.hdu_path)
+            mag_diff = self.magzpt - self.median_magzpt
+            flux_scaling = 10**(-0.4*mag_diff)
+            self.header["FLXSCALE"] = flux_scaling
 
     def prepare_hdu(self):
         if self.mask_wcs is not None:
@@ -394,7 +442,7 @@ class HDUPreparer:
             )
             self.data = cutout.data
             self.header.update(cutout.wcs.to_header())
-
+        self.modify_header()
         hdu = fits.PrimaryHDU(data=self.data, header=self.header)
         if self.hdu_path.exists():
             logger.warn(f"{self.hdu_path.stem} is being overwritten!")
@@ -439,6 +487,25 @@ class HDUPreparer:
     def prepare_stack(
         cls, stack_path, overwrite=False, hdu_prefix=None, ccds=None, **kwargs
     ):
+        """
+        class method - prepare a whole stack (ie, multi-extension fits) of HDUs.
+        returns a list of paths to prepared HDUs.
+
+        Parameters
+        ----------
+        stack_path
+            path to [multi-]extension fits that will be prep'ed.
+        overwrite
+            bool: if False, and this HDU has already been prepared, skip it.
+        hdu_prefix
+            name of hdu will be <prefix><stack_path.stem>_<ccd>.
+        ccds
+            which ccds (ie, fits extensions) in the stack to prepare? defaults to
+            whatever is in survey_config ccds.
+        **kwargs
+            any kwargs which go into initialisation of HDUPreparer.
+        """
+
         stack_path = Path(stack_path)
         results = []
         ccds = ccds or survey_config["ccds"]

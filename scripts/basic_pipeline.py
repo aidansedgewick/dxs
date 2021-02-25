@@ -111,7 +111,7 @@ if __name__ == "__main__":
         args.match_pair = True
         args.match_extras = True
 
-    check_modules(["swarp", "sex", "stilts"])
+    check_modules("swarp", "sex", "stilts")
 
     field_name = survey_config["code_to_field"][field]
     star_catalog_path = (

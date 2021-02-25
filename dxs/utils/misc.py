@@ -22,9 +22,7 @@ module_suggestions = {
     "stilts": "try   module load starlink",
 }
 
-def check_modules(modules):
-    if not isinstance(modules, list):
-        modules = [modules] # convert to list, for looping.
+def check_modules(*modules):
     missing_modules = []
     present_modules = {}
     for module in modules:
@@ -33,7 +31,7 @@ def check_modules(modules):
         if exe_path is None:
             missing_modules.append(module)
         else:
-            print(f"Using {module} at {exe_path}")
+            logger.info(f"Using {module} at {exe_path}")
     if len(missing_modules) > 0:
         suggestions = []
         for module in missing_modules:

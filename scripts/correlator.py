@@ -206,8 +206,6 @@ qp.create_plot("coords_plot")
 qp.coords_plot.plot_positions(randoms.ra, randoms.dec, s=1)
 qp.coords_plot.plot_coordinates("ra", "dec", selection=qp.to_correlate, s=1)
 
-
-
 plt.show()
 
 

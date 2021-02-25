@@ -33,7 +33,6 @@ def fix_column_names(
 ):
     logger.info(f"fix col names: {catalog_path.name}")
     with fits.open(catalog_path, mode="update") as catalog:
-        logger.info("file opened")
         header = catalog[hdu].header
         catalog_columns = {
             f"TTYPE{ii}": header[f"TTYPE{ii}"] for ii in range(1, header["TFIELDS"]+1)
@@ -80,22 +79,43 @@ def fix_column_names(
         repeats = {k: v for k, v in counts.items() if v > 1}
         if len(repeats) > 0:
             raise ValueError(f"Can't have repeated column names, {repeats}.")
-        logger.info("writing out")
         #if output_path is None or output_path == catalog_path:
         #    catalog.flush()
         #else:
         catalog.writeto(output_path, overwrite=True)
 
-def explode_column(
-    catalog_path: str, column_name: str, new_names=None, suffixes=None, remove=True
+def explode_columns_in_fits(
+    catalog_path: str, column_names: str, new_column_names=None, suffixes=None, remove=True
 ):
+    """
+    if column_names is list, then new_names should either be None, or nested list.
+    """
     catalog = Table.read(catalog_path)
-    _explode(catalog, column_name, new_names=new_names, suffixes=suffixes, remove=remove)
-    logger.info(f"explode {column_name}")
+
+    if not isinstance(column_names, list):
+        column_names = [column_names]
+    if new_column_names is None:
+        new_column_names = [None] * len(column_names)
+    elif isinstance(new_column_names, list):
+        if len(column_names) > 1:
+            if len(column_names) != len(new_names):
+                raise ValueError(
+                    "There should be the same number of column_names as"
+                    "new_column_names elements (each a list)"
+                )
+            if not all([isinstance(x, list) or x is None for x in new_column_names]):
+                raise ValueError(
+                    "if column_names is a list len>1, "
+                    + "then each of new_column_names should be a list "
+                    + "-- each with the number of columns to be exploded."
+                )
+    for column_name, new_names in zip(column_names, new_column_names):        
+        explode_column(catalog, column_name, new_names=new_names, suffixes=suffixes, remove=remove)
+        logger.info(f"explode {column_name}")
     catalog.write(catalog_path, overwrite=True)
 
 
-def _explode(
+def explode_column(
     table: Table, column_name: str, new_names=None, suffixes=None, remove=True
 ):
     col = table[column_name]
@@ -105,7 +125,7 @@ def _explode(
     N_cols = col.shape[1]
     if new_names is None:
         if suffixes is None:
-            suffixes = ["{ii}" for ii in range(N_cols)]
+            suffixes = ["_{ii}" for ii in range(N_cols)]
         assert len(suffixes) == N_cols
         new_names = [f"{column_name}_{suffix}" for suffix in suffixes]
     assert len(new_names) == N_cols

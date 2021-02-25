@@ -15,7 +15,7 @@ from easyquery import Query
 from regions import PixCoord, CirclePixelRegion
 
 from dxs import MosaicBuilder
-from dxs.utils.misc import tile_parser
+from dxs.utils.misc import tile_parser, create_file_backups, check_modules
 
 from dxs import paths
 
@@ -96,6 +96,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    check_modules("swarp")
+
     field = args.field
     tiles = tile_parser(args.tiles) # converts eg. "1,2,7-10" to [1,2,7,8,9,10]
     bands = args.bands.split()
@@ -111,12 +113,18 @@ if __name__ == "__main__":
                 logger.info(f"{use_path} not found")
             else:
                 mosaic_list.append(use_path)
-
+        mod_mosaic_list = create_file_backups(mosaic_list, temp_dir=paths.temp_data_path)
+        for mosaic_path in mod_mosaic_list:
+            print(f"mod {mosaic_path}")
+            with fits.open(mosaic_path, "update") as f:
+                rnd = np.random.uniform(-0.01, 0.01, f[0].data.shape)
+                f[0].data = f[0].data + rnd
+                f.flush()
         mask_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_mask.fits"
         config_path = paths.config_path / "swarp/coverage.swarp"
         config = {"combine_type": "max", "pixel_scale": 2.0}
         builder = MosaicBuilder(
-            mosaic_list, mask_path, swarp_config=config, swarp_config_file=config_path
+            mod_mosaic_list, mask_path, swarp_config=config, swarp_config_file=config_path
         )
         builder.build(prepare_hdus=False, n_cpus=args.n_cpus)
 
