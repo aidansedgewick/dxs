@@ -73,13 +73,13 @@ Adding the flag `--external [cat1] [cat2] ...` will left-join external catalogs.
 
 There are some scripts in setup_scripts to download and process data.
 
-## panstarrs - PS1MDS
+#### panstarrs - PS1MDS
 
 These catalogs need to be copied in "manually" (as far as I am aware, 
 they are not yet publicly available).
 Then run `python3 ./setup_scripts/panstarrs_processing.py`
 
-## cfhtls
+#### cfhtls
 
 For SA22 field only. Publicly availably.
 Do `bash ./setup_scripts/cfhtls.wget`
@@ -87,7 +87,7 @@ Then `python3 ./setup_scripts/cfhtls_processing.py`
 
 Each of these will take some time...
 
-## unwise
+#### unwise
 
 W1, W2 bands available.
 For all 4 fields - although SERVS is better (but not avail in SA22)?
@@ -96,11 +96,11 @@ Will also download masks of the unwise coadds (helpful for discarding bad matche
 
 Fairly fast.
 
-## servs (coming soon...)
+#### servs (coming soon...)
 
 XMM-Newton, Elais-N1, LockmanHole.
 
-## hsc (coming soon...)
+#### hsc (coming soon...)
 
 XMM-Newton and Elais-N1 only.
 
