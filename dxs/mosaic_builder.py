@@ -102,11 +102,14 @@ class MosaicBuilder:
         self.mosaic_dir = self.mosaic_path.parent
         self.mosaic_dir.mkdir(exist_ok=True, parents=True)
 
+        self.aux_dir = self.mosaic_dir / "aux"
+        self.aux_dir.mkdir(exist_ok=True, parents=True)
+
         string_name = str(self.mosaic_path.stem).replace(".", "_")
-        self.swarp_list_path = self.mosaic_dir / f"{string_name}_swarp_list.txt"
-        self.swarp_xml_path = self.mosaic_dir / f"{string_name}.xml"
+        self.swarp_list_path = self.aux_dir / f"{string_name}_swarp_list.txt"
+        self.swarp_xml_path = self.aux_dir / f"{string_name}.xml"
         self.swarp_run_parameters_path = (
-            self.mosaic_dir / f"{string_name}_swarp_run_parameters.json"
+            self.aux_dir / f"{string_name}_swarp_run_parameters.json"
         )
 
     @classmethod

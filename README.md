@@ -90,7 +90,7 @@ Each of these will take some time...
 #### unwise
 
 W1, W2 bands available.
-For all 4 fields - although SERVS is better (but not avail in SA22)?
+For all 4 fields - but SERVS is better? (although not avail in SA22)
 Do `python3 ./setup_scripts/unwise_processing.py`
 Will also download masks of the unwise coadds (helpful for discarding bad matches).
 

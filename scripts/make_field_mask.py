@@ -5,6 +5,7 @@ from itertools import product
 
 import numpy as np
 
+from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.table import Table
@@ -13,13 +14,23 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 
 from easyquery import Query
 from regions import PixCoord, CirclePixelRegion
+from reproject import reproject_interp
+from reproject import mosaicking
 
-from dxs import MosaicBuilder
+
 from dxs.utils.misc import tile_parser, create_file_backups, check_modules
+from dxs.utils.image import build_ds9_command
 
 from dxs import paths
 
 logger = logging.getLogger("main")
+
+mosaic_extensions = {
+    "data": ".fits", 
+    "cov": ".cov.fits", 
+    "good_cov": ".cov.good_cov.fits"
+}
+
 
 def split_int(x, side=0.25):
     """
@@ -43,7 +54,7 @@ def mask_stars_in_data(data, wcs, ra, dec, radii):
     sky_coord = SkyCoord(ra=ra, dec=dec)
     pix_coord = PixCoord.from_sky(sky_coord, wcs=wcs)
     pix_radii = radii / (pix_scale)
-    ylen, xlen = wcs.array_shape # order bc zero-indexing...
+    ylen, xlen = data.shape # order bc zero-indexing...
     #print(data.shape)
     for pix, rad in zip(pix_coord, pix_radii):
         xpix, ypix = pix.xy
@@ -78,12 +89,6 @@ def mask_stars_in_data(data, wcs, ra, dec, radii):
         data[ yslicer, xslicer ] = data[ yslicer, xslicer ] * mask
     return data
 
-mosaic_extensions = {
-    "data": ".fits", 
-    "cov": ".cov.fits", 
-    "good_cov": ".cov.good_cov.fits"
-}
-
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -91,16 +96,17 @@ if __name__ == "__main__":
     parser.add_argument("tiles")
     parser.add_argument("bands")
     parser.add_argument("--ignore_stars", action="store_true", default=False)
+    parser.add_argument("--resolution", default=2.0, type=float, required=False)
     parser.add_argument("--mosaic_type", choices=["data", "cov", "good_cov"], default="good_cov")
     parser.add_argument("--n_cpus", default=None, type=int)
 
     args = parser.parse_args()
 
-    check_modules("swarp")
-
     field = args.field
     tiles = tile_parser(args.tiles) # converts eg. "1,2,7-10" to [1,2,7,8,9,10]
-    bands = args.bands.split()
+    bands = args.bands.split(",")
+
+    output_mask_paths = []
 
     for band in bands:
         mosaic_list = []
@@ -113,51 +119,60 @@ if __name__ == "__main__":
                 logger.info(f"{use_path} not found")
             else:
                 mosaic_list.append(use_path)
-        mod_mosaic_list = create_file_backups(mosaic_list, temp_dir=paths.temp_data_path)
-        for mosaic_path in mod_mosaic_list:
-            print(f"mod {mosaic_path}")
-            with fits.open(mosaic_path, "update") as f:
-                rnd = np.random.uniform(-0.01, 0.01, f[0].data.shape)
-                f[0].data = f[0].data + rnd
-                f.flush()
-        mask_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_mask.fits"
-        config_path = paths.config_path / "swarp/coverage.swarp"
-        config = {"combine_type": "max", "pixel_scale": 2.0}
-        builder = MosaicBuilder(
-            mod_mosaic_list, mask_path, swarp_config=config, swarp_config_file=config_path
-        )
-        builder.build(prepare_hdus=False, n_cpus=args.n_cpus)
+        if len(mosaic_list) == 0:
+            logger.info("no mosaics - continue")
+            continue
 
+        input_list = []
+        for mosaic_path in mosaic_list:
+            with fits.open(mosaic_path) as mos:
+                t = (mos[0].data, WCS(mos[0].header))
+                input_list.append(t)
+            
+        wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
+            input_list, resolution = args.resolution * u.arcsec
+        )
+        logger.info("starting reprojection")
+        array_out, footprint = mosaicking.reproject_and_coadd(
+            input_list, wcs_out, shape_out=shape_out,
+            reproject_function=reproject_interp,
+            combine_function="sum"
+        )
+        logger.info("finished reprojection")
+        header = wcs_out.to_header()
+        output_hdu = fits.PrimaryHDU(data=array_out, header=header)
+        output_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_mask.fits"
+        output_hdu.writeto(output_path, overwrite=True)
+
+        output_mask_paths.append(output_path)
         if args.ignore_stars is True:
             print("Done!")
-            continue
+            continue # as we are in a loop for bands
 
         catalog_path = paths.catalogs_path / f"{field}00/m{field}00{band}.fits"
         catalog = Table.read(catalog_path)
 
-        stars = Query(f"{band}_mag_auto < 11").filter(catalog)
+        col = f"{band}_mag_auto"
+        if col not in catalog.colnames:
+            col = f"K_mag_auto"
+        stars = Query(f"{col} < 11").filter(catalog)
 
-        star_mask_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_stars_mask.fits"
+        masked_output_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_stars_mask.fits"
 
-        with fits.open(mask_path) as mask:
-            data = mask[0].data
-            mask_wcs = WCS(mask[0].header)
-            data = mask_stars_in_data(
-                data, 
-                mask_wcs, 
-                stars[f"{band}_ra"], 
-                stars[f"{band}_dec"], 
-                8*stars[f"{band}_fwhm_world"]
-            )
+        masked_array = mask_stars_in_data(
+            array_out, 
+            wcs_out, 
+            stars[f"{band}_ra"], 
+            stars[f"{band}_dec"], 
+            8*stars[f"{band}_fwhm_world"]
+        )
 
-            hdu = fits.PrimaryHDU(data=data, header=mask[0].header)
-            hdu.writeto(star_mask_path, overwrite=True)
+        hdu = fits.PrimaryHDU(data=masked_array, header=header)
+        hdu.writeto(masked_output_path, overwrite=True)
+        output_mask_paths.append(masked_output_path)
+        logger.info(f"write {masked_output_path}")
 
-
-
-
-
-
-
+ds9_cmd = build_ds9_command(output_mask_paths)
+print(f"now do:\n    {ds9_cmd}")
 
 

@@ -142,12 +142,12 @@ def remove_objects_in_bad_coverage(
     minimum_coverage=1,
 ):
     catalog = Table.read(catalog_path)
-    clen = len(catalog)
+    c_len = len(catalog)
 
     queries = (f"{coverage_column} >= {minimum_coverage}", )
     new_catalog = Query(*queries).filter(catalog)
-    nclen = len(new_catalog)
-    logger.info(f"remove {clen-nclen} objects in bad coverage")
+    nc_len = len(new_catalog)
+    logger.info(f"remove {c_len-nc_len} objects in bad coverage")
     new_catalog.write(catalog_path, overwrite=True)    
 
 

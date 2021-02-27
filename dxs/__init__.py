@@ -4,9 +4,9 @@ import yaml
 from .catalog_builder import (
     CatalogExtractor, 
     CatalogMatcher, 
-    CatalogPairMatcher, 
-    merge_catalogs
+    CatalogPairMatcher
 )
+from .catalog_merge import merge_catalogs
 from .crosstalk_processor import CrosstalkProcessor
 from .mosaic_builder import (
     MosaicBuilder, 

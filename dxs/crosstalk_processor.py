@@ -54,7 +54,8 @@ class CrosstalkProcessor:
         stack_data = get_stack_data(field, tile, band)
         stack_list = [paths.stack_data_path / f"{x}.fit" for x in stack_data["filename"]]
         if crosstalk_catalog_path is None:
-            crosstalk_catalog_dir = paths.get_catalog_dir(field, tile, band)
+            crosstalk_catalog_dir = paths.get_catalog_dir(field, tile, band) / "aux"
+            crosstalk_catalog_dir.mkdir(exist_ok=True, parents=True)
             stem = paths.get_catalog_stem(field, tile, band)
             crosstalk_catalog_path = crosstalk_catalog_dir / f"{stem}_crosstalks.fits"
         return cls(

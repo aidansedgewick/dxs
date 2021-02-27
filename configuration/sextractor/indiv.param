@@ -14,16 +14,21 @@ MAG_AUTO                 This should be kron?                                   
 MAGERR_AUTO              # rms of mag?
 FLUX_AUTO
 FLUXERR_AUTO
+KRON_RADIUS              Kron apertures in units of A or B
 FLUX_RADIUS(3)           # radius containing in 0.2, 0.5, 0.9 frac of flux.
 MAG_APER(4)              # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
 MAGERR_APER(4)           # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
-FLUX_APER(4)             # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
-FLUXERR_APER(4)          # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
+#FLUX_APER(4)             # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
+#FLUXERR_APER(4)          # Apertures in PIXELS, with (1",1.8,2",3")/(0.2"/pix)
 FWHM_WORLD               FWHM assuming a gaussian core                             [deg]
 MAG_ISO                  Isophotal magnitude                                       [mag]
 MAGERR_ISO               RMS error for isophotal magnitude                         [mag]
-FLUX_ISO                 Isophotal flux                                            [count]
-FLUXERR_ISO              RMS error for isophotal flux                              [count]
+#FLUX_ISO                 Isophotal flux                                            [count]
+#FLUXERR_ISO              RMS error for isophotal flux                              [count]
+MAG_PETRO                Petrosian-like elliptical aperture magnitude
+MAGERR_PETRO             RMS error for PETROsian magnitude
+PETRO_RADIUS             Petrosian apertures in units of A or B
+ELLIPTICITY              1 - B_IMAGE/A_IMAGE
 CLASS_STAR               S/G classifier output                                    
 ISOAREA_IMAGE 
 SNR_WIN                  Required for PSFEx - not in default file!

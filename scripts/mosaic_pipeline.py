@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 import yaml
 from argparse import ArgumentParser
@@ -74,6 +75,12 @@ if __name__ == "__main__":
         )
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
         mask_good_coverage_map(cov_builder.mosaic_path, output_path=good_cov_path)
+        try:
+            weight_path = cov_builder.mosaic_path.with_suffix(".weight.fits")
+            logger.info(f"Removing {weight_path}")
+            os.remove(weight_path)
+        except:
+            logger.warn(f"Can't remove {weight_path}")
 
     if args.masked:
         ### get segementation image to use as mask.
@@ -91,7 +98,7 @@ if __name__ == "__main__":
             sextractor_config_file=paths.config_path / f"sextractor/segmentation.sex",
             sextractor_parameter_file=paths.config_path / f"sextractor/segmentation.param",
         )
-        #extractor.extract()
+        extractor.extract()
 
         ### make masked mosaic
         logger.info(f"mask at {extractor.segmentation_mosaic_path.stem}")

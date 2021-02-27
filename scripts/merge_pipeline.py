@@ -17,7 +17,7 @@ logger = logging.getLogger("main")
 measurement_lookup = {
     "J": "K",
     "K": "J",
-    "H": None,
+    "H": "",
 }
 
 external_data = ["panstarrs", "cfhtls", "unwise"]
@@ -30,7 +30,8 @@ if __name__ == "__main__":
     parser.add_argument("tiles")
     parser.add_argument("bands")
     parser.add_argument("--output_code", action="store", default=0, type=int, required=False)
-    parser.add_argument("--skip_combine", action="store_true", default=False, required=False)
+    parser.add_argument("--skip_merge", action="store_true", default=False, required=False)
+    parser.add_argument("--include_fp", action="store_true", default=False, required=False)
     parser.add_argument(
         "--external", action="store", nargs="+", default=["panstarrs"], required=False
     )
@@ -59,8 +60,10 @@ if __name__ == "__main__":
     
     for band in bands:
         measurement_band = measurement_lookup[band]
-        combined_band = f"{band}{measurement_band}"
-            
+        if args.include_fp:
+            cat_band = f"{band}{measurement_band}"
+        else:
+            cat_band = band    
         catalog_lists = []
         for field in fields:
             catalog_list = []
@@ -68,7 +71,7 @@ if __name__ == "__main__":
             for tile in tiles:
                 catalog_dir = paths.get_catalog_dir(field, tile, band)
                 catalog_stem = paths.get_catalog_stem(
-                    field, tile, combined_band, prefix=args.prefix
+                    field, tile, cat_band, prefix=args.prefix
                 )            
                 catalog_list.append(catalog_dir / f"{catalog_stem}.fits")
                 mosaic_path = paths.get_mosaic_path(field, tile, band, extension=".cov.good_cov.fits")
@@ -88,7 +91,7 @@ if __name__ == "__main__":
             dec_col = f"{band}_dec"
             snr_col = f"{band}_snr_auto"
 
-            if args.skip_combine is False:
+            if args.skip_merge is False:
                 merge_catalogs(
                     catalog_list, mosaic_list, combined_output_path, 
                     id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col,
@@ -106,8 +109,10 @@ if __name__ == "__main__":
 
         J_output = output_catalogs[field].get("J_output")
         K_output = output_catalogs[field].get("K_output")
-        if J_output.exists() is False:
-            raise ValueError("No file {J_output} - check prefix?")
+        if not (J_output and K_output):
+            print(f"J: {J_output}\nK: {K_output}\n continue!")
+            continue
+
         print(J_output)
         print(K_output)
 

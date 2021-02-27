@@ -81,8 +81,9 @@ class Stilts:
         status = subprocess.call(self.cmd, shell=True)
         if strict:    
             if status > 0:
+                print()
                 error_msg = (
-                    f"\n\nrun: Something went wrong (status={status}).\n"
+                    f"run: Something went wrong (status={status}).\n"
                     + f"check docs? {docs_url}sun256/{self.task}.html"
                 )
                 raise StiltsError(error_msg)

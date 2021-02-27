@@ -250,7 +250,7 @@ def expand_zero_regions(data, step_size=2, N_steps=50):
     return data
     
 
-###=================== modify mosaics ===================###
+###=================== compare mosaics ===================###
 
 def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0, hdu2=0):
     path1 = Path(path1)
@@ -274,14 +274,14 @@ def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0,
     output_hdu = fits.PrimaryHDU(data=data, header=header)
     output_hdu.writeto(save_path, overwrite=True)
    
-    ds9_command = build_ds9_command([save_path, path1, path2])
+    ds9_command = build_ds9_command(save_path, path1, path2)
     print(f"view image with \n    {ds9_command} &")
 
 def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
     path1 = Path(path1)
     path2 = Path(path2)
     if save_path is None:
-        save_path = paths.temp_swarp_path / f"diff_{path1.stem}_{path2.stem}.fits"
+        save_path = paths.temp_swarp_path / f"quot_{path1.stem}_{path2.stem}.fits"
     save_path = Path(save_path)
     with fits.open(path1) as mosaic1:
         data1 = mosaic1[hdu1].data
@@ -299,7 +299,7 @@ def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
     output_hdu = fits.PrimaryHDU(data=data, header=header)
     output_hdu.writeto(save_path, overwrite=True)
    
-    ds9_command = build_ds9_command([save_path, path1, path2])
+    ds9_command = build_ds9_command(save_path, path1, path2)
     print(f"view image with \n    {ds9_command} &")
 
 
@@ -338,25 +338,31 @@ def make_normalised_weight_map(weight_path, coverage_path, output_path):
 
 ### other
 
-default_ds9_flags = ["single", "zscale", "cmap bb", "wcs skyformat degrees", "multiframe"]
+default_ds9_flags = [
+    "single", "zscale", "cmap bb", "wcs skyformat degrees", "multiframe", "lock frame wcs"    
+]
 
-def build_ds9_command(path_list, flags=None, relative=True):
-    flags = flags or default_ds9_flags 
-    if not isinstance(path_list, list):
-        path_list = [path_list]
+def build_ds9_command(*mosaic_paths, flags=None, relative=True):
+    flags = flags or default_ds9_flags
+    path_list = []
+    for x in mosaic_paths:
+        if isinstance(x, tuple) or isinstance(x, list):
+            path_list.extend(x)
+        else:
+            path_list.append(x)
     if not isinstance(flags, list):
         flags = [flags]
 
     if relative:    
         print_path_list = []
-        for path in path_list:
+        for path in mosaic_paths:
             path = Path(path)
             try:
                 print_path_list.append( path.relative_to(Path.cwd()) )
             except:
                 print_path_list.append( path )
     else:
-        print_path_list = path_list    
+        print_path_list = mosaic_paths   
     flag_str = " ".join(f"-{x}" for x in flags)
     path_str = " ".join(str(path) for path in print_path_list)
     cmd = f"ds9 {flag_str} {path_str}"

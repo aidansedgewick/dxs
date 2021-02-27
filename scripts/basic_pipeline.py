@@ -22,9 +22,11 @@ from dxs import (
     QuickPlotter
 )
 from dxs.utils.misc import check_modules, print_header
-from dxs.utils.table import fix_column_names, explode_column, remove_objects_in_bad_coverage
+from dxs.utils.table import fix_column_names, explode_columns_in_fits, remove_objects_in_bad_coverage
 from dxs.utils.image import calc_survey_area, make_normalised_weight_map
 from dxs import paths
+
+logger = logging.getLogger("main")
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
@@ -32,7 +34,7 @@ with open(survey_config_path, "r") as f:
 
 default_lookup_path = paths.config_path / "sextractor/column_name_lookup.yaml"
 
-snr_fluxes = ["AUTO", "ISO", "APER"]
+snr_fluxes = ["AUTO"] #, "ISO", "APER"]
 snr_flux_formats = {
     "flux_format": "FLUX_{flux}", 
     "flux_err_format": "FLUXERR_{flux}",
@@ -124,7 +126,7 @@ if __name__ == "__main__":
 
     ##============================Extract catalog from J-image.
     
-    Jcat_stem = paths.get_catalog_stem(field, tile, "Ji", prefix=args.prefix)
+    Jcat_stem = paths.get_catalog_stem(field, tile, "J", prefix=args.prefix, suffix="_init")
     J_ex = CatalogExtractor.from_dxs_spec(
         field, tile, "J", catalog_stem=Jcat_stem, prefix=args.prefix
     )
@@ -137,6 +139,7 @@ if __name__ == "__main__":
         J_ex.add_snr(snr_fluxes, **snr_flux_formats)     
         fix_sextractor_column_names(J_ex.catalog_path, band="J")
         J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
+        logger.info(f"initial J cat at {J_ex.catalog_path}")
         #make_normalised_weight_map(
         #    J_weight_map_path, J_coverage_map_path, J_norm_weight_map
         #)
@@ -158,19 +161,23 @@ if __name__ == "__main__":
             output_path=J_output_path, band="J"
         )
         fix_crosstalk_column_names(J_output_path, band="J")
-        explode_column(J_output_path, "J_flux_radius", suffixes=[20, 50, 90])
-        for col in ["J_flux_aper", "J_fluxerr_aper", "J_mag_aper", "J_magerr_aper"]:
-            explode_column(J_output_path, col, suffixes=[10, 18, 20, 30], remove=True)
+        explode_columns_in_fits(J_output_path, "J_flux_radius", suffixes=[20, 50, 90])
+        J_aper_cols = ["J_mag_aper", "J_magerr_aper"] #"J_flux_aper", "J_fluxerr_aper", 
+        explode_columns_in_fits(
+            J_output_path, J_aper_cols, suffixes=[10, 18, 20, 30], remove=True
+        )
         remove_objects_in_bad_coverage(J_output_path, coverage_column="J_coverage")
+        logger.info(f"xtalk-matched J cat at {J_output_path}")
 
     ## Now do K-forced photometry from J image.
     JKfp_ex = CatalogExtractor.from_dxs_spec(
         field, tile, "J", measurement_band="K", prefix=args.prefix
     )
     if args.extract:
-        print_header("J ap fp on K")
+        print_header("K forced from J apers")
         JKfp_ex.extract()
         fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="_Jfp")
+        logger.info(f"K forced from J apers at {JKfp_ex.catalog_path}")
     # stick them together.
     Jfp_output_dir = paths.get_catalog_dir(field, tile, "J")
     Jfp_combined_stem = paths.get_catalog_stem(field, tile, "JK", prefix=args.prefix)
@@ -184,13 +191,12 @@ if __name__ == "__main__":
             JKfp_ex.catalog_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
         )
         fix_column_names(Jfp_output_path, column_lookup={"Separation": "Jfp_separation"})
-
-
+        logger.info(f"joined J and K forced at {Jfp_output_path}")
 
 
 
     ##=========================Extract catalog from K-image.
-    Kcat_stem = paths.get_catalog_stem(field, args.tile, "Ki", prefix=args.prefix) 
+    Kcat_stem = paths.get_catalog_stem(field, args.tile, "K", prefix=args.prefix, suffix="_init") 
     K_ex = CatalogExtractor.from_dxs_spec(
         field, tile, "K", catalog_stem=Kcat_stem, prefix=args.prefix
     )
@@ -208,6 +214,7 @@ if __name__ == "__main__":
         #)
         #K_ex.add_map_value(K_norm_weight_map, "K_norm_weight", ra="K_ra", dec="K_dec")
         K_ex.add_column({"K_tile": args.tile})
+        logger.info(f"initial K cat at {K_ex.catalog_path}")
     ## Match its crosstalks
     K_xproc = CrosstalkProcessor.from_dxs_spec(
         field, tile, "K", star_catalog.copy(), n_cpus=args.n_cpus
@@ -223,19 +230,23 @@ if __name__ == "__main__":
             K_ex.catalog_path, ra="K_ra", dec="K_dec", output_path=K_output_path, 
         )
         fix_crosstalk_column_names(K_output_path, band="K")
-        explode_column(K_output_path, "K_flux_radius", suffixes=[20, 50, 90])
-        for col in ["K_flux_aper", "K_fluxerr_aper", "K_mag_aper", "K_magerr_aper"]:
-            explode_column(K_output_path, col, suffixes=[10, 18, 20, 30], remove=True)
+        explode_columns_in_fits(K_output_path, "K_flux_radius", suffixes=[20, 50, 90])
+        K_aper_cols = ["K_mag_aper", "K_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
+        explode_columns_in_fits(
+            K_output_path, K_aper_cols, suffixes=[10, 18, 20, 30], remove=True
+        )
         remove_objects_in_bad_coverage(K_output_path, coverage_column="K_coverage")
-            
+        logger.info(f"xtalk-matched K cat at {K_output_path}")
+
     ## Now do K-forced photometry from J image.
     KJfp_ex = CatalogExtractor.from_dxs_spec(
         field, tile, "K", measurement_band="J", prefix=args.prefix
     )
     if args.extract:
-        print_header("K ap fp on J")
+        print_header("J forced from K apers")
         KJfp_ex.extract()
         fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="_Kfp")
+        logger.info(f"J forced from K apers at {KJfp_ex.catalog_path}")
     ## stick them together.
     Kfp_output_dir = paths.get_catalog_dir(field, tile, "K")
     Kfp_combined_stem = paths.get_catalog_stem(field, tile, "KJ", prefix=args.prefix)
@@ -248,6 +259,7 @@ if __name__ == "__main__":
             KJfp_ex.catalog_path, ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
         )
         fix_column_names(Kfp_output_path, column_lookup={"Separation": "Kfp_separation"})
+        logger.info(f"joined J and K forced at {Kfp_output_path}")
 
     ##======================== extract H
 
@@ -262,7 +274,7 @@ if __name__ == "__main__":
         remove_objects_in_bad_coverage(H_ex.catalog_path, coverage_column="H_coverage")
         H_ex.add_column({"H_tile": args.tile})
 
-
+    """
     ##===========================Match pair of outputs.
 
     pair_output_stem = paths.get_catalog_stem(field, tile, "", prefix=args.prefix)
@@ -320,6 +332,8 @@ if __name__ == "__main__":
         ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
         pairfp_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=2.0)
         pairfp_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
+
+    """
 
     """
     # Make some quick plots.

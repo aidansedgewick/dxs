@@ -47,8 +47,9 @@ def create_all_paths():
 
     runner_path.mkdir(exist_ok=True, parents=True)
 
-def get_mosaic_stem(field, tile, band, prefix=None):
+def get_mosaic_stem(field, tile, band, prefix=None, suffix=None):
     prefix = prefix or ""
+    suffix = suffix or ""
     return f"{prefix}{field}{tile:02d}{band}"
 
 def get_mosaic_dir(field, tile, band):
@@ -59,22 +60,27 @@ def get_mosaic_path(field, tile, band, prefix=None, extension=".fits"):
     mosaic_stem = get_mosaic_stem(field, tile, band, prefix=prefix)
     return mosaic_dir / f"{mosaic_stem}{extension}"
 
-def get_catalog_stem(field, tile, detection_band, measurement_band=None, prefix=None):
+def get_catalog_stem(
+    field, tile, detection_band, measurement_band=None, prefix=None, suffix=None
+):
     prefix = prefix or ""
     if measurement_band is not None:
         measurement_band = f"{measurement_band}fp"
     measurement_band = measurement_band or ''
-    return f"{prefix}{field}{tile:02d}{detection_band}{measurement_band}"
+    suffix = suffix or ""
+    return f"{prefix}{field}{tile:02d}{detection_band}{measurement_band}{suffix}"
 
 def get_catalog_dir(field, tile, detection_band):
     return catalogs_path / get_catalog_stem(field, tile, "")
 
 def get_catalog_path(
-    field, tile, detection_band, measurement_band=None, prefix=None, extension=".fits"
+    field, tile, detection_band, measurement_band=None, 
+    prefix=None, suffix=None, extension=".fits"
 ):
     catalog_dir = get_catalog_dir(field, tile, detection_band)
     catalog_stem = get_catalog_stem(
-        field, tile, detection_band, measurement_band=measurement_band, prefix=prefix
+        field, tile, detection_band, measurement_band=measurement_band, 
+        prefix=prefix, suffix=suffix
     )
     return catalog_dir / f"{catalog_stem}{extension}"
 
