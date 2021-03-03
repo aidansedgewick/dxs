@@ -64,8 +64,8 @@ class MosaicBuilder:
         mosaic_path,
         neighbor_stacks=None,
         swarp_config=None, 
-        swarp_config_file= None,
-        prep_kwargs=None
+        swarp_config_file=None,
+        hdu_prep_kwargs=None
     ):
         check_modules("swarp") # do we have swarp available?
         if isinstance(mosaic_stacks, pd.DataFrame):
@@ -97,7 +97,7 @@ class MosaicBuilder:
         self.mosaic_path = Path(mosaic_path)
         self.swarp_config = swarp_config or {}
         self.swarp_config_file = swarp_config_file or paths.config_path / "swarp/mosaic.swarp"
-        self.prep_kwargs = prep_kwargs or {}    
+        self.hdu_prep_kwargs = hdu_prep_kwargs or {}    
 
         self.mosaic_dir = self.mosaic_path.parent
         self.mosaic_dir.mkdir(exist_ok=True, parents=True)
@@ -121,14 +121,14 @@ class MosaicBuilder:
         add_flux_scale=True,
         swarp_config=None, 
         swarp_config_file=None, 
-        prep_kwargs=None,
+        hdu_prep_kwargs=None,
     ):
         mosaic_dir = paths.get_mosaic_dir(field, tile, band)
         mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix)
         extension = f".{extension}" if extension is not None else ""
         mosaic_path = mosaic_dir / f"{mosaic_stem}{extension}.fits"
         swarp_config = swarp_config or {}
-        prep_kwargs = prep_kwargs or {}
+        hdu_prep_kwargs = hdu_prep_kwargs or {}
         logger.info(f"mosaic for {field} {tile} {band}")
 
         # Get a list of all the stacks in this tile (ignoring band) for geometry.
@@ -162,17 +162,24 @@ class MosaicBuilder:
             logger.info(f"including neighbors {len(neighbor_stacks)}")
         else:
             neighbor_stacks = None
-        # sort some things for preparing
 
-        normalise_exptime = prep_kwargs.get("normalise_exptime", False) # check default in HDUPreparer
-        prep_kwargs["median_magzpt"] = cls.calc_magzpt(mosaic_stacks)
+        #=========== sort some things for preparing ============#
+        normalise_exptime = hdu_prep_kwargs.get("normalise_exptime", False) # check default in HDUPreparer
+        if normalise_exptime:
+            magzpt_inc_exptime = False # ie, if counts/s img, no need to account!
+        else:
+            magzpt_inc_exptime = True
+        hdu_prep_kwargs["median_magzpt"] = cls.calc_magzpt(
+            mosaic_stacks, magzpt_inc_exptime=magzpt_inc_exptime
+        )
+        hdu_prep_kwargs["add_flux_scale"] = add_flux_scale
         return cls(
             mosaic_stacks, 
             mosaic_path, 
             neighbor_stacks=neighbor_stacks,
             swarp_config=swarp_config, 
             swarp_config_file=swarp_config_file,
-            prep_kwargs=prep_kwargs
+            hdu_prep_kwargs=hdu_prep_kwargs
         )
 
     @classmethod
@@ -183,11 +190,12 @@ class MosaicBuilder:
         prefix=None, 
         swarp_config=None, 
         swarp_config_file=None, 
-        prep_kwargs=None,
+        hdu_prep_kwargs=None,
     ):
         """
-        similar to from_dxs_spec but uses coverage.swarp config, option to include pixel scale
-        Value should be set to 1
+        similar to from_dxs_spec but uses coverage.swarp config, 
+        option to include pixel scale
+        fill_alue should be set to 1
         """
         swarp_config = swarp_config or {}
         coverage_config = {
@@ -195,14 +203,15 @@ class MosaicBuilder:
         }
         swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
         swarp_config.update(coverage_config)
-        prep_kwargs = prep_kwargs or {}
-        prep_kwargs["fill_value"] = 1.0
+        hdu_prep_kwargs = hdu_prep_kwargs or {}
+        hdu_prep_kwargs["fill_value"] = 1.0
         return cls.from_dxs_spec(
             field, tile, band, prefix=prefix, include_neighbors=True,
             extension="cov", 
+            add_flux_scale=False,
             swarp_config=swarp_config, 
             swarp_config_file=swarp_config_file,
-            prep_kwargs=prep_kwargs,
+            hdu_prep_kwargs=hdu_prep_kwargs,
         )
 
     def build(self, prepare_hdus=True, n_cpus=None, **kwargs):
@@ -220,17 +229,13 @@ class MosaicBuilder:
         """
         if len(kwargs) > 0:
             logger.warn(
-                "please pass all prep_kwargs at initialisation as "
-                "prep_kwargs=<dict of prep kwargs>"
+                "please pass all hdu_prep_kwargs at initialisation as "
+                "hdu_prep_kwargs=<dict of prep kwargs>"
             )
-            self.prep_kwargs.update(kwargs)
+            self.hdu_prep_kwargs.update(kwargs)
         if prepare_hdus:
-            if self.swarp_config_file == paths.config_path / "swarp/coverage.swarp":
-                if "value" not in self.prep_kwargs:
-                    self.prep_kwargs["fill_value"] = 1.0
-                    logger.info("map values for HDUs set value to 1.0")
             hdu_list = self.prepare_all_hdus(
-                self.stack_list, n_cpus=n_cpus, **self.prep_kwargs
+                self.stack_list, n_cpus=n_cpus, **self.hdu_prep_kwargs
             )
             self.write_swarp_list(hdu_list)
         else:
@@ -238,8 +243,8 @@ class MosaicBuilder:
         config = self.build_swarp_config()
         config["nthreads"] = n_cpus or 1    
         config.update(self.swarp_config)
-        if not os.isatty(0):
-            config["verbose_type"] = "quiet" # If running on a batch, prevent spewing output.
+        #if not os.isatty(0):
+        #    config["verbose_type"] = "quiet" # If running on a batch, prevent spewing output.
         config = format_flags(config)
         self.swarp = Astromatic(
             "SWarp", 
@@ -349,6 +354,7 @@ class MosaicBuilder:
         for col in magzpt_cols:
             magzpt_df[col] = stack_data[col] + exptime_col
         magzpt = np.median(magzpt_df.stack().values)
+        logger.info(f"magzpt: {magzpt}; inc. exptime: {magzpt_inc_exptime}")
         return magzpt
 
 class HDUPreparer:
@@ -357,7 +363,7 @@ class HDUPreparer:
         fill_value=None,
         resize=False, edges=25.0, 
         mask_sources=False, mask_header=None, mask_map=None,
-        normalise_exptime=False, exptime=None, # check from_dxs_spec prep_kwargs...
+        normalise_exptime=False, exptime=None, # check from_dxs_spec hdu_prep_kwargs...
         subtract_bgr=False, bgr_size=None, filter_size=1, sigma=3.0,
         add_flux_scale=True, median_magzpt=None
     ):
@@ -368,7 +374,7 @@ class HDUPreparer:
             )
             # slight variations from fill_value - swarp doesn't like HDU full of constant.
         self.header = hdu.header
-        self.hdu_path = hdu_path
+        self.hdu_path = Path(hdu_path)
         self.resize = resize
         self.edges = edges
         self.mask_sources = mask_sources
@@ -376,13 +382,15 @@ class HDUPreparer:
             self.mask_wcs = WCS(mask_header)
         else:
             self.mask_wcs = None
-        # construct header inside function, else it goes weird with Pool?
+        # construct wcs inside init func, else it goes weird with Pool?
         self.mask_map = mask_map
         self.normalise_exptime = normalise_exptime
-        if normalise_exptime:
-            self.magzpt = self.header["MAGZPT"]
-        else:
-            self.magzpt = self.header["MAGZPT"] + 2.5*np.log(exptime)
+        self.magzpt = self.header.get("MAGZPT", None)
+        if self.magzpt is None:
+            logger.warn(f"MAGZPT for {self.hdu_path.stem} not found - set to {median_magzpt}")
+            self.magzpt = median_magzpt
+        if normalise_exptime is False:
+            self.magzpt = self.magzpt + 2.5*np.log10(exptime) # log10!!!!
         self.exptime = exptime
         self.subtract_bgr = subtract_bgr
         self.bgr_size = bgr_size
@@ -408,10 +416,10 @@ class HDUPreparer:
                     "Either provide median_magzpt= or set add_flux_scale=False"
                 )
         if self.median_magzpt is not None:
-            print(self.hdu_path)
             mag_diff = self.magzpt - self.median_magzpt
             flux_scaling = 10**(-0.4*mag_diff)
             self.header["FLXSCALE"] = flux_scaling
+            logger.info(f"flxscl {self.hdu_path.stem} {flux_scaling:.2f}")
 
     def prepare_hdu(self):
         if self.mask_wcs is not None:

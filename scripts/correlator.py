@@ -25,13 +25,13 @@ logger = logging.getLogger("main")
 
 field = "SA"
 
-nir_mag_type = "aper_30"
+nir_mag_type = "aper_20"
 nir_tot_mag_type = "auto"
-opt_mag_type = "aper_3"
+opt_mag_type = "aper_30" # ps use aper_18 or aper_30, cfhtls use aper_2 or aper_3.
 
-gmag = f"G_mag_{opt_mag_type}"
-imag = f"I_mag_{opt_mag_type}"
-zmag = f"Z_mag_{opt_mag_type}"
+gmag = f"g_mag_{opt_mag_type}"
+imag = f"i_mag_{opt_mag_type}"
+zmag = f"z_mag_{opt_mag_type}"
 Jmag = f"J_mag_{nir_mag_type}"
 Kmag = f"K_mag_{nir_mag_type}"
 Ktot_mag = f"K_mag_{nir_tot_mag_type}"
@@ -49,7 +49,7 @@ ic = 0.02
 
 ###================= start =================###
 
-catalog_path = paths.catalogs_path / f"{field}00/m{field}00_cfhtls.fits"
+catalog_path = paths.catalogs_path / f"{field}00/sm{field}00_panstarrs.fits"
 #catalog = Table.read(catalog_path)
 
 N_tiles = survey_config.get("tiles_per_field").get(field, 12)
@@ -61,7 +61,7 @@ lao_number_counts_path = paths.input_data_path / "plotting/lao_AB_number_counts.
 qp = QuickPlotter.from_fits(
     catalog_path, 
     #"-1.0 < dec", "dec < 1.6", "332.2 < ra", "ra < 333.9", 
-    f"{Jmag} < 30.", f"{Kmag} < 30.", f"{imag} < 30.", f"{gmag} < 30.", f"{zmag} < 30."
+    f"{Jmag} < 30.", f"{Kmag} < 30."#, f"{imag} < 30."#, f"{gmag} < 30.", f"{zmag} < 30."
 )
 qp.full_catalog[imag] = qp.full_catalog[imag].filled(99)
 
@@ -77,7 +77,7 @@ dec_limits = calc_range(qp.full_catalog["dec"])
 optical_mask_path = paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"
 J_mask_path = paths.masks_path / f"{field}_J_good_cov_stars_mask.fits"
 K_mask_path = paths.masks_path / f"{field}_K_good_cov_stars_mask.fits"
-mask_list = [J_mask_path, K_mask_path]#, optical_mask_path]
+mask_list = [J_mask_path, K_mask_path, optical_mask_path]
 
 #catalog_mask = objects_in_coverage(mask_list, qp.full_catalog["ra"], qp.full_catalog["dec"])
 #qp.full_catalog = qp.full_catalog[ catalog_mask ]
@@ -86,10 +86,9 @@ nir_area = calc_survey_area(
     [J_mask_path, K_mask_path], ra_limits=ra_limits, dec_limits=dec_limits
 )
 opt_area = calc_survey_area(
-    [J_mask_path, K_mask_path],#, optical_mask_path],
+    [J_mask_path, K_mask_path, optical_mask_path],
     ra_limits=ra_limits, dec_limits=dec_limits
 )
-print("loaded")
 qp.remove_crosstalks(catalog=qp.full_catalog)
 #qp.catalog[imag] -= 0.39 # fix bc. incorrectly converted to Vega from AB.[
 
@@ -104,20 +103,25 @@ qp.catalog[Ktot_mag] = vega_to_ab(qp.catalog[Ktot_mag], band="K")
 qp.create_selection("gals", f"{Jmag}-0.91-({Kmag}-1.85) > 1.0")
 qp.create_selection(
     "eros",
-    f"{imag} - {Kmag} > 3.05",
-    f"{Kmag} > 14", 
+    f"{imag} - {Kmag} > 2.95",
+    f"{Kmag} > 19", 
     f"{imag} < 25.0",
     #f"i_flux_{opt_mag_type} < 10**10",
-    catalog="catalog",
+    catalog="gals",
 )
 qp.create_selection(
     "sf_gzK",
     f"({zmag}-{Kmag}) -1.27*({gmag}-{zmag}) >= -0.022",
+    f"{zmag} < 50.",
+    f"{gmag} < 50.",
     catalog="gals"
 )
 qp.create_selection(
     "pe_gzK",
-    f"({zmag}-{Kmag}) -1.27*({gmag}-{zmag}) < -0.022", f"{zmag}-{Kmag}>2.55",
+    f"({zmag}-{Kmag}) -1.27*({gmag}-{zmag}) < -0.022", 
+    f"{zmag}-{Kmag}>2.55",
+    f"{zmag} < 50.",
+    f"{gmag} < 50.",
     catalog="gals"
 )
 qp.create_selection(
@@ -175,7 +179,7 @@ qp.num_density.axes.scatter(
     jwk["Kmag"].values, jwk["galaxies"].values, marker="o", color="k", label="jwk gal"
 )
 qp.num_density.axes.scatter(
-    jwk["Kmag"].values, jwk["ero295_hsc"].values, marker="x", color="k", label="jwk ero295"
+    jwk["Kmag"].values, jwk["ero295_ps"].values, marker="x", color="k", label="jwk ero295"
 )
 qp.num_density.axes.semilogy()
 qp.num_density.axes.legend()
@@ -246,11 +250,28 @@ ax.plot(rr.rnom/3600., rr.npairs, label="rr counts")
 ax.legend()
 ax.loglog()
 
+lc1 = 0.9*len(qp.to_correlate["ra"])
+lc2 = len(randoms.ra)
+
+ndd = dd.npairs/(0.5*lc1*(lc1-1))
+ndr = dr.npairs/(lc1*lc2)
+nrr = rr.npairs/(0.5*lc2*(lc2-1))
+
+fig, ax = plt.subplots()
+ax.plot(dd.rnom/3600., ndd, label="<dd>")
+ax.plot(dr.rnom/3600., ndr, label="<dr>")
+ax.plot(rr.rnom/3600., nrr, label="<rr>")
+ax.legend()
+ax.loglog()
+
+ls2 = (ndd - 2.0*ndr + nrr) / nrr
+
 fig, ax = plt.subplots()
 #ax.plot(dd.rnom/3600., xi)
 ax.plot(dd.rnom/3600., xi, color="C0", marker="x", label="naive")
 ax.plot(dd.rnom/3600., xi + ic, color="C0", marker="x", ls="--", label="naive + ic")
 ax.plot(dd.rnom/3600., xi_ls, color="C1", marker="^", label="LS est.")
+ax.plot(dd.rnom/3600., ls2, color="C2", label="fake")
 ax.scatter(jwk["x"], jwk["w"], s=10, color="k", label="Kim+ 2011")
 ax.legend()
 ax.loglog()

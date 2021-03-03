@@ -16,7 +16,6 @@ from astropy.wcs import WCS
 from astromatic_wrapper.api import Astromatic
 from easyquery import Query
 
-from dxs.crosstalk_processor import CrosstalkProcessor
 #from dxs.mosaic_builder import get_mosaic_dir, get_mosaic_stem
 from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
@@ -47,8 +46,15 @@ class CatalogExtractor:
     """
 
     def __init__(
-        self, detection_mosaic_path, measurement_mosaic_path=None, catalog_path=None,
-        sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
+        self, 
+        detection_mosaic_path, 
+        measurement_mosaic_path=None, 
+        weight_path=None,
+        use_weight=True,
+        catalog_path=None,
+        sextractor_config=None, 
+        sextractor_config_file=None, 
+        sextractor_parameter_file=None,
     ):
         check_modules("sex")
         self.detection_mosaic_path = Path(detection_mosaic_path)
@@ -63,6 +69,10 @@ class CatalogExtractor:
         if catalog_path is None:
             catalog_path = Path.cwd() / f"{d_stem}{m_stem}.fits"
         self.catalog_path = Path(catalog_path)
+        self.use_weight = use_weight
+        if weight_path is None:
+            weight_path = self.detection_mosaic_path.with_suffix(".weight.fits")
+        self.weight_path = weight_path
 
         self.aux_dir = catalog_path.parent / "aux"
         self.aux_dir.mkdir(exist_ok=True, parents=True)
@@ -163,7 +173,8 @@ class CatalogExtractor:
         config["checkimage_type"] = "SEGMENTATION"
         config["checkimage_name"] = self.segmentation_mosaic_path
         config["weight_type"] = "background"
-        config["weight_image"] = self.detection_mosaic_path.with_suffix(".weight.fits")
+        if self.use_weight:
+            config["weight_image"] = self.weight_path
         with fits.open(self.detection_mosaic_path) as mosaic:
             header = mosaic[0].header
             config["seeing_fwhm"] = header["SEEING"]
@@ -499,17 +510,7 @@ if __name__ == "__main__":
     star_table_path = (
         paths.input_data_path / "external/tmass/tmass_ElaisN1_stars.csv"
     )
-    star_catalog = Table.read(star_table_path, format="ascii")
-    star_catalog = star_catalog[ star_catalog["k_m"] < 12.0 ]
 
-    processor = CrosstalkProcessor.from_dxs_spec("EN", 4, "K", star_catalog)
-    crosstalk_catalog_path = paths.temp_data_path / "EN04K_crosstalks.fits"
-    #processor.collate_crosstalks(save_path=crosstalk_catalog_path)
-    processor.match_crosstalks_to_catalog(
-        extractor.catalog_path, ra="X_WORLD", dec="Y_WORLD", error=1.0,
-        crosstalk_catalog_path=crosstalk_catalog_path
-    )
-    
 
 
 

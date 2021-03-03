@@ -30,59 +30,58 @@ survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
-logger = logging.getLogger("main")
+logger = logging.getLogger("mosaic_pipeline")
 
-if __name__ == "__main__":
-    
-    parser = ArgumentParser()
-    parser.add_argument("field")
-    parser.add_argument("tile", type=int)
-    parser.add_argument("band")
-    parser.add_argument("--n_cpus", type=int)
-    parser.add_argument("--initial", action="store_true", default=False)
-    parser.add_argument("--coverage", action="store_true", default=False)
-    parser.add_argument("--masked", action="store_true", default=False)
 
-    args = parser.parse_args()
-    spec = (args.field, args.tile, args.band)
+def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, masked=False):
+    if not any([initial, coverage, masked]):
+        initial, coverage, masked = True, True, True
+    mosaic_types = {"initial": initial, "coverage": coverage, "masked": masked}
+    spec = (field, tile, band)
 
-    logger.info(f"Mosaic for {spec}, use {args.n_cpus} threads")
+    logger.info(f"Mosaics for {spec}, use {n_cpus} threads")
+    logger.info(f"create mosaics: {[k for k,v in mosaic_types.items() if v]}")
     check_modules("swarp", "sex")
 
-    builder = MosaicBuilder.from_dxs_spec(*spec, prefix="s")
-    prep_kwargs = {"hdu_prefix": f"{builder.mosaic_path.stem}_"}
+    stem = paths.get_mosaic_stem(*spec)
+    prep_kwargs = {"hdu_prefix": f"{stem}_i"}
+    builder = MosaicBuilder.from_dxs_spec(*spec, prefix="s", hdu_prep_kwargs=prep_kwargs)
+
     if builder is None: # ie, if there are no stacks to build
         logger.info("Builder is None. Exiting")
-        sys.exit()
-    if args.initial:
+        return None
+    if initial:
         print_header("make initial mosaic")
-        builder.build(n_cpus=args.n_cpus)
+        builder.build(n_cpus=n_cpus)
         builder.add_extra_keys()
         try:
             with fits.open(builder.mosaic_path) as f:
                 header = f[0].header # check we can open the file!
             with open(builder.swarp_list_path) as f:
-                l = f.read().splitlines()
+                hdu_list = f.read().splitlines()
+            remove_temp_data(hdu_list)
         except Exception as e:
             logger.warn(f"during delete temp: {e}")
             pass
 
-    if args.coverage:
+    if coverage:
         print_header("make coverage mosaic")
         coverage_swarp_config = {
             "center": builder.swarp_config["center"], # don't calculate twice!
             "image_size": builder.swarp_config["image_size"], # don't calculate twice!
         }
-        coverage_prep_kwargs = {"hdu_prefix": f"{builder.mosaic_path.stem}_u"}
+        coverage_prep_kwargs = {"hdu_prefix": f"{stem}_u"}
         pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
-        cov_builder = MosaicBuilder.coverage_from_dxs_spec(*spec, pixel_scale=pixel_scale)
-        cov_builder.build(n_cpus=args.n_cpus)
+        cov_builder = MosaicBuilder.coverage_from_dxs_spec(
+            *spec, pixel_scale=pixel_scale, hdu_prep_kwargs=coverage_prep_kwargs,
+        )
+        cov_builder.build(n_cpus=n_cpus)
         cov_builder.add_extra_keys() 
         scale_mosaic(
             cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
         )
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
-        mask_good_coverage_map(cov_builder.mosaic_path, output_path=good_cov_path)
+        make_good_coverage_map(cov_builder.mosaic_path, output_path=good_cov_path)
         try:
             weight_path = cov_builder.mosaic_path.with_suffix(".weight.fits")
             logger.info(f"Removing {weight_path}")
@@ -94,14 +93,13 @@ if __name__ == "__main__":
             with fits.open(cov_builder.mosaic_path) as f:
                 header = f[0].header # check we can open the file!
             with open(cov_builder.swarp_list_path) as f:
-                l = f.read().splitlines()
+                hdu_list = f.read().splitlines()
+            remove_temp_data(hdu_list)
         except Exception as e:
             logger.warn(f"during delete temp: {e}")
             pass
                 
-                
-
-    if args.masked:
+    if masked:
         ### get segementation image to use as mask.
         print_header("segment to get mask")
         seg_name = paths.get_mosaic_stem(*spec)
@@ -113,6 +111,7 @@ if __name__ == "__main__":
         }
         extractor = CatalogExtractor.from_dxs_spec(
             *spec, 
+            prefix="s",
             sextractor_config=seg_config, 
             sextractor_config_file=paths.config_path / f"sextractor/segmentation.sex",
             sextractor_parameter_file=paths.config_path / f"sextractor/segmentation.param",
@@ -139,10 +138,32 @@ if __name__ == "__main__":
             "overwrite": False,
         }
         masked_builder = MosaicBuilder.from_dxs_spec(
-            *spec, prefix="sm", swarp_config=masked_swarp_config, prep_kwargs=masked_prep_kwargs
+            *spec, prefix="sm", 
+            swarp_config=masked_swarp_config, 
+            hdu_prep_kwargs=masked_prep_kwargs
         )
         if masked_builder is None:
             sys.exit()
-        masked_builder.build(n_cpus=args.n_cpus,)
+        masked_builder.build(n_cpus=n_cpus,)
         masked_builder.add_extra_keys(magzpt_inc_exptime=False)
+
+if __name__ == "__main__":
+    
+    parser = ArgumentParser()
+    parser.add_argument("field")
+    parser.add_argument("tile", type=int)
+    parser.add_argument("band")
+    parser.add_argument("--n_cpus", type=int)
+    parser.add_argument("--initial", action="store_true", default=False)
+    parser.add_argument("--coverage", action="store_true", default=False)
+    parser.add_argument("--masked", action="store_true", default=False)
+
+    args = parser.parse_args()
+
+    mosaic_pipeline(
+        args.field, args.tile, args.band, n_cpus=args.n_cpus, 
+        initial=args.initial, coverage=args.coverage, masked=args.masked
+    )
+
+
     

@@ -1,9 +1,9 @@
 # system
 scheduler: slurm
 account: durham
-queue: cordelia
-cpus_per_node: 1
-max_time: 02:00:00
+queue: cosma
+cpus_per_node: 16
+max_time: 0-16:00:00
 email: False
 
 extra_header_lines: []

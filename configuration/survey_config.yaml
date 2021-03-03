@@ -41,16 +41,16 @@ help:
 ab_vega_offset:
   g: -0.08
   z: 0.16
-  i: 0.37
+  i: 0.39
   z: 0.54
   y: 0.634
-  J: 0.91
+  J: 0.938
   H: 1.39
-  K: 1.85
+  K: 1.900
   W1: 2.699 # https://catalog.unwise.me/catalogs.html#bandmerged 
   W2: 3.339
-  "[3.6]": "NONE"
-  "[4.5]": "NONE"
+  "[3.6]": 2.820
+  "[4.5]": 3.290
 
 zeropoint_flux:
   g: 3991.0

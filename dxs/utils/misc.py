@@ -128,6 +128,22 @@ def print_header(string, edge="###", newlines=3):
     N = int(columns - len(string) - 2 - 2*len(edge)) // 2
     print("\n"*newlines + edge + N*"=" + f" {string} " + N*"=" + edge + "\n")
 
+def remove_temp_data(file_list):
+    if not isinstance(file_list, list):
+        file_list = [file_list]
+    for x in file_list:
+        if "temp_data" not in str(x):
+            logger.info(f"remove: {x} does not contain 'temp_data' - refusing to remove!")
+            return None
+    logger.info("deleting temp HDUs...")
+    total_deleted = 0
+    for x in file_list:
+        if Path(x).exists():        
+            os.remove(x)
+            total_deleted += 1
+    logger.info(f"deleted {total_deleted} temp HDUs")
+    
+
 def tile_parser(s):
     init_list = s.split(",")
     out_list = []
@@ -138,6 +154,8 @@ def tile_parser(s):
         else:
             out_list.append(int(x))
     return out_list
+
+###========= helpful common(?) 1d-array problems.
 
 def calc_mids(arr):
     return 0.5*(arr[:-1]+arr[1:])

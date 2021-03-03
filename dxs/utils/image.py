@@ -13,7 +13,7 @@ from astropy.nddata.utils import Cutout2D
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 
-import dxs.paths as paths
+from dxs import paths
 
 logger = logging.getLogger("image_utils")
 
@@ -182,7 +182,7 @@ def make_good_coverage_map(
     coverage_map_path, 
     output_path=None,
     minimum_num_pixels=None, absolute_minimum=3, frac=1.0,
-    weight_map_path=None, weight_minimum=0.8, # ???
+    weight_map_path=None, weight_minimum=0.8, # ??? a complete guess.
     N_steps=100, step_size=1,
     hdu=0
 ):
@@ -302,10 +302,10 @@ def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
     ds9_command = build_ds9_command(save_path, path1, path2)
     print(f"view image with \n    {ds9_command} &")
 
-
 def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
     path = Path(path)
     save_path = Path(save_path)
+    logger.info("scaling mosaic")
     with fits.open(path) as mosaic:
         data = mosaic[hdu].data
         data = data*value

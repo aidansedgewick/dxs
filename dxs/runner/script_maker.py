@@ -91,7 +91,7 @@ class ScriptMaker:
         if script_number is None:
             script_number = 0
         if job_name is None:
-            job_name = f"mosa_{script_number:03d}"
+            job_name = f"mosaic"
         max_time = self.system_config["max_time"]
         scheduler = self.system_config["scheduler"]
         queue = self.system_config["queue"]
