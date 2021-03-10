@@ -1,5 +1,6 @@
 *.fit
 *.fits
+*.png
 *.pyc
 *.cat
 **/swarp.xml

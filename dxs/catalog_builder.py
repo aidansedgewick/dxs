@@ -20,7 +20,6 @@ from easyquery import Query
 from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
 from dxs.utils.table import fix_column_names, table_to_numpynd
-from dxs.utils.region import in_only_one_tile
 
 from dxs import paths
 
@@ -323,6 +322,7 @@ class CatalogMatcher:
     def join_catalog(
         self, extra_catalog, values1, values2, engine="stilts", **kwargs
     ):
+        """remember kwarg values overwrite flags value..."""
         if engine=="stilts":
             stilts = Stilts.tskymatch2_fits(
                 self.output_catalog, extra_catalog, values1=values1, values2=values2,

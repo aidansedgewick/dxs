@@ -10,10 +10,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from astropy import units as u
 from astropy.io import fits
 from astropy.table import Table, join, Column, MaskedColumn
+from astropy.wcs import WCS
+
 
 from easyquery import Query
+from reproject import reproject_interp
+from reproject import mosaicking
 
 from dxs import MosaicBuilder, calculate_mosaic_geometry
 from dxs.utils.phot import ab_to_vega
@@ -219,13 +224,41 @@ def process_panstarrs_mosaic_mask(
         extension = ".unconv.fits"
     glob_str = str(base_dir / f"{ps_field}/i/skycell**")
     dir_list = glob(glob_str)
-    stack_list = []
+    mosaic_list = []
     for directory in dir_list:
         directory = Path(directory)
-        stack_list.append( glob(str(directory / f"*{extension}"))[0] )
+        mosaic_list.append( glob(str(directory / f"*{extension}"))[0] )
     
+
+    input_list = []
+    for mosaic_path in mosaic_list:
+        with fits.open(mosaic_path) as mos:
+            t = (mos[1].data, WCS(mos[1].header))
+            input_list.append(t)
+        
+    wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
+        input_list, resolution = args.resolution * u.arcsec
+    )
+    logger.info("starting reprojection")
+    array_out, footprint = mosaicking.reproject_and_coadd(
+        input_list, wcs_out, shape_out=shape_out,
+        reproject_function=reproject_interp,
+        combine_function="sum"
+    )
+    logger.info("finished reprojection")
+    header = wcs_out.to_header()
+    output_hdu = fits.PrimaryHDU(data=array_out, header=header)
+    output_hdu.writeto(output_path, overwrite=True)
+
+    with fits.open(output_path) as f:
+        new_data = (f[0].data == 0)
+        new_data = new_data.astype(int)
+        output_hdu = fits.PrimaryHDU(data=new_data, header=header)        
+        output_hdu.writeto(output_path, overwrite=True)
+
+    """
     center, size = calculate_mosaic_geometry(
-        stack_list, ccds=[0],
+        stack_list, ccds=[1],
         pixel_scale=pixel_scale,
         border=100
     )
@@ -245,7 +278,7 @@ def process_panstarrs_mosaic_mask(
         stack_list, output_path, swarp_config=mask_config
     )
     mask_builder.write_swarp_list(stack_list)
-    mask_builder.build(prepare_hdus=False)
+    mask_builder.build(prepare_hdus=False)"""
 
     
 
@@ -255,8 +288,13 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--fields", default="SA,EN,LH,XM", required=False)
+    parser.add_argument("--skip-catalogs", action="store_true", default=False)
+    parser.add_argument("--skip-mask", action="store_true", default=False)
+    parser.add_argument("--mask-extension", default=".unconv.mask.fits")
+    parser.add_argument("--resolution", default=2.0, type=float)
+    # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
-    fields = args.fields.split(",")    
+    fields = args.fields.split(",")
 
     for ii, field in enumerate(fields):
         ps_field = ps_config["from_dxs_field"][field]
@@ -265,15 +303,16 @@ if __name__ == "__main__":
         aperture_catalog_path = catalog_dir / f"stackapflx_{ps_field}.fit"
         output_catalog_path = catalog_dir / f"{field}_panstarrs.fits"
         
-        process_panstarrs_catalog(
-            primary_catalog_path, aperture_catalog_path, output_catalog_path
-        )
+        if not args.skip_catalogs:
+            process_panstarrs_catalog(
+                primary_catalog_path, aperture_catalog_path, output_catalog_path
+            )
+        if not args.skip_mask:
+            mask_dir = paths.input_data_path / f"external/panstarrs/masks"
+            mask_dir.mkdir(exist_ok=True, parents=True)
+            output_path = mask_dir / f"{field}_mask.fits"
+            process_panstarrs_mosaic_mask(
+                ps_field, output_path=output_path, extension=args.mask_extension
+            )
 
-        mask_dir = paths.input_data_path / f"external/panstarrs/masks"
-        mask_dir.mkdir(exist_ok=True, parents=True)
-        output_path = mask_dir / f"{field}_mask.fits"
-        process_panstarrs_mosaic_mask(
-            ps_field, output_path=output_path, extension=".unconv.fits"
-        )
-    
 

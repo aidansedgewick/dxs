@@ -1,8 +1,8 @@
 bin_type: "Log"
-nbins: 21
+nbins: 19
 # bin_size: 0.460517 # ie log10(dr) = 0.2...
-min_sep: 0.904279115 # 10**-3.6 degrees
-max_sep: 9042.79115 # 3 degrees.
+min_sep: 1.43318 # 10**-3.4 degrees
+max_sep: 9042.79115 # 10**0.4 =~3 degrees.
 sep_units: "arcsec"
 brute: True
 verbose: 2

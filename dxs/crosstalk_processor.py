@@ -13,8 +13,8 @@ import astropy.io.fits as fits
 from astropy import wcs
 from astropy.table import Table, Column, vstack, join
 
+from dxs import CatalogExtractor
 from dxs.mosaic_builder import get_stack_data
-from dxs.catalog_builder import CatalogExtractor
 from dxs.pystilts import Stilts
 from dxs.utils.image import scale_mosaic
 from dxs.utils.misc import remove_temp_data

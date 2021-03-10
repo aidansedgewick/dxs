@@ -43,13 +43,13 @@ with open(survey_config_path, "r") as f:
 
 randoms_density = 10_000
 
-ic = 0.02
+ic = 0.008
 
 
 
 ###================= start =================###
 
-catalog_path = paths.catalogs_path / f"{field}00/sm{field}00_panstarrs.fits"
+catalog_path = paths.catalogs_path / f"{field}00/sm{field}00_hsc.fits"
 #catalog = Table.read(catalog_path)
 
 N_tiles = survey_config.get("tiles_per_field").get(field, 12)
@@ -60,10 +60,22 @@ lao_number_counts_path = paths.input_data_path / "plotting/lao_AB_number_counts.
 
 qp = QuickPlotter.from_fits(
     catalog_path, 
-    #"-1.0 < dec", "dec < 1.6", "332.2 < ra", "ra < 333.9", 
+    #"-0.5 < dec", "dec < 1.0", "333.0 < ra", "ra < 335.0", 
     f"{Jmag} < 30.", f"{Kmag} < 30."#, f"{imag} < 30."#, f"{gmag} < 30.", f"{zmag} < 30."
 )
 qp.full_catalog[imag] = qp.full_catalog[imag].filled(99)
+
+"""
+logger.info("starting mask")
+med_ra = np.nanmedian(qp.full_catalog["i_ra"])
+med_dec = np.nanmedian(qp.full_catalog["i_dec"])
+dra = qp.full_catalog["i_ra"] - med_ra
+ddec = (qp.full_catalog["i_dec"] - med_dec)
+mask = dra*dra + ddec*ddec < 1.0**2
+
+logger.info("made mask")
+qp.full_catalog = qp.full_catalog[mask]"""
+
 
 coords = SkyCoord(
     ra=qp.full_catalog["ra"], dec=qp.full_catalog["dec"], unit="degree"
@@ -77,7 +89,7 @@ dec_limits = calc_range(qp.full_catalog["dec"])
 optical_mask_path = paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"
 J_mask_path = paths.masks_path / f"{field}_J_good_cov_stars_mask.fits"
 K_mask_path = paths.masks_path / f"{field}_K_good_cov_stars_mask.fits"
-mask_list = [J_mask_path, K_mask_path, optical_mask_path]
+mask_list = [J_mask_path, K_mask_path]#, optical_mask_path]
 
 #catalog_mask = objects_in_coverage(mask_list, qp.full_catalog["ra"], qp.full_catalog["dec"])
 #qp.full_catalog = qp.full_catalog[ catalog_mask ]
@@ -86,7 +98,7 @@ nir_area = calc_survey_area(
     [J_mask_path, K_mask_path], ra_limits=ra_limits, dec_limits=dec_limits
 )
 opt_area = calc_survey_area(
-    [J_mask_path, K_mask_path, optical_mask_path],
+    [J_mask_path, K_mask_path],#, optical_mask_path],
     ra_limits=ra_limits, dec_limits=dec_limits
 )
 qp.remove_crosstalks(catalog=qp.full_catalog)
@@ -103,11 +115,11 @@ qp.catalog[Ktot_mag] = vega_to_ab(qp.catalog[Ktot_mag], band="K")
 qp.create_selection("gals", f"{Jmag}-0.91-({Kmag}-1.85) > 1.0")
 qp.create_selection(
     "eros",
-    f"{imag} - {Kmag} > 2.95",
-    f"{Kmag} > 19", 
+    f"{imag} - {Kmag} > 2.45",
+    f"{Kmag} > 18", 
     f"{imag} < 25.0",
     #f"i_flux_{opt_mag_type} < 10**10",
-    catalog="gals",
+    catalog="catalog",
 )
 qp.create_selection(
     "sf_gzK",
@@ -134,7 +146,12 @@ full_randoms = SkyCoord(
 )
 random_mask = objects_in_coverage(mask_list, full_randoms.ra, full_randoms.dec)
 #single_tile_mask = in_only_one_tile(field_mosaic_list, full_randoms)
-randoms = full_randoms[ random_mask ]#& single_tile_mask]
+"""
+dra = full_randoms.ra.degree - med_ra
+ddec = full_randoms.dec.degree - med_dec
+circle_mask = dra*dra + ddec*ddec < 1.0**2
+"""
+randoms = full_randoms[ random_mask ]#& circle_mask ]#& single_tile_mask]
 
 #rra_mask = (randoms.ra > 332.2 * u.degree) & (randoms.ra < 336. * u.degree)
 #rdec_mask = (randoms.dec > -1.0 * u.degree) & (randoms.dec < 1.6 * u.degree)
@@ -179,7 +196,7 @@ qp.num_density.axes.scatter(
     jwk["Kmag"].values, jwk["galaxies"].values, marker="o", color="k", label="jwk gal"
 )
 qp.num_density.axes.scatter(
-    jwk["Kmag"].values, jwk["ero295_ps"].values, marker="x", color="k", label="jwk ero295"
+    jwk["Kmag"].values, jwk["ero245_ps"].values, marker="x", color="k", label="jwk ero295"
 )
 qp.num_density.axes.semilogy()
 qp.num_density.axes.legend()
@@ -188,10 +205,10 @@ qp.create_plot("gzK_density")
 lao = pd.read_csv(lao_number_counts_path)
 
 qp.gzK_density.plot_number_density(
-    Ktot_mag, selection=qp.pe_gzK, bins=bins, survey_area=opt_area, label="drgs, J-K > 2.3",
+    Ktot_mag, selection=qp.pe_gzK, bins=bins, survey_area=opt_area, label="pe gzK",
 )
 qp.gzK_density.plot_number_density(
-    Ktot_mag, selection=qp.sf_gzK, bins=bins, survey_area=opt_area, label="drgs, J-K > 2.3",
+    Ktot_mag, selection=qp.sf_gzK, bins=bins, survey_area=opt_area, label="sf gzK",
 )
 qp.gzK_density.axes.scatter(
     lao["Kmag"].values, lao["sf_gzK"].values, marker="^", color="k", label="lao sf gzK"
@@ -210,7 +227,8 @@ qp.create_plot("coords_plot")
 qp.coords_plot.plot_positions(randoms.ra, randoms.dec, s=1)
 qp.coords_plot.plot_coordinates("ra", "dec", selection=qp.to_correlate, s=1)
 
-plt.show()
+#plt.show()
+#plt.close()
 
 
 cat1 = Catalog(
@@ -228,13 +246,16 @@ dd = NNCorrelation(config=treecorr_config)
 rr = NNCorrelation(config=treecorr_config)
 dr = NNCorrelation(config=treecorr_config)
 
+
+print(np.log10(dd.rnom[1:]/dd.rnom[:-1]))
 dd.process(cat1)
 rr.process(cat2)
 dr.process(cat1, cat2)
 
 
-jwk_path = paths.input_data_path / "plotting/jwkdat.csv"
+jwk_path = paths.input_data_path / "plotting/jwk_2pcf_ps_eros_245.csv"
 jwk = pd.read_csv(jwk_path, names=["x", "w"])
+print(jwk)
 
 xi, varxi = dd.calculateXi(rr=rr) #, dr=dr)
 xi_ls, varxi_ls = dd.calculateXi(rr=rr, dr=dr)
@@ -250,7 +271,7 @@ ax.plot(rr.rnom/3600., rr.npairs, label="rr counts")
 ax.legend()
 ax.loglog()
 
-lc1 = 0.9*len(qp.to_correlate["ra"])
+lc1 = len(qp.to_correlate["ra"])
 lc2 = len(randoms.ra)
 
 ndd = dd.npairs/(0.5*lc1*(lc1-1))
@@ -264,14 +285,12 @@ ax.plot(rr.rnom/3600., nrr, label="<rr>")
 ax.legend()
 ax.loglog()
 
-ls2 = (ndd - 2.0*ndr + nrr) / nrr
-
 fig, ax = plt.subplots()
 #ax.plot(dd.rnom/3600., xi)
 ax.plot(dd.rnom/3600., xi, color="C0", marker="x", label="naive")
 ax.plot(dd.rnom/3600., xi + ic, color="C0", marker="x", ls="--", label="naive + ic")
 ax.plot(dd.rnom/3600., xi_ls, color="C1", marker="^", label="LS est.")
-ax.plot(dd.rnom/3600., ls2, color="C2", label="fake")
+ax.plot(dd.rnom/3600., xi_ls + ic, color="C1", marker="^", ls="--", label="LS est. + ic")
 ax.scatter(jwk["x"], jwk["w"], s=10, color="k", label="Kim+ 2011")
 ax.legend()
 ax.loglog()

@@ -20,7 +20,7 @@ measurement_lookup = {
     "H": "",
 }
 
-external_data = ["panstarrs", "cfhtls", "unwise"]
+external_data = ["panstarrs", "cfhtls", "hsc", "unwise"]
 
 
 if __name__ == "__main__":
@@ -29,9 +29,9 @@ if __name__ == "__main__":
     parser.add_argument("fields")
     parser.add_argument("tiles")
     parser.add_argument("bands")
-    parser.add_argument("--output_code", action="store", default=0, type=int, required=False)
-    parser.add_argument("--skip_merge", action="store_true", default=False, required=False)
-    parser.add_argument("--include_fp", action="store_true", default=False, required=False)
+    parser.add_argument("--output-code", action="store", default=0, type=int, required=False)
+    parser.add_argument("--skip-merge", action="store_true", default=False, required=False)
+    parser.add_argument("--include-fp", action="store_true", default=False, required=False)
     parser.add_argument(
         "--external", action="store", nargs="+", default=["panstarrs"], required=False
     )
@@ -109,12 +109,10 @@ if __name__ == "__main__":
 
         J_output = output_catalogs[field].get("J_output")
         K_output = output_catalogs[field].get("K_output")
+        print(f"J: {J_output}\nK: {K_output}")
         if not (J_output and K_output):
-            print(f"J: {J_output}\nK: {K_output}\n continue!")
+            print("continue!")
             continue
-
-        print(J_output)
-        print(K_output)
 
         if J_output and K_output:
             pair_output_stem = paths.get_catalog_stem(
@@ -129,22 +127,40 @@ if __name__ == "__main__":
                 ra1="J_ra", dec1="J_dec",
                 ra2="K_ra", dec2="K_dec",
             )
-            pair_matcher.best_pair_match(error=0.5) # arcsec
+            pair_matcher.best_pair_match(error=1.0) # arcsec
             pair_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
             pair_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
 
             if "panstarrs" in args.external:
+                pair_matcher.ra = "K_ra"
+                pair_matcher.dec = "K_dec"
                 ps_name = f"{field}_panstarrs"
                 ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
-                pair_matcher.match_catalog(ps_catalog_path, ra="ra_panstarrs", dec="dec_panstarrs", error=1.0)
+                pair_matcher.match_catalog(
+                    ps_catalog_path, ra="ra_panstarrs", dec="dec_panstarrs", 
+                    error=1.0, find="best1"
+                )
                 pair_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
             if "cfhtls" in args.external:
                 cfhtls_name = f"{field}_i"
                 cfhtls_catalog_path = (
                     paths.input_data_path / f"external/cfhtls/{cfhtls_name}.fits"
                 )
-                pair_matcher.match_catalog(cfhtls_catalog_path, ra="ra_cfhtls", dec="dec_cfhtls", error=0.5)
+                pair_matcher.match_catalog(
+                    cfhtls_catalog_path, ra="ra_cfhtls", dec="dec_cfhtls", 
+                    error=0.5, find="best1"
+                )
                 pair_matcher.fix_column_names(column_lookup={"Separation": "cfhtls_separation"})
+            if "hsc" in args.external:
+                hsc_name = f"{field}_catalog"
+                hsc_catalog_path = (
+                    paths.input_data_path / f"external/hsc/catalogs/{hsc_name}.fits"
+                )
+                pair_matcher.match_catalog(
+                    hsc_catalog_path, ra="ra_hsc", dec="dec_hsc",
+                    error=1.0, find="best1"
+                )
+                pair_matcher.fix_column_names(column_lookup={"Separation": "hsc_separation"})
             if "unwise" in args.external:
                 unwise_name = f"{field}_unwise.fits"
                 unwise_catalog_path = (
@@ -152,7 +168,7 @@ if __name__ == "__main__":
                 )
                 pair_matcher.match_catalog(unwise_catalog_path, ra="ra_unwise", dec="dec_unwise", error=2.0)
                 pair_matcher.fix_column_names(column_lookup={"Separation": "unwise_separation"})
-
+            
             
         try:
             print_path = pair_output_path.relative_to(Path.cwd())
