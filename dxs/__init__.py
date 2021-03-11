@@ -1,6 +1,7 @@
 import logging.config
 import yaml
 
+from .bright_star_processor import BrightStarProcessor, stack_bright_stars
 from .catalog_builder import (
     CatalogExtractor, 
     CatalogMatcher, 

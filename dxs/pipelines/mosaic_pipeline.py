@@ -22,7 +22,7 @@ from dxs import (
 )
 from dxs.utils.misc import check_modules, print_header, remove_temp_data
 from dxs.utils.table import fix_column_names
-from dxs.utils.image import scale_mosaic, make_good_coverage_map
+from dxs.utils.image import scale_mosaic, make_good_coverage_map, mask_regions_in_mosaic
 from dxs.quick_plotter import QuickPlotter
 from dxs import paths
 
@@ -82,6 +82,7 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         )
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
         make_good_coverage_map(cov_builder.mosaic_path, output_path=good_cov_path)
+        bright_star_processor = 
         try:
             weight_path = cov_builder.mosaic_path.with_suffix(".weight.fits")
             logger.info(f"Removing {weight_path}")

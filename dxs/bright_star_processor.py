@@ -35,6 +35,9 @@ bright_star_config = survey_config["bright_stars"]
 pix_scale = survey_config["mosaics"]["pixel_scale"]
 
 class BrightStarProcessor:
+    """
+    doc here.
+    """
 
     def __init__(self, star_table,):
         self.star_table = star_table
@@ -42,9 +45,9 @@ class BrightStarProcessor:
         self.box_angles = bright_star_config["diffraction_spike_angles"] * u.degree
         coeffs = bright_star_config["region_coefficients"]
         self.mag_ranges = np.array([0.] + coeffs["mag_ranges"])
-        self.box_widths = np.array(coeffs["box_widths"]) * (pix_scale * u.arcsec)
-        self.box_heights = np.array(coeffs["box_heights"]) * (pix_scale * u.arcsec)
-        self.circle_radii = np.array(coeffs["circle_radii"]) * (pix_scale * u.arcsec)
+        self.box_widths = np.array(coeffs["box_widths"]) * (pix_scale / 3600. * u.degree)
+        self.box_heights = np.array(coeffs["box_heights"]) * (pix_scale / 3600. * u.degree)
+        self.circle_radii = np.array(coeffs["circle_radii"]) * (pix_scale / 3600. * u.degree)
 
         array_sizes = [len(x) for x in [self.box_widths, self.box_heights, self.circle_radii]]
         if not all(x == len(self.mag_ranges)-1 for x in array_sizes):
@@ -106,9 +109,10 @@ class BrightStarProcessor:
         write_ds9(output_path, region_list)
 
 def stack_bright_stars(
-    self, table: Table, stacked_image_path, cutout_size=(500, 500), 
+    self, table: Table, stacked_image_path, 
     mag_col, ra_col="ra", dec_col="dec", id_col=None, mosaic_paths=None, 
-    save_cutouts=False, imshow_kwargs=None, savefig_kwargs=None
+    cutout_size=(500, 500), save_cutouts=False, 
+    imshow_kwargs=None, savefig_kwargs=None
 ):
     imshow_kwargs = imshow_kwargs or {}
     savefig_kwargs = savefig_kwargs or {}

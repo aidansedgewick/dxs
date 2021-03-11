@@ -32,11 +32,11 @@ masks:
     "good_cov": ".cov.good_cov.fits"
 
 bright_stars:
-  diffraction_spike_angles: [45., 87.5, 135., 177.5] # boxes at each of these angles.
+  diffraction_spike_angles: [45., 87.5, 135., 177.5] # boxes at each of these angles in degrees.
   region_coefficients:
     # assume the all start at 0 or the previous mag?
     mag_ranges: [5., 11., 13., 15.]
-    box_widths: [1000., 1000., 600., 300., 100.] # in pix.
+    box_widths: [1000., 600., 300., 100.] # in pix.
     box_heights: [20., 20., 10., 10.] # in pix.
     circle_radii: [200., 100., 60., 30.] # in pix.
 

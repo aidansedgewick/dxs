@@ -7,6 +7,7 @@ from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tqdm
@@ -47,8 +48,6 @@ with open(neighbors_path) as f:
         }
 
 stack_data = pd.read_csv(paths.header_data_path)
-
-import matplotlib.pyplot as plt
 
 class MosaicBuilderError(Exception):
     pass

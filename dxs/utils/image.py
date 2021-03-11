@@ -6,9 +6,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from regions import PolygonPixelRegion, PolygonSkyRegion, PixCoord, read_ds9
+
 from astropy.io import fits
 from astropy import units as u
-from astropy.coordinates import Angle, SkyCoord
+from astropy.coordinates import Angle, SkyCoord 
+from astropy.coordinates import concatenate as skycoord_concatenate
 from astropy.nddata.utils import Cutout2D
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
@@ -225,7 +228,7 @@ def estimate_minimum_num_pixels(wcs):
     return N_pixels
 
 def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, frac=1.0):
-    # bincount is VERY fast for integer data.
+    # bincount is faster for integer data.
     coverage_hist = np.bincount(data.flatten())[1:] # Ignore the zero count!
     coverage_vals = np.arange(1, len(coverage_hist)+1)
     min_coverage = coverage_vals[ coverage_hist > minimum_num_pixels ][0]
@@ -248,7 +251,82 @@ def expand_zero_regions(data, step_size=2, N_steps=50):
     data[ mask ] = 0
     logger.info(f"mask further {new_zeros-old_zeros:,} pix")
     return data
+
+###=================== bright star masking ===============###
+
+def mask_regions_in_mosaic(
+    mosaic_path,
+    region_list,
+    expand=1000,
+    output_path=None,
+):
+    logger.info("start masking regions")
+    with fits.open(mosaic_path) as f:
+        data = f[0].data.copy()
+        header = f[0].header
+        wcs = WCS(header)
+        ylen, xlen = data.shape
+    expanded_wcs = Cutout2D(
+        data, position=(xlen//2, ylen//2), size=(xlen+expand, ylen+expand), wcs=wcs,
+        mode="partial", fill_value=1
+    ).wcs
     
+    footprint = wcs.calc_footprint()    
+    footprint_region = PolygonSkyRegion(SkyCoord(footprint, unit="degree")).to_pixel(wcs)
+
+    logger.info(f"find relevant regions from {len(region_list)}")
+    # ugly ugly blergh - but faster than concat...
+    ra_vals = np.array([region.center.ra.degree for region in region_list])
+    dec_vals = np.array([region.center.dec.degree for region in region_list])
+    sky_coord = SkyCoord(ra=ra_vals, dec=dec_vals, unit="degree")
+    logger.info(f"contained")
+    contained_by = sky_coord.contained_by(expanded_wcs)
+    logger.info(f"select")
+    region_list = [region for region, contained in zip(region_list, contained_by) if contained]
+
+    logger.info(f"masking {len(region_list)} regions")
+    for ii, sky_region in enumerate(region_list):
+        if ii % 100 == 0:            
+            print(ii, len(region_list))
+        pix_region = sky_region.to_pixel(wcs)
+        bbox = pix_region.bounding_box
+        if bbox.ixmax < 0 or bbox.ixmin > xlen or bbox.iymin > ylen or bbox.iymax < 0:
+            continue
+
+        mask = pix_region.to_mask(mode="center") # is the center of each pixel in the mask?
+        slicer = mask.bbox.slices
+
+        mask_data = mask.data
+        if data[slicer].shape != mask_data.shape:
+            #logger.info("try intersection")
+            #intersection = pix_region.intersection(footprint_region)
+            #mask = intersection.to_mask(mode="center")
+            xmin, xmax, ymin, ymax = mask.bbox.extent
+            data_xmin, data_xmax = max(int(xmin), 0), min(int(xmax), xlen-1)
+            data_ymin, data_ymax = max(int(ymin), 0), min(int(ymax), ylen-1) 
+
+            mask_xmin = 0 - int(xmin) if xmin < 0 else 0
+            mask_ymin = 0 - int(ymin) if ymin < 0 else 0
+            mask_xmax = mask_xmin + (data_xmax - data_xmin)
+            mask_ymax = mask_ymin + (data_ymax - data_ymin)
+
+            try:
+                slicer = np.s_[data_ymin:data_ymax, data_xmin:data_xmax]
+                mask_data = mask_data[mask_ymin:mask_ymax, mask_xmin:mask_xmax]
+            except:
+                pass
+
+            if data[slicer].shape != mask_data.shape:
+                continue
+
+        bool_mask = np.invert(mask_data.astype(bool)).astype(int)
+        data[slicer] = data[slicer] * bool_mask
+
+    if output_path is None:
+        output_path = mosaic_path
+    output_hdu = fits.PrimaryHDU(data=data, header=header)
+    output_hdu.writeto(output_path, overwrite=True)
+
 
 ###=================== compare mosaics ===================###
 
