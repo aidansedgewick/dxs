@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from regions import PolygonPixelRegion, PolygonSkyRegion, PixCoord, read_ds9
+from scipy.ndimage import binary_dilation
 
 from astropy.io import fits
 from astropy import units as u
@@ -15,6 +15,8 @@ from astropy.coordinates import concatenate as skycoord_concatenate
 from astropy.nddata.utils import Cutout2D
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
+
+from regions import PolygonPixelRegion, PolygonSkyRegion, PixCoord, read_ds9
 
 from dxs import paths
 
@@ -186,7 +188,7 @@ def make_good_coverage_map(
     output_path=None,
     minimum_num_pixels=None, absolute_minimum=3, frac=1.0,
     weight_map_path=None, weight_minimum=0.8, # ??? a complete guess.
-    N_steps=100, step_size=1,
+    dilation_structure=None, dilation_iterations=150,
     hdu=0
 ):
     coverage_map_path = Path(coverage_map_path)
@@ -204,8 +206,10 @@ def make_good_coverage_map(
             with fits.open(weight_map_path) as weight:
                 wdat = weight[0].data
                 data[ wdat < weight_minimum ] = 0
-        if N_steps > 0:
-            data = expand_zero_regions(data, step_size=step_size, N_steps=N_steps)
+        if dilation_iterations > 0:
+            data = dilate_zero_regions(
+                data, dilation_structure=dilation_structure, dilation_iterations=dilation_iterations
+            )
         good_coverage = fits.PrimaryHDU(data=data, header=f[hdu].header)
         if output_path is None:
             output_path = coverage_map_path.with_suffix(".good_cov.fits")
@@ -237,18 +241,14 @@ def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, fra
     logger.info(f"select minimum coverage as >{minimum_coverage}")
     return minimum_coverage
 
-def expand_zero_regions(data, step_size=2, N_steps=50):
-    mask = (data == 0)
-    old_zeros = mask.sum()
-    c = slice(step_size, -step_size)
-    h = slice(2*step_size, None)
-    l = slice(None, -2*step_size)
-    # expand areas of zeros by N_steps*step_size in each direction left right up down.
-    for i in range(N_steps):
-        mask[c,c] = (mask[c,c] + mask[c,l] + mask[c,h] + mask[l,c] + mask[h,c])
-    mask = mask.astype(bool)
+def dilate_zero_regions(data, dilation_structure=None, dilation_iterations=100):
+    mask = (data[2:-2, 2:-2] == 0)
+    old_zeros = mask.sum()    
+    mask = binary_dilation(
+        mask, structure=dilation_structure, iterations=dilation_iterations
+    )
     new_zeros = mask.sum()
-    data[ mask ] = 0
+    data[2:-2, 2:-2][ mask ] = 0
     logger.info(f"mask further {new_zeros-old_zeros:,} pix")
     return data
 
@@ -298,9 +298,6 @@ def mask_regions_in_mosaic(
 
         mask_data = mask.data
         if data[slicer].shape != mask_data.shape:
-            #logger.info("try intersection")
-            #intersection = pix_region.intersection(footprint_region)
-            #mask = intersection.to_mask(mode="center")
             xmin, xmax, ymin, ymax = mask.bbox.extent
             data_xmin, data_xmax = max(int(xmin), 0), min(int(xmax), xlen-1)
             data_ymin, data_ymax = max(int(ymin), 0), min(int(ymax), ylen-1) 
@@ -309,13 +306,11 @@ def mask_regions_in_mosaic(
             mask_ymin = 0 - int(ymin) if ymin < 0 else 0
             mask_xmax = mask_xmin + (data_xmax - data_xmin)
             mask_ymax = mask_ymin + (data_ymax - data_ymin)
-
             try:
                 slicer = np.s_[data_ymin:data_ymax, data_xmin:data_xmax]
                 mask_data = mask_data[mask_ymin:mask_ymax, mask_xmin:mask_xmax]
             except:
                 pass
-
             if data[slicer].shape != mask_data.shape:
                 continue
 

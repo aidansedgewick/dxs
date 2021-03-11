@@ -201,7 +201,7 @@ class CrosstalkProcessor:
 
     def match_crosstalks_to_catalog(
         self, catalog_path, crosstalk_catalog_path=None, output_path=None,
-        ra=None, dec=None, error=1.0
+        ra=None, dec=None, error=1.0, flag_value=1.0
     ):
         catalog_path = Path(catalog_path)
         if crosstalk_catalog_path is None:

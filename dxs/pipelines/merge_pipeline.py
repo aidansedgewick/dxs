@@ -72,7 +72,8 @@ if __name__ == "__main__":
                 catalog_dir = paths.get_catalog_dir(field, tile, band)
                 catalog_stem = paths.get_catalog_stem(
                     field, tile, cat_band, prefix=args.prefix
-                )            
+                )
+                if 
                 catalog_list.append(catalog_dir / f"{catalog_stem}.fits")
                 mosaic_path = paths.get_mosaic_path(field, tile, band, extension=".cov.good_cov.fits")
                 mosaic_list.append(mosaic_path)

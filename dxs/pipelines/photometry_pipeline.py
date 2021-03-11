@@ -127,8 +127,7 @@ def photometry_pipeline(
     if match_crosstalks:
         print_header("J crosstalks")
         J_xproc.match_crosstalks_to_catalog(
-            J_ex.catalog_path, ra="J_ra", dec="J_dec", 
-            output_path=J_output_path, band="J"
+            J_ex.catalog_path, ra="J_ra", dec="J_dec", output_path=J_output_path
         )
         fix_crosstalk_column_names(J_output_path, band="J")
         explode_columns_in_fits(J_output_path, "J_flux_radius", suffixes=[20, 50, 90])
@@ -433,14 +432,14 @@ if __name__ == "__main__":
     check_modules("swarp", "sex", "stilts")
     
     photometry_pipeline(
-        field, tile, prefix, 
+        field, tile, prefix=args.prefix, 
         extract=args.extract, 
         collate_crosstalks=args.collate_crosstalks,
         match_crosstalks=args.match_crosstalks,
         match_fp=args.match_fp,
         match_pair=args.match_pair,
-        match_extras=match_extras,
-        n_cpus=n_cpus
+        match_extras=args.match_extras,
+        n_cpus=args.n_cpus
     )
 
     t1 = time.time()
