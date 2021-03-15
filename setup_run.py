@@ -56,19 +56,21 @@ if __name__ == "__main__":
 
     arg_list = []
     for k, v in run_config.get("args",{}).items():
-        if type(v) is str and not v[0] == "@":
-            init_list = v.split(",")
-            proc_list = []
-            for x in init_list:
-                if "-" in x:
-                    spl = x.split("-")
-                    proc_list.extend([i for i in range(int(spl[0]), int(spl[1])+1)])
-                else:
-                    proc_list.append(int(x) if x.isnumeric() else x)     
-            arg_list.append(proc_list)
-        else:
+        if type(v) is str:
+            if not v[0] == "@":
+                init_list = v.split(",")
+                proc_list = []
+                for x in init_list:
+                    if "-" in x:
+                        spl = x.split("-")
+                        proc_list.extend([i for i in range(int(spl[0]), int(spl[1])+1)])
+                    else:
+                        proc_list.append(int(x) if x.isnumeric() else x)     
+                arg_list.append(proc_list)
             if v[0] == "@":
                 v = v[1:]
+                arg_list.append([v])
+        else:
             arg_list.append([v])
     
     arg_tuple = tuple(arg_list)

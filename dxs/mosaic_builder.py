@@ -168,7 +168,7 @@ class MosaicBuilder:
             magzpt_inc_exptime = False # ie, if counts/s img, no need to account!
         else:
             magzpt_inc_exptime = True
-        hdu_prep_kwargs["median_magzpt"] = cls.calc_magzpt(
+        hdu_prep_kwargs["reference_magzpt"] = cls.calc_magzpt(
             mosaic_stacks, magzpt_inc_exptime=magzpt_inc_exptime
         )
         hdu_prep_kwargs["add_flux_scale"] = add_flux_scale
@@ -194,7 +194,7 @@ class MosaicBuilder:
         """
         similar to from_dxs_spec but uses coverage.swarp config, 
         option to include pixel scale
-        fill_alue should be set to 1
+        fill_value should be set to 1
         """
         swarp_config = swarp_config or {}
         coverage_config = {
@@ -357,6 +357,59 @@ class MosaicBuilder:
         return magzpt
 
 class HDUPreparer:
+    """
+    Class for preparing a single HDU ready for SWarp.
+
+    eg.
+
+    >>> hdup = HDUPreparer(hdu, "./hdu_out.fits")
+    >>> hdup.prepare_hdu()
+
+    Parameters
+    ----------
+    hdu
+        a single astropy hdu object
+    hdu_path
+        str or PathLike - where will this hdu be saved? after prep
+    fill_value
+        float- fill the entire data array with a value close to this (+/- small ~1e-4 random noise)
+        bc. swarp doesn't like array of the same value. useful for coverage maps( value = 1.0)
+        or exposure time maps.
+    resize
+        bool - if true, removes `edges` pixels from each hdu in prep. default False.
+    edges
+        float or int - removes this many pixels from each edge, if `resize=True`
+    mask_sources
+        bool - if True, ignore parts of `hdu.data` when estimating background. default False
+    mask_header
+        hdu header object. use header rather than directly passing `astropy.wcs` object  
+        as `wcs` seems to go weird in combination with multiprocessing Pool.
+    mask_map
+        array with shape equal to `hdu.shape`. Non-zeros values are sources to mask.
+        (ie, can use SExtractor segmentation check image as mask).
+    normalize_exptime
+        bool - divide data array by the value provided in `exptime`. Default False.
+        Recommend only use with `subtract_bgr=True`...!
+    exptime
+        float - removed soon... should read exptime from `hdu.header`
+    subtract_bgr
+        bool
+    bgr_size
+        int - box size to estimate bgr in. Used as `photutils.Background2d(box_size=(bgr_size, bgr_size))`
+    filter_size
+        int - Used as `photutils.Background2d(filter_size=filter_size)`
+    sigma
+        float - Used as for sigma clipping in bgr_estimation. see `photutils`.
+    add_flux_scale
+        bool - if True, add `flxscale` to output header, calculated as 
+        10**(-0.4*(magzpt-reference_magzpt)), if `reference_magzpt` is provided. 
+    reference_magzpt
+        used to calculate flxscale. add 2.5*log10(exptime) if `normalise_exptime` is True. 
+        default None. 
+    """
+
+
+
     def __init__(
         self, hdu, hdu_path,
         fill_value=None,
@@ -364,7 +417,7 @@ class HDUPreparer:
         mask_sources=False, mask_header=None, mask_map=None,
         normalise_exptime=False, exptime=None, # check from_dxs_spec hdu_prep_kwargs...
         subtract_bgr=False, bgr_size=None, filter_size=1, sigma=3.0,
-        add_flux_scale=True, median_magzpt=None
+        add_flux_scale=True, reference_magzpt=None
     ):
         self.data = hdu.data
         if fill_value is not None:
@@ -386,8 +439,8 @@ class HDUPreparer:
         self.normalise_exptime = normalise_exptime
         self.magzpt = self.header.get("MAGZPT", None)
         if self.magzpt is None:
-            logger.warn(f"MAGZPT for {self.hdu_path.stem} not found - set to {median_magzpt}")
-            self.magzpt = median_magzpt
+            logger.warn(f"MAGZPT for {self.hdu_path.stem} not found - set to reference {reference_magzpt}")
+            self.magzpt = reference_magzpt
         if normalise_exptime is False:
             self.magzpt = self.magzpt + 2.5*np.log10(exptime) # log10!!!!
         self.exptime = exptime
@@ -395,7 +448,7 @@ class HDUPreparer:
         self.bgr_size = bgr_size
         self.sigma = sigma
         self.add_flux_scale = add_flux_scale
-        self.median_magzpt = median_magzpt
+        self.reference_magzpt = reference_magzpt
 
         self.hdu_wcs = WCS(hdu.header)
         self.hdu_wcs.fix()
@@ -409,16 +462,17 @@ class HDUPreparer:
 
     def modify_header(self):
         if self.add_flux_scale:
-            if self.median_magzpt is None:
+            if self.reference_magzpt is None:
                 raise ValueError(
-                    "Can't add flux scale if no median_magzpt to scale to!\n"
-                    "Either provide median_magzpt= or set add_flux_scale=False"
+                    "Can't add flux scale if no reference_magzpt to scale to!\n"
+                    "Either provide reference_magzpt= or set add_flux_scale=False"
                 )
-        if self.median_magzpt is not None:
-            mag_diff = self.magzpt - self.median_magzpt
-            flux_scaling = 10**(-0.4*mag_diff)
-            self.header["FLXSCALE"] = flux_scaling
-            logger.info(f"flxscl {self.hdu_path.stem} {flux_scaling:.2f}")
+            else:
+                mag_diff = self.magzpt - self.reference_magzpt
+                flux_scaling = 10**(-0.4*mag_diff)
+                self.header["FLXSCALE"] = flux_scaling
+                logger.info(f"flxscl {self.hdu_path.stem} {flux_scaling:.2f}")
+        self.header["EXP_TIME"] = self.exptime
 
     def prepare_hdu(self):
         if self.mask_wcs is not None:
@@ -508,9 +562,9 @@ class HDUPreparer:
         overwrite
             bool: if False, and this HDU has already been prepared, skip it.
         hdu_prefix
-            name of hdu will be <prefix><stack_path.stem>_<ccd>.
+            name of hdu will be <hdu_prefix><stack_path.stem>_<ccd>.fits
         ccds
-            which ccds (ie, fits extensions) in the stack to prepare? defaults to
+            list: which ccds (ie, fits extensions) in the stack to prepare? defaults to
             whatever is in survey_config ccds.
         **kwargs
             any kwargs which go into initialisation of HDUPreparer.

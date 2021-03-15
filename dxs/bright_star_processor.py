@@ -19,9 +19,6 @@ from astropy.wcs import WCS
 
 from easyquery import Query
 from regions import CircleSkyRegion, RectangleSkyRegion, write_ds9
-#from reproject.mosaicking import find_optimal_celestial_wcs, reproject_and_coadd
-
-#from dxs import Stilts
 
 from dxs import paths
 
@@ -58,7 +55,15 @@ class BrightStarProcessor:
                 f"should equal len(mag_ranges)-1 = {lmr-1}"
             )
 
-    def process_regions(self, mag_col, ra_col="ra", dec_col="dec", ncpus=None):
+    @classmethod
+    def from_file(cls, csv_path, queries=None, **kwargs):
+        logger.info(f"reading from {csv_path.name}")
+        star_table = Table.read(csv_path, **kwargs)
+        if queries is not None:
+            star_table = Query(*queries).filter(star_table)
+        return cls(star_table)
+
+    def process_region_masks(self, mag_col, ra_col="ra", dec_col="dec", ncpus=None):
         mag_min, mag_max = self.mag_ranges[0], self.mag_ranges[-1]
         queries = (f"{mag_min} < {mag_col}", f"{mag_col} < {mag_max}")
         table = Query(*queries).filter(self.star_table)
@@ -78,6 +83,7 @@ class BrightStarProcessor:
                     self.get_regions_for_star(coord, width, height, radius)
                 )
         else:            
+            # Pool is overkill - creating the shapes is much faster than expected...
             args = [x for x in zip(coords, widths, heights, radii)]
             with Pool(ncpus) as pool:
                 nested_list = list(

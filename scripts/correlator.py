@@ -23,7 +23,7 @@ from dxs import paths
 
 logger = logging.getLogger("main")
 
-field = "SA"
+field = "EN"
 
 nir_mag_type = "aper_20"
 nir_tot_mag_type = "auto"
@@ -49,7 +49,7 @@ ic = 0.008
 
 ###================= start =================###
 
-catalog_path = paths.catalogs_path / f"{field}00/sm{field}00_hsc.fits"
+catalog_path = paths.catalogs_path / f"{field}00/{field}00_hsc.fits"
 #catalog = Table.read(catalog_path)
 
 N_tiles = survey_config.get("tiles_per_field").get(field, 12)

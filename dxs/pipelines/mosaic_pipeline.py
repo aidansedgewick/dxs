@@ -15,6 +15,7 @@ from astropy.wcs import WCS
 
 from dxs import (
     MosaicBuilder, 
+    BrightStarProcessor,
     CatalogExtractor, 
     CatalogMatcher, 
     CatalogPairMatcher, 
@@ -38,6 +39,16 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         initial, coverage, masked = True, True, True
     mosaic_types = {"initial": initial, "coverage": coverage, "masked": masked}
     spec = (field, tile, band)
+
+    field_name = survey_config["code_to_field"].get(field, None)
+    if field_name is not None:
+        bright_star_catalog_path = (
+            paths.input_data_path / f"external/tmass/tmass_{field_name}_stars.csv"
+        )
+        bright_star_processor = BrightStarProcessor.from_file(
+            bright_star_catalog_path, queries=("j_m - k_m < 1.0",), format="ascii"
+        )
+    tmass_mag = f"{band.lower()}_m"
 
     logger.info(f"Mosaics for {spec}, use {n_cpus} threads")
     logger.info(f"create mosaics: {[k for k,v in mosaic_types.items() if v]}")
@@ -82,7 +93,10 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         )
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
         make_good_coverage_map(cov_builder.mosaic_path, output_path=good_cov_path)
-        bright_star_processor = 
+        if bright_star_processor is not None:
+            region_masks = bright_star_processor.process_region_masks(mag_col=tmass_mag)
+            mask_regions_in_mosaic(good_cov_path, region_masks)
+
         try:
             weight_path = cov_builder.mosaic_path.with_suffix(".weight.fits")
             logger.info(f"Removing {weight_path}")

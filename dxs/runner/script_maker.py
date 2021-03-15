@@ -1,3 +1,4 @@
+import re
 import yaml
 from itertools import count
 from pathlib import Path
@@ -41,18 +42,30 @@ class ScriptMaker:
         script_paths = []
         for ii, (args, pykwargs) in enumerate(zip(args_iterable, kwargs_iterable)):
             script_path = self.write_script(python_args=args, python_kwargs=pykwargs)
-            script_paths.append(f"sbatch {script_path}")
+            script_paths.append(script_path)
             if ii == 0:
                 try:
                     print_path = script_path.relative_to(Path.cwd())
                 except:
                     print_path = script_path
                 print(f"running scripts written to eg.\n    {print_path}")
+                try:
+                    script_text = open(script_path, "r").read().replace("\n", "")
+                    stdout_res = re.search("#SBATCH -o(.+?)#", script_text).groups(0)[0].strip()
+                    try:
+                        print_stdout_path = Path(stdout_res).relative_to(Path.cwd())
+                    except:
+                        print_stdout_path = Path
+                except:
+                    print_stdout_path = None
 
         all_scripts_path = self.base_dir / "submit_all.sh"
         submit_all_script = self.make_submit_all_script(script_paths)
+        #if print_stdout_path is not None:
+        submit_all_script += [f"printf 'monitor with eg.\\n    less {print_stdout_path}\\n'"]
+        print(submit_all_script)
         with open(all_scripts_path, "w") as f:
-            for line in script_paths:
+            for line in submit_all_script:
                 f.write(line + "\n")
         try:
             print_path = all_scripts_path.relative_to(Path.cwd())

@@ -279,15 +279,11 @@ def mask_regions_in_mosaic(
     ra_vals = np.array([region.center.ra.degree for region in region_list])
     dec_vals = np.array([region.center.dec.degree for region in region_list])
     sky_coord = SkyCoord(ra=ra_vals, dec=dec_vals, unit="degree")
-    logger.info(f"contained")
     contained_by = sky_coord.contained_by(expanded_wcs)
-    logger.info(f"select")
     region_list = [region for region, contained in zip(region_list, contained_by) if contained]
 
     logger.info(f"masking {len(region_list)} regions")
     for ii, sky_region in enumerate(region_list):
-        if ii % 100 == 0:            
-            print(ii, len(region_list))
         pix_region = sky_region.to_pixel(wcs)
         bbox = pix_region.bounding_box
         if bbox.ixmax < 0 or bbox.ixmin > xlen or bbox.iymin > ylen or bbox.iymax < 0:

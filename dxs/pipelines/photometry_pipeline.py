@@ -135,7 +135,7 @@ def photometry_pipeline(
         explode_columns_in_fits(
             J_output_path, J_aper_cols, suffixes=[10, 18, 20, 30], remove=True
         )
-        remove_objects_in_bad_coverage(J_output_path, coverage_column="J_coverage")
+        #remove_objects_in_bad_coverage(J_output_path, coverage_column="J_coverage")
         logger.info(f"xtalk-matched J cat at {J_output_path}")
 
     ## Now do K-forced photometry from J image.
@@ -202,7 +202,7 @@ def photometry_pipeline(
         explode_columns_in_fits(
             K_output_path, K_aper_cols, suffixes=[10, 18, 20, 30], remove=True
         )
-        remove_objects_in_bad_coverage(K_output_path, coverage_column="K_coverage")
+        #remove_objects_in_bad_coverage(K_output_path, coverage_column="K_coverage")
         logger.info(f"xtalk-matched K cat at {K_output_path}")
 
     ## Now do K-forced photometry from J image.
