@@ -25,7 +25,7 @@ from dxs.utils.phot import ab_to_vega
 
 from dxs import paths
 
-logger = logging.getLogger("ps1_proc")
+logger = logging.getLogger("ps1_processor")
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
@@ -233,8 +233,11 @@ def process_panstarrs_mosaic_mask(
     input_list = []
     for mosaic_path in mosaic_list:
         with fits.open(mosaic_path) as mos:
-            t = (mos[1].data, WCS(mos[1].header))
-            input_list.append(t)
+            data_array = mos[1].data.copy()
+            img_wcs = WCS(mos[1].header)
+        data_array = (data_array == 0)
+        t = (data_array, img_wcs)
+        input_list.append(t)
         
     wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
         input_list, resolution = args.resolution * u.arcsec
@@ -250,11 +253,11 @@ def process_panstarrs_mosaic_mask(
     output_hdu = fits.PrimaryHDU(data=array_out, header=header)
     output_hdu.writeto(output_path, overwrite=True)
 
-    with fits.open(output_path) as f:
+    """with fits.open(output_path) as f:
         new_data = (f[0].data == 0)
         new_data = new_data.astype(int)
         output_hdu = fits.PrimaryHDU(data=new_data, header=header)        
-        output_hdu.writeto(output_path, overwrite=True)
+        output_hdu.writeto(output_path, overwrite=True)"""
 
     """
     center, size = calculate_mosaic_geometry(
@@ -288,7 +291,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--fields", default="SA,EN,LH,XM", required=False)
-    parser.add_argument("--skip-catalogs", action="store_true", default=False)
+    parser.add_argument("--skip-catalog", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
     parser.add_argument("--mask-extension", default=".unconv.mask.fits")
     parser.add_argument("--resolution", default=2.0, type=float)
@@ -298,12 +301,12 @@ if __name__ == "__main__":
 
     for ii, field in enumerate(fields):
         ps_field = ps_config["from_dxs_field"][field]
-        print(f"{ii}: {ps_field} = {field}")
+        logger.info(f"{ii}: {ps_field} = {field}")
         primary_catalog_path = catalog_dir / f"stackdetectionfull_{ps_field}.fit"
         aperture_catalog_path = catalog_dir / f"stackapflx_{ps_field}.fit"
         output_catalog_path = catalog_dir / f"{field}_panstarrs.fits"
         
-        if not args.skip_catalogs:
+        if not args.skip_catalog:
             process_panstarrs_catalog(
                 primary_catalog_path, aperture_catalog_path, output_catalog_path
             )

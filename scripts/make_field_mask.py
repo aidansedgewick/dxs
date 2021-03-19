@@ -132,7 +132,7 @@ if __name__ == "__main__":
             output_hdu.writeto(output_path, overwrite=True)
 
             output_mask_paths.append(output_path)
-            logger.info(f"written output_path")
+            logger.info(f"written {output_path}")
 
             input_list = []
 

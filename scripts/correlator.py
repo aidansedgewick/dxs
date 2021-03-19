@@ -1,4 +1,5 @@
 import logging
+import pickle
 import yaml
 
 import matplotlib.pyplot as plt
@@ -45,11 +46,18 @@ randoms_density = 10_000
 
 ic = 0.008
 
+#def power_law(x,d):
+#    return x**(-d)
 
+#def calc_integral_constraint(x, w_init, func=None, iterations=4, kwargs):
+#    if func is None:
+#        func = power_law
+
+    
 
 ###================= start =================###
 
-catalog_path = paths.catalogs_path / f"{field}00/{field}00_hsc.fits"
+catalog_path = paths.catalogs_path / f"{field}00/{field}00_panstarrs.fits"
 #catalog = Table.read(catalog_path)
 
 N_tiles = survey_config.get("tiles_per_field").get(field, 12)
@@ -87,9 +95,9 @@ ra_limits = calc_range(qp.full_catalog["ra"])
 dec_limits = calc_range(qp.full_catalog["dec"])
 
 optical_mask_path = paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"
-J_mask_path = paths.masks_path / f"{field}_J_good_cov_stars_mask.fits"
-K_mask_path = paths.masks_path / f"{field}_K_good_cov_stars_mask.fits"
-mask_list = [J_mask_path, K_mask_path]#, optical_mask_path]
+J_mask_path = paths.masks_path / f"{field}_J_good_cov_mask.fits"
+K_mask_path = paths.masks_path / f"{field}_K_good_cov_mask.fits"
+mask_list = [J_mask_path, K_mask_path, optical_mask_path]
 
 #catalog_mask = objects_in_coverage(mask_list, qp.full_catalog["ra"], qp.full_catalog["dec"])
 #qp.full_catalog = qp.full_catalog[ catalog_mask ]
@@ -98,7 +106,7 @@ nir_area = calc_survey_area(
     [J_mask_path, K_mask_path], ra_limits=ra_limits, dec_limits=dec_limits
 )
 opt_area = calc_survey_area(
-    [J_mask_path, K_mask_path],#, optical_mask_path],
+    [J_mask_path, K_mask_path, optical_mask_path],
     ra_limits=ra_limits, dec_limits=dec_limits
 )
 qp.remove_crosstalks(catalog=qp.full_catalog)
@@ -231,14 +239,23 @@ qp.coords_plot.plot_coordinates("ra", "dec", selection=qp.to_correlate, s=1)
 #plt.close()
 
 
-cat1 = Catalog(
-    ra=qp.to_correlate["ra"], dec=qp.to_correlate["dec"], ra_units="deg", dec_units="deg"
-)
-cat2 = Catalog(ra=randoms.ra, dec=randoms.dec, ra_units="deg", dec_units="deg")
-
 treecorr_config_path = paths.config_path / "treecorr/treecorr_default.yaml"
 with open(treecorr_config_path, "r") as f:
     treecorr_config = yaml.load(f, Loader=yaml.FullLoader)
+
+data_catalog = Catalog(
+    ra=qp.to_correlate["ra"], 
+    dec=qp.to_correlate["dec"], 
+    ra_units="deg", dec_units="deg",
+    npatch=treecorr_config.get("npatch", 25),
+)
+
+random_catalog = Catalog(
+    ra=randoms.ra, 
+    dec=randoms.dec, 
+    ra_units="deg", dec_units="deg",
+    patch_centers=data_catalog.patch_centers,
+)
 
 treecorr_config["num_threads"] = 3
 
@@ -248,19 +265,22 @@ dr = NNCorrelation(config=treecorr_config)
 
 
 print(np.log10(dd.rnom[1:]/dd.rnom[:-1]))
-dd.process(cat1)
-rr.process(cat2)
-dr.process(cat1, cat2)
+dd.process(data_catalog)
+rr.process(random_catalog)
+dr.process(data_catalog, random_catalog)
 
 
 jwk_path = paths.input_data_path / "plotting/jwk_2pcf_ps_eros_245.csv"
 jwk = pd.read_csv(jwk_path, names=["x", "w"])
 print(jwk)
 
-xi, varxi = dd.calculateXi(rr=rr) #, dr=dr)
+#xi_naive, varxi_naive = dd.calculateXi(rr=rr) #, dr=dr)
 xi_ls, varxi_ls = dd.calculateXi(rr=rr, dr=dr)
 
-print(xi)
+dd.write("./test_out.csv", rr=rr, dr=dr)
+
+print("corr")
+print(xi_ls)
 
 print(np.log10(dd.rnom[1:]/dd.rnom[:-1]))
 
@@ -285,16 +305,37 @@ ax.plot(rr.rnom/3600., nrr, label="<rr>")
 ax.legend()
 ax.loglog()
 
+corr_data = {
+    "x": dd.rnom/3600.,
+    "dd": dd.npairs,
+    "dr": dr.npairs,
+    "rr": rr.npairs,
+    "xi_ls": xi_ls,
+    "var_xi": varxi_ls,
+    "n_data": lc1,
+    "n_random": lc2,
+}
+
+pkl_path = f"./{field}_corr_data.pkl"
+with open(pkl_path, "wb+") as f:
+    pickle.dump(corr_data, f)
+
+corr_df = pd.DataFrame()
+
+
+
+print("X")
+print(dd.rnom/3600.)
+
 fig, ax = plt.subplots()
-#ax.plot(dd.rnom/3600., xi)
-ax.plot(dd.rnom/3600., xi, color="C0", marker="x", label="naive")
-ax.plot(dd.rnom/3600., xi + ic, color="C0", marker="x", ls="--", label="naive + ic")
-ax.plot(dd.rnom/3600., xi_ls, color="C1", marker="^", label="LS est.")
+#ax.plot(dd.rnom/3600., xi_naive, color="C0", marker="x", label="naive")
+#ax.plot(dd.rnom/3600., xi_naive + ic, color="C0", marker="x", ls="--", label="naive + ic")
+ax.errorbar(dd.rnom/3600., xi_ls, yerr=varxi_ls, color="C1", marker="^", label="LS est.")
 ax.plot(dd.rnom/3600., xi_ls + ic, color="C1", marker="^", ls="--", label="LS est. + ic")
 ax.scatter(jwk["x"], jwk["w"], s=10, color="k", label="Kim+ 2011")
 ax.legend()
 ax.loglog()
-plt.show()
+#plt.show()
 
 
 

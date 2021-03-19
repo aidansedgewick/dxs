@@ -33,7 +33,7 @@ pix_scale = survey_config["mosaics"]["pixel_scale"]
 
 class BrightStarProcessor:
     """
-    doc here.
+    parameters are read from ./configuration/survey_config.yaml
     """
 
     def __init__(self, star_table,):
@@ -49,7 +49,6 @@ class BrightStarProcessor:
         array_sizes = [len(x) for x in [self.box_widths, self.box_heights, self.circle_radii]]
         if not all(x == len(self.mag_ranges)-1 for x in array_sizes):
             lmr = len(self.mag_ranges)
-            print(self.mag_ranges)
             raise ValueError(
                 f"each len(box_widths), len(box_heights), len(circle_radii) = {array_sizes} "
                 f"should equal len(mag_ranges)-1 = {lmr-1}"
@@ -64,6 +63,9 @@ class BrightStarProcessor:
         return cls(star_table)
 
     def process_region_masks(self, mag_col, ra_col="ra", dec_col="dec", ncpus=None):
+        """
+        which column to look at?
+        """
         mag_min, mag_max = self.mag_ranges[0], self.mag_ranges[-1]
         queries = (f"{mag_min} < {mag_col}", f"{mag_col} < {mag_max}")
         table = Query(*queries).filter(self.star_table)
