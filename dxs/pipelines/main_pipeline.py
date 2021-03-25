@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from dxs.utils.misc import tile_parser
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -19,6 +20,7 @@ logger = logging.getLogger("main")
 
 from dxs.pipelines.mosaic_pipeline import mosaic_pipeline
 from dxs.pipelines.photometry_pipeline import photometry_pipeline
+from dxs.pipelines.merge_pipeline import merge_pipeline
 
 
 if __name__ == "__main__":
@@ -33,4 +35,11 @@ if __name__ == "__main__":
     mosaic_pipeline(args.field, args.tile, "J", n_cpus=args.n_cpus)
     mosaic_pipeline(args.field, args.tile, "K", n_cpus=args.n_cpus)
     mosaic_pipeline(args.field, args.tile, "H", n_cpus=args.n_cpus)
-    photometry_pipeline(args.field, args.tile, prefix="sm", n_cpus=args.n_cpus)
+    photometry_pipeline(args.field, args.tile, n_cpus=args.n_cpus)
+    
+    tiles_in_field = survey_config["tiles_per_field"][args.field]
+    tiles = [x for x in range(1, tiles_in_field+1)]
+    merge_pipeline(args.field, tiles, ["J", "K"], require_all=True)
+    #H_tiles = [x for x in range(2, 7+1)]
+    #merge_pipeline(args.field, H_tiles, "H", n_cpus=args.n_cpus)
+    print("Done!")

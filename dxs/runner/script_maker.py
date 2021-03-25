@@ -63,7 +63,6 @@ class ScriptMaker:
         submit_all_script = self.make_submit_all_script(script_paths)
         #if print_stdout_path is not None:
         submit_all_script += [f"printf 'monitor with eg.\\n    less {print_stdout_path}\\n'"]
-        print(submit_all_script)
         with open(all_scripts_path, "w") as f:
             for line in submit_all_script:
                 f.write(line + "\n")

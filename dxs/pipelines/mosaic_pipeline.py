@@ -24,7 +24,6 @@ from dxs import (
 from dxs.utils.misc import check_modules, print_header, remove_temp_data
 from dxs.utils.table import fix_column_names
 from dxs.utils.image import scale_mosaic, make_good_coverage_map, mask_regions_in_mosaic
-from dxs.quick_plotter import QuickPlotter
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -56,7 +55,7 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
 
     stem = paths.get_mosaic_stem(*spec)
     prep_kwargs = {"hdu_prefix": f"{stem}_i"}
-    builder = MosaicBuilder.from_dxs_spec(*spec, prefix="s", hdu_prep_kwargs=prep_kwargs)
+    builder = MosaicBuilder.from_dxs_spec(*spec, suffix="_init", hdu_prep_kwargs=prep_kwargs)
 
     if builder is None: # ie, if there are no stacks to build
         logger.info("Builder is None. Exiting")
@@ -117,16 +116,16 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
     if masked:
         ### get segementation image to use as mask.
         print_header("segment to get mask")
-        seg_name = paths.get_mosaic_stem(*spec)
+        seg_name = builder.mosaic_path.stem
         mosaic_dir = paths.get_mosaic_dir(*spec)
         catalog_dir = paths.get_mosaic_dir(*spec) # so we can store the mask with the mosaic.
+        seg_catalog_name = catalog_dir / f"{seg_name}_segmenation.cat.fits"
         seg_config = {
-            "checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits",
-            "catalog_name": catalog_dir / f"{seg_name}_segmenation.fits",
+            "checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits"
         }
-        extractor = CatalogExtractor.from_dxs_spec(
-            *spec, 
-            prefix="s",
+        extractor = CatalogExtractor(
+            builder.mosaic_path,
+            catalog_path=seg_catalog_name,
             sextractor_config=seg_config, 
             sextractor_config_file=paths.config_path / f"sextractor/segmentation.sex",
             sextractor_parameter_file=paths.config_path / f"sextractor/segmentation.param",
@@ -153,7 +152,7 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
             "overwrite": False,
         }
         masked_builder = MosaicBuilder.from_dxs_spec(
-            *spec, prefix="sm", 
+            *spec, 
             swarp_config=masked_swarp_config, 
             hdu_prep_kwargs=masked_prep_kwargs
         )

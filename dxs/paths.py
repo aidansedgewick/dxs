@@ -2,7 +2,7 @@ from pathlib import Path
 
 file_path = Path(__file__).absolute()
 
-base_path = file_path.parent
+base_path = file_path.parent.parent
 
 # INPUT DATA
 input_data_path = file_path.parent.parent / "input_data"
@@ -19,6 +19,10 @@ temp_sextractor_path = temp_data_path / "sextractor"
 # CONFIGS
 config_path = file_path.parent.parent / "configuration"
 header_data_path = config_path / "dxs_header_data.csv"
+
+# TESTS
+tests_path = file_path.parent.parent / "test_dxs"
+temp_test_path = tests_path / "temp"
 
 # (OUTPUT) DATA
 data_path = file_path.parent.parent / "data"
@@ -40,6 +44,8 @@ def create_all_paths():
     temp_swarp_path.mkdir(exist_ok=True, parents=True)
     temp_sextractor_path.mkdir(exist_ok=True, parents=True)
 
+    temp_test_path.mkdir(exist_ok=True, parents=True)
+
     data_path.mkdir(exist_ok=True, parents=True)
     mosaics_path.mkdir(exist_ok=True, parents=True)
     catalogs_path.mkdir(exist_ok=True, parents=True)
@@ -50,14 +56,14 @@ def create_all_paths():
 def get_mosaic_stem(field, tile, band, prefix=None, suffix=None):
     prefix = prefix or ""
     suffix = suffix or ""
-    return f"{prefix}{field}{tile:02d}{band}"
+    return f"{prefix}{field}{tile:02d}{band}{suffix}"
 
 def get_mosaic_dir(field, tile, band):
     return mosaics_path / get_mosaic_stem(field, tile, band)
 
-def get_mosaic_path(field, tile, band, prefix=None, extension=".fits"):
+def get_mosaic_path(field, tile, band, prefix=None, suffix=None, extension=".fits"):
     mosaic_dir = get_mosaic_dir(field, tile, band)
-    mosaic_stem = get_mosaic_stem(field, tile, band, prefix=prefix)
+    mosaic_stem = get_mosaic_stem(field, tile, band, prefix=prefix, suffix=suffix)
     return mosaic_dir / f"{mosaic_stem}{extension}"
 
 def get_catalog_stem(
@@ -75,7 +81,7 @@ def get_catalog_dir(field, tile, detection_band):
 
 def get_catalog_path(
     field, tile, detection_band, measurement_band=None, 
-    prefix=None, suffix=None, extension=".fits"
+    prefix=None, suffix=None, extension=".cat.fits"
 ):
     catalog_dir = get_catalog_dir(field, tile, detection_band)
     catalog_stem = get_catalog_stem(

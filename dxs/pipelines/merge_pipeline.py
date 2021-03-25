@@ -51,6 +51,11 @@ def merge_pipeline(
 
         print([x.stem for x in catalog_list])
         
+        if require_all:
+            if not all([mp.exists() for mp in mosaic_list]):
+                logger.info("skipping merge")
+                continue
+
         combined_dir = paths.get_catalog_dir(field, args.output_code, band)
         combined_dir.mkdir(exist_ok=True, parents=True)
         combined_stem = paths.get_catalog_stem(

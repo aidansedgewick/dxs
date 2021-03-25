@@ -123,7 +123,7 @@ def photometry_pipeline(
     if collate_crosstalks:
         J_xproc.collate_crosstalks(mag_column="j_m", mag_limit=15.0, n_cpus=n_cpus)
     Jout_stem = paths.get_catalog_stem(field, tile, "J", prefix=prefix)
-    J_output_path = J_ex.catalog_path.parent / f"{Jout_stem}.fits"
+    J_output_path = J_ex.catalog_path.parent / f"{Jout_stem}.cat.fits"
     if match_crosstalks:
         print_header("J crosstalks")
         J_xproc.match_crosstalks_to_catalog(
@@ -150,7 +150,7 @@ def photometry_pipeline(
     # stick them together.
     Jfp_output_dir = paths.get_catalog_dir(field, tile, "J")
     Jfp_combined_stem = paths.get_catalog_stem(field, tile, "JK", prefix=prefix)
-    Jfp_output_path =  Jfp_output_dir / f"{Jfp_combined_stem}.fits"
+    Jfp_output_path =  Jfp_output_dir / f"{Jfp_combined_stem}.cat.fits"
     Jfp_matcher = CatalogMatcher(
         J_output_path, output_path=Jfp_output_path, ra="J_ra", dec="J_dec"
     )
@@ -190,7 +190,7 @@ def photometry_pipeline(
     if collate_crosstalks:
         K_xproc.collate_crosstalks(mag_column="k_m", mag_limit=15.0, n_cpus=n_cpus)
     Kout_stem = paths.get_catalog_stem(field, tile, "K", prefix=prefix)
-    K_output_path = K_ex.catalog_path.parent / f"{Kout_stem}.fits"
+    K_output_path = K_ex.catalog_path.parent / f"{Kout_stem}.cat.fits"
     if match_crosstalks:
         print_header("K crosstalks")
         K_xproc.match_crosstalks_to_catalog(
@@ -217,7 +217,7 @@ def photometry_pipeline(
     ## stick them together.
     Kfp_output_dir = paths.get_catalog_dir(field, tile, "K")
     Kfp_combined_stem = paths.get_catalog_stem(field, tile, "KJ", prefix=prefix)
-    Kfp_output_path =  Kfp_output_dir / f"{Kfp_combined_stem}.fits"
+    Kfp_output_path =  Kfp_output_dir / f"{Kfp_combined_stem}.cat.fits"
     Kfp_matcher = CatalogMatcher(
         K_output_path, output_path=Kfp_output_path, ra="K_ra", dec="K_dec"
     )
@@ -246,7 +246,7 @@ def photometry_pipeline(
 
     pair_output_stem = paths.get_catalog_stem(field, tile, "", prefix=prefix)
     pair_output_dir = paths.get_catalog_dir(field, tile, "")
-    pair_output_path = pair_output_dir / f"{pair_output_stem}.fits"
+    pair_output_path = pair_output_dir / f"{pair_output_stem}.cat.fits"
     pair_matcher = CatalogPairMatcher(
         J_output_path, K_output_path, pair_output_path, 
         output_ra="ra", output_dec="dec",

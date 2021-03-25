@@ -201,11 +201,11 @@ def make_good_coverage_map(
         minimum_coverage = get_minimum_coverage_value(
             data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
         )
-        data[data < minimum_coverage] = 0
+        data[data < minimum_coverage] = 0.
         if weight_map_path is not None:
             with fits.open(weight_map_path) as weight:
                 wdat = weight[0].data
-                data[ wdat < weight_minimum ] = 0
+                data[ wdat < weight_minimum ] = 0.
         if dilation_iterations > 0:
             data = dilate_zero_regions(
                 data, dilation_structure=dilation_structure, dilation_iterations=dilation_iterations
@@ -241,14 +241,14 @@ def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, fra
     logger.info(f"select minimum coverage as >{minimum_coverage}")
     return minimum_coverage
 
-def dilate_zero_regions(data, dilation_structure=None, dilation_iterations=100):
+def dilate_zero_regions(data, dilation_structure=None, dilation_iterations=150):
     mask = (data[2:-2, 2:-2] == 0)
     old_zeros = mask.sum()    
     mask = binary_dilation(
         mask, structure=dilation_structure, iterations=dilation_iterations
     )
     new_zeros = mask.sum()
-    data[2:-2, 2:-2][ mask ] = 0
+    data[2:-2, 2:-2][ mask ] = 0.
     logger.info(f"mask further {new_zeros-old_zeros:,} pix")
     return data
 

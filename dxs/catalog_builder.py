@@ -66,7 +66,7 @@ class CatalogExtractor:
             self.measurement_mosaic_path = None
             m_stem = ''
         if catalog_path is None:
-            catalog_path = Path.cwd() / f"{d_stem}{m_stem}.fits"
+            catalog_path = Path.cwd() / f"{d_stem}{m_stem}.cat.fits"
         self.catalog_path = Path(catalog_path)
         self.use_weight = use_weight
         if weight_path is None:
@@ -134,7 +134,7 @@ class CatalogExtractor:
             catalog_stem = paths.get_catalog_stem(
                 field, tile, detection_band, measurement_band=measurement_band, prefix=prefix
             )
-        catalog_path = catalog_dir / f"{catalog_stem}.fits"
+        catalog_path = catalog_dir / f"{catalog_stem}.cat.fits"
         return cls(
             detection_mosaic_path, 
             measurement_mosaic_path=measurement_mosaic_path,
@@ -271,7 +271,7 @@ class CatalogMatcher:
         the columns for the coordinates to use in the main catalog when doing matches.
 
     >>> cat_matcher = CatalogMatcher(
-            "./catalog.fits", output_path="./catalog_with_matches.fits", 
+            "./catalog.cat.fits", output_path="./catalog_with_matches.cat.fits", 
             ra="best_ra", dec="best_ra",
         )
     >>> cat_matcher.match_catalog("./gaia_data.fits", ra="gaia_ra", dec="gaia_dec")
@@ -293,12 +293,12 @@ class CatalogMatcher:
     ):
         catalog_dir = paths.get_catalog_dir(field, tile, band)
         catalog_stem = paths.get_catalog_stem(field, tile, band, prefix=prefix)
-        catalog_path = catalog_dir / f"{catalog_stem}.fits"
+        catalog_path = catalog_dir / f"{catalog_stem}.cat.fits"
         suffix = suffix or ''
         prefix = prefix or ''
         if output_path is None:
             output_stem = f"{prefix}{catalog_stem}{suffix}"
-            output_path = catalog_dir / f"{output_stem}.fits"
+            output_path = catalog_dir / f"{output_stem}.cat.fits"
         return cls(catalog_path, output_path, ra=ra, dec=dec)
 
     def match_catalog(
@@ -375,7 +375,7 @@ class CatalogPairMatcher(CatalogMatcher):
         value to use from the above column.
     
     >>> pair_matcher = CatalogPairMatcher(
-            "Jcat.fits", "Kcat.fits", "./matched_cat.fits", ra1="Jra", dec1="Jdec"
+            "J.cat.fits", "K.cat.fits", "./matched.cat.fits", ra1="Jra", dec1="Jdec"
 
     """
 
@@ -404,10 +404,10 @@ class CatalogPairMatcher(CatalogMatcher):
     ):
         catalog1_dir = paths.get_catalog_dir(field, tile, "J")
         catalog1_stem = paths.get_catalog_stem(field, tile, "J", prefix=prefix)
-        catalog1_path = catalog1_dir / f"{catalog1_stem}.fits"
+        catalog1_path = catalog1_dir / f"{catalog1_stem}.cat.fits"
         catalog2_dir = paths.get_catalog_dir(field, tile, "K")
         catalog2_stem = paths.get_catalog_stem(field, tile, "K", prefix=prefix)
-        catalog2_path = catalog2_dir / f"{catalog2_stem}.fits"
+        catalog2_path = catalog2_dir / f"{catalog2_stem}.cat.fits"
         return cls(
             catalog1_path, catalog2_path, output_path,
             ra1="J_ra", dec1="J_dec", prefix1="J", suffix1=suffix,

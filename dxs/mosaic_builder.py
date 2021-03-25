@@ -47,7 +47,11 @@ with open(neighbors_path) as f:
             tuple(v): k for k, v in arrangement.items()
         }
 
-stack_data = pd.read_csv(paths.header_data_path)
+def read_header_data(header_data_path=paths.header_data_path):
+    if not header_data_path.exists():
+        return None
+    return pd.read_csv(header_data_path)
+header_data = read_header_data()
 
 class MosaicBuilderError(Exception):
     pass
@@ -66,7 +70,6 @@ class MosaicBuilder:
         swarp_config_file=None,
         hdu_prep_kwargs=None
     ):
-        check_modules("swarp") # do we have swarp available?
         if isinstance(mosaic_stacks, pd.DataFrame):
             self.mosaic_stacks = mosaic_stacks
             if neighbor_stacks is not None:
@@ -75,7 +78,7 @@ class MosaicBuilder:
             else:
                 relevant_stacks = mosaic_stacks
             logger.info("stacks to use: \n")
-            print(relevant_stacks.groupby(["tile", "pointing"]).size())          
+            print(relevant_stacks.groupby(["field", "tile", "pointing"]).size())          
             self.stack_list = [
                 paths.stack_data_path / f"{x}.fit" for x in relevant_stacks["filename"]
             ]
@@ -94,6 +97,7 @@ class MosaicBuilder:
             self.ccds_list = [None for _ in range(len(mosaic_stacks))]                
 
         self.mosaic_path = Path(mosaic_path)
+        logger.info(f"output at {self.mosaic_path.name}")
         self.swarp_config = swarp_config or {}
         self.swarp_config_file = swarp_config_file or paths.config_path / "swarp/mosaic.swarp"
         self.hdu_prep_kwargs = hdu_prep_kwargs or {}    
@@ -116,6 +120,7 @@ class MosaicBuilder:
         cls, field, tile, band, 
         include_neighbors=True,
         prefix=None,
+        suffix=None,
         extension=None,
         add_flux_scale=True,
         swarp_config=None, 
@@ -123,7 +128,7 @@ class MosaicBuilder:
         hdu_prep_kwargs=None,
     ):
         mosaic_dir = paths.get_mosaic_dir(field, tile, band)
-        mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix)
+        mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix, suffix=suffix)
         extension = f".{extension}" if extension is not None else ""
         mosaic_path = mosaic_dir / f"{mosaic_stem}{extension}.fits"
         swarp_config = swarp_config or {}
@@ -132,6 +137,9 @@ class MosaicBuilder:
 
         # Get a list of all the stacks in this tile (ignoring band) for geometry.
         geom_mosaic_stacks = get_stack_data(field, tile, band=None)
+        if len(geom_mosaic_stacks) == 0:
+            logger.info(f"No stacks in {field}, {tile}, in any band")
+            return None
         geom_stack_list = [
             paths.stack_data_path / f"{x}.fit" for x in geom_mosaic_stacks["filename"]
         ]
@@ -151,7 +159,7 @@ class MosaicBuilder:
         # which stacks should go into the swarp?
         mosaic_stacks = get_stack_data(field, tile, band)
         if len(mosaic_stacks) == 0:
-            logger.info("No stacks to build.")
+            logger.info(f"No stacks in {field} {tile} {band} to build.")
             return None
         if include_neighbors:
             mosaic_stacks["ccds"] = [
@@ -226,6 +234,7 @@ class MosaicBuilder:
         kwargs
             kwargs that are passed to HDUPreparer.prepare_stack() 
         """
+        check_modules("swarp") # do we have swarp available?
         if len(kwargs) > 0:
             logger.warn(
                 "please pass all hdu_prep_kwargs at initialisation as "
@@ -239,25 +248,12 @@ class MosaicBuilder:
             self.write_swarp_list(hdu_list)
         else:
             self.write_swarp_list(self.stack_list)
-        config = self.build_swarp_config()
-        config["nthreads"] = n_cpus or 1    
-        config.update(self.swarp_config)
-        #if not os.isatty(0):
-        #    config["verbose_type"] = "quiet" # If running on a batch, prevent spewing output.
-        config = format_flags(config)
-        self.swarp = Astromatic(
-            "SWarp", 
-            str(paths.temp_swarp_path), # I think this is ignored by Astromatic() anyway?!
-            config=config, 
-            config_file=str(self.swarp_config_file),
-            store_output=True,
-        )
+        self.initialise_astromatic(n_cpus=n_cpus)
         swarp_list_name = "@"+str(self.swarp_list_path)
-        logger.info("build - starting swarp")
-        kwargs = self.swarp.run(swarp_list_name)
+        self.swarp.run(swarp_list_name)
         logger.info(f"Mosaic written to {self.mosaic_path}")
         with open(self.swarp_run_parameters_path, "w+") as f:
-            json.dump(kwargs, f, indent=2)
+            json.dump(self.cmd_kwargs, f, indent=2)
        
     def prepare_all_hdus(self, stack_list=None, n_cpus=None, **kwargs):
         """
@@ -299,6 +295,26 @@ class MosaicBuilder:
         with open(self.swarp_list_path, "w+") as f:
             f.writelines([str(hdu_path)+"\n" for hdu_path in hdu_list])        
     
+    def initialise_astromatic(self, n_cpus=None):
+        config = self.build_swarp_config()
+        config["nthreads"] = n_cpus or 1    
+        config.update(self.swarp_config)
+        #if not os.isatty(0):
+        #    config["verbose_type"] = "quiet" # If running on a batch, prevent spewing output.
+        config = format_flags(config)
+        self.swarp = Astromatic(
+            "SWarp", 
+            str(paths.temp_swarp_path), # I think this is ignored by Astromatic() anyway?!
+            config=config, 
+            config_file=str(self.swarp_config_file),
+            store_output=True,
+        )
+        swarp_list_name = "@"+str(self.swarp_list_path)
+        logger.info("build - starting swarp")
+        cmd, cmd_kwargs = self.swarp.build_cmd(swarp_list_name)
+        self.cmd_kwargs = cmd_kwargs
+        self.cmd_kwargs["cmd"] = cmd
+
     def build_swarp_config(self,):
         config = {}
         config["imageout_name"] = self.mosaic_path
@@ -353,7 +369,7 @@ class MosaicBuilder:
         for col in magzpt_cols:
             magzpt_df[col] = stack_data[col] + exptime_col
         magzpt = np.median(magzpt_df.stack().values)
-        logger.info(f"magzpt: {magzpt}; inc. exptime: {magzpt_inc_exptime}")
+        logger.info(f"magzpt = {magzpt}; inc. exptime: {magzpt_inc_exptime}")
         return magzpt
 
 class HDUPreparer:
@@ -604,13 +620,15 @@ def get_hdu_name(stack_path, ccd, weight=False, prefix=None):
     return f"{prefix}{stack_path.stem}_{ccd:02d}{weight}.fits"
 
 
-##======== Finding out which stacks are important for this mosaic.
+##======== Finding out which stacks are important for a mosaic.
 
 def get_stack_data(field, tile, band, pointing=None):
     """
     Data frame of info for stacks in a given field/tile/band [optionally pointing].
     Must provide, field, tile, band as args - although tile and band can be None, or a list.
     """
+    if header_data is None:
+        raise IOError("Run dxs/setup_scripts/extract_header_info.py first")
     queries = [f"(field=='{field}')"]
     if tile is not None:
         if not isinstance(tile, list):
@@ -625,7 +643,7 @@ def get_stack_data(field, tile, band, pointing=None):
             pointing = [pointing]
         queries.append(f"(pointing in @pointing)")    
     query = "&".join(q for q in queries)
-    return stack_data.query(query)
+    return header_data.query(query)
 
 def get_neighbor_stacks(field, tile, band):
     """
@@ -695,6 +713,8 @@ def calculate_mosaic_geometry(
     Returns two tuples: centre (ra, dec) in degrees, and mosaic_size (x, y) in pxiels.
     """
     
+    ## TODO fix wrap-around 360 values.
+
     logger.info("Calculating mosaic geometry")
     ccds = ccds or [0]
     ra_values = []
@@ -712,7 +732,7 @@ def calculate_mosaic_geometry(
     # center is easy.
     center = (np.mean(ra_limits), np.mean(dec_limits))
     # image size takes a bit more thought because of spherical things.
-    cos_dec = np.cos(center[1]*np.pi / 180.)
+    cos_dec = np.cos(center[1] * np.pi / 180.)
     pixel_scale = pixel_scale or survey_config["mosaics"]["pixel_scale"]
     plate_factor = 3600. / pixel_scale
     x_size = abs(ra_limits[1] - ra_limits[0]) * plate_factor * cos_dec
@@ -739,11 +759,12 @@ def build_mosaic_header(center, size, pixel_scale, proj="TAN"):
     """
     w = build_mosaic_wcs(center, size, pixel_scale, proj=proj)
     h = w.to_header()
-    h.insert(0, "SIMPLE", "T")
-    h.insert(1, "BITPIX", -32)
-    h.insert(2, "NAXIS", 2)
-    h.insert(3, "NAXIS1", size[0])
-    h.insert(4, "NAXIS2", size[1])
+    #h.insert(0, "SIMPLE", "T")
+    #h.insert(1, "BITPIX", -32)
+    #h.insert(2, "NAXIS", 2)
+    #h.insert(3, "NAXIS1", size[0])
+    #h.insert(4, "NAXIS2", size[1])
+    #print(h["SIMPLE"])
     return h   
 
 def build_mosaic_wcs(center, size, pixel_scale, proj="TAN"):
@@ -769,11 +790,12 @@ def add_keys(mosaic_path, data, hdu=0, verbose=False):
             if verbose:
                 logger.info(f"add keys - {mosaic_path.name} update {key} to {val}")
             #mosaic[hdu].header[key.upper()] = val
-            if not isinstance(data, tuple):
-                data = (data,)
+            if not isinstance(val, tuple):
+                val = (val, "")
             try:
                 mosaic[hdu].header.set(key.upper(), *val)
             except:
+                logger.info(f"Could not write {key}, {val}")
                 pass
         mosaic.flush()
 

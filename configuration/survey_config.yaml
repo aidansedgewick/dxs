@@ -14,7 +14,7 @@ wfcam:
 # some error catching?
 mosaics:
   border: 100
-  max_size: [25000,25000]
+  max_size: [25000, 25000]
   pixel_scale: 0.2 # arcsec.
 
 field_limits:
