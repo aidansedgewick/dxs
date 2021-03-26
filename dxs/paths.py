@@ -7,8 +7,6 @@ base_path = file_path.parent.parent
 # INPUT DATA
 input_data_path = file_path.parent.parent / "input_data"
 stack_data_path = input_data_path / "stacks"
-if stack_data_path.is_dir() is False:
-    raise ValueError(f"No data directory {data_path}. \nEither run setup_scripts/get_data.sh or manually add the data in this location. ")
 
 # TEMP PATHS
 temp_data_path = file_path.parent.parent / "temp_data"
@@ -40,6 +38,9 @@ print(f"input_data_path {input_data_path}\nconfig_path {config_path}\n")
 # HELPER FUNCS
 
 def create_all_paths():
+    input_data_path.mkdir(exist_ok=True, parents=True)
+    stack_data_path.mkdir(exist_ok=True, parents=True)
+
     temp_data_path.mkdir(exist_ok=True, parents=True) 
     temp_hdus_path.mkdir(exist_ok=True, parents=True)   
     temp_swarp_path.mkdir(exist_ok=True, parents=True)
