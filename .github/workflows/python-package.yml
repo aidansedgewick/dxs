@@ -27,6 +27,7 @@ jobs:
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install flake8 pytest
+        python3 -m pip install numpy
         python3 -m pip install -r requirements.txt
     - name: Install astromatic-wrapper
       #uses: actions/checkout@master
