@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
         name="dxs",
@@ -9,7 +9,7 @@ setup(
         author_email='aidansedgewick@gmail.com',
         license="MIT license",
         #install_requires=requirements,
-        #packages = find_packages(exclude=["docs"]),
+        packages = find_packages(),
 )
 
 from dxs.paths import create_all_paths
