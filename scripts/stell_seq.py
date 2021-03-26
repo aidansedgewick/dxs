@@ -12,8 +12,6 @@ from astropy.table import Table
 
 from easyquery import Query
 
-from dxs.utils.poly import Poly
-
 from dxs import paths
 
 suffix = "panstarrs"

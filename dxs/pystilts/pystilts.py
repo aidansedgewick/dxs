@@ -58,7 +58,6 @@ class Stilts:
         self.flags = flags or {}
         self.stilts_exe = stilts_exe
         self.flags.update(kwargs)
-        print("FLAGS ARE", self.flags)
         self.cmd = None
         
         if "out" not in flags:
@@ -76,10 +75,9 @@ class Stilts:
     def run(self, strict=True):
         if self.cmd is None:
             self.build_cmd()
-        print("\n")
         logger.info(f"RUN CMD:\n  {self.cmd}")
         status = subprocess.call(self.cmd, shell=True)
-        if strict:    
+        if strict:
             if status > 0:
                 print()
                 error_msg = (

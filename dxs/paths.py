@@ -15,6 +15,7 @@ temp_data_path = file_path.parent.parent / "temp_data"
 temp_hdus_path = temp_data_path / "hdus"
 temp_swarp_path = temp_data_path / "swarp"
 temp_sextractor_path = temp_data_path / "sextractor"
+temp_stilts_path = temp_data_path / "stilts"
 
 # CONFIGS
 config_path = file_path.parent.parent / "configuration"
@@ -43,6 +44,7 @@ def create_all_paths():
     temp_hdus_path.mkdir(exist_ok=True, parents=True)   
     temp_swarp_path.mkdir(exist_ok=True, parents=True)
     temp_sextractor_path.mkdir(exist_ok=True, parents=True)
+    temp_stilts_path.mkdir(exist_ok=True, parents=True)
 
     temp_test_path.mkdir(exist_ok=True, parents=True)
 

@@ -20,9 +20,7 @@ from dxs.utils.phot import ab_to_vega, vega_to_ab
 from dxs.utils.region import in_only_one_tile
 from dxs import paths
 
-
-
-logger = logging.getLogger("main")
+logger = logging.getLogger("correlator")
 
 field = "EN"
 
@@ -45,15 +43,6 @@ with open(survey_config_path, "r") as f:
 randoms_density = 10_000
 
 ic = 0.008
-
-#def power_law(x,d):
-#    return x**(-d)
-
-#def calc_integral_constraint(x, w_init, func=None, iterations=4, kwargs):
-#    if func is None:
-#        func = power_law
-
-    
 
 ###================= start =================###
 
@@ -83,7 +72,6 @@ mask = dra*dra + ddec*ddec < 1.0**2
 
 logger.info("made mask")
 qp.full_catalog = qp.full_catalog[mask]"""
-
 
 coords = SkyCoord(
     ra=qp.full_catalog["ra"], dec=qp.full_catalog["dec"], unit="degree"

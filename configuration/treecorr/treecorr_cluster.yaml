@@ -7,4 +7,8 @@ brute: True
 verbose: 2
 metric: "Arc" # ie, great circle distance.
 npatch: 25 # ignored by the NNCorrelator(). Use in creating catalogs.
-var_method: "shot" #"jackknife"
+var_method: "jackknife"
+nthreads: 16
+
+# not used by treecorr, but kept here for convenience
+randoms_density: 100000

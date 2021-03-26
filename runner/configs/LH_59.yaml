@@ -1,0 +1,11 @@
+
+base_dir: "/cosma5/data/durham/dc-sedg2/dxs/"
+python_script_path: "@base_dir/dxs/pipelines/main_pipeline.py" # required!
+run_name: "LH_main_210322"# required! meaningful name...
+
+args:
+    fields: LH
+    tiles: 5, 9
+    
+kwargs:
+    n_cpus: 16

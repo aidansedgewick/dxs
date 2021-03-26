@@ -1,0 +1,13 @@
+
+base_dir: "/cosma5/data/durham/dc-sedg2/dxs/"
+python_script_path: "@base_dir/scripts/catalog_plots.py" # required!
+run_name: "ero245_corr"# required! meaningful name...
+
+#args:
+    #fields: SA
+    #tiles: 1-12
+    
+kwargs:
+    #n_cpus: 16
+    treecorr-config: "/cosma5/data/durham/dc-sedg2/dxs/configuration/treecorr/treecorr_cluster.yaml"
+    #nthreads: 16

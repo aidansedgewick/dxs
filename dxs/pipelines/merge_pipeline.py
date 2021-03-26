@@ -5,7 +5,7 @@ from itertools import product
 
 from astropy.table import Table
 
-from dxs import merge_catalogs, CatalogPairMatcher
+from dxs import merge_catalogs, CatalogMatcher, CatalogPairMatcher
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -43,13 +43,13 @@ def merge_pipeline(
             catalog_stem = paths.get_catalog_stem(
                 field, tile, cat_band, prefix=prefix
             )
-            catalog_list.append(catalog_dir / f"{catalog_stem}.fits")
+            catalog_list.append(catalog_dir / f"{catalog_stem}.cat.fits")
             mosaic_path = paths.get_mosaic_path(
                 field, tile, band, extension=".cov.good_cov.fits"
             )
             mosaic_list.append(mosaic_path)
 
-        print([x.stem for x in catalog_list])
+        print("merging", [x.stem for x in catalog_list])
         
         if require_all:
             if not all([mp.exists() for mp in mosaic_list]):
@@ -62,7 +62,7 @@ def merge_pipeline(
             field, args.output_code, band, prefix=args.prefix
         )
 
-        combined_output_path = combined_dir / f"{combined_stem}.fits"
+        combined_output_path = combined_dir / f"{combined_stem}.cat.fits"
         if skip_merge is False:
             logger.info(f"merging {field} {band}")
             id_col = f"{band}_id"
@@ -88,8 +88,8 @@ def merge_pipeline(
         nir_output_stem = paths.get_catalog_stem(field, output_code, "", prefix=prefix)
         if len(external) > 0:
             nir_output_stem += "_" + "_".join(external)
-        nir_output_dir = paths.get_catalog_dir(field, output_code, "", prefix=prefix)
-        nir_output_path = nir_output_dir / f"{nir_output_stem}.fits"
+        nir_output_dir = paths.get_catalog_dir(field, output_code, "")
+        nir_output_path = nir_output_dir / f"{nir_output_stem}.cat.fits"
         nir_matcher = CatalogPairMatcher(
             J_output, K_output, nir_output_path,
             output_ra="ra", output_dec="dec",
@@ -108,13 +108,13 @@ def merge_pipeline(
         logger.info(f"use {catalog.stem}.")
 
         nir_output_stem = paths.get_catalog_stem(field, output_code, band, prefix=prefix)
+        nir_output_dir = paths.get_catalog_dir(field, output_code, "")
+        nir_output_path = nir_output_dir / f"{nir_output_stem}.cat.fits"
         nir_matcher = CatalogMatcher(catalog, output_path=nir_output_path)
         if len(external) > 0:
             nir_output_stem += "_" + "_".join(external)
-        nir_output_dir = paths.get_catalog_dir(field, output_code, "")
-        nir_output_path = nir_output_dir / f"{nir_output_stem}.fits"
-        nir_matcher.ra = external_match_ra
-        nir_matcher.dec = external_match_dec
+        nir_matcher.ra = f"{band}_ra"
+        nir_matcher.dec = f"{band}_dec"
         
 
     if external is None:
