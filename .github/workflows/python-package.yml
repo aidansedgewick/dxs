@@ -30,15 +30,14 @@ jobs:
         python3 -m pip install numpy
         python3 -m pip install -r requirements.txt
     - name: Install astromatic-wrapper
-      #uses: actions/checkout@master
       run: |
         git clone https://github.com/aidansedgewick/astromatic_wrapper.git
         cd astromatic_wrapper
         python3 -m pip install -e .
         cd ..
-    #- name: Install stilts
-    #  run: |
-    #    sudo apt-get install stilts
+    - name: Install stilts
+      run: |
+        sudo apt-get install stilts
     - name: Install dxs suite
       run: |
         python3 -m pip install -e .
@@ -52,4 +51,3 @@ jobs:
       run: |
         cd test_dxs/
         pytest
-
