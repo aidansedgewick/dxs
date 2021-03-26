@@ -36,9 +36,9 @@ jobs:
         cd astromatic_wrapper
         python3 -m pip install -e .
         cd ..
-    - name: Install stilts
-      run: |
-        sudo apt-get install stilts
+    #- name: Install stilts
+    #  run: |
+    #    sudo apt-get install stilts
     - name: Install dxs suite
       run: |
         python3 setup.py install
