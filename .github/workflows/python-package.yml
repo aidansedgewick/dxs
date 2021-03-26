@@ -41,7 +41,7 @@ jobs:
     #    sudo apt-get install stilts
     - name: Install dxs suite
       run: |
-        python3 setup.py install
+        python3 -m pip install -e .
     #- name: Lint with flake8
     #  run: |
     #    # stop the build if there are Python syntax errors or undefined names
