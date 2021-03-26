@@ -30,8 +30,9 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Install astromatic-wrapper
       uses: actions/checkout@master
-      with:
-        respository: aidansedgewick/astromatic-wrapper
+    - run: |
+        git clone https://github.com/aidansedgewick/astromatic_wrapper.git
+        cd astromatic_wrapper
         python -m pip install -e .
     - name: Lint with flake8
       run: |
