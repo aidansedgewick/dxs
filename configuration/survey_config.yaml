@@ -43,8 +43,17 @@ bright_stars:
   stacks:
     mag_ranges: [0., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.]
 
+merge:
+  tile_merge_error: 0.5
+  nir_match_error: 1.0
+  panstarrs_match_error: 1.0
+  cfhtls_match_error: 1.0
+  unwise_match_error: 1.0
+  hsc_match_error: 1.0
+  
+
 help:
-  ccds: "ccds idxs in stacks which contain data - ie, in DXS, hdu 0 is only a header..."
+  ccds: "HDU[ii], ii are indexes in stacks which contain data - ie, in DXS, hdu 0 is only a header..."
   field_limits: "a 'square' which vaguely contains all of the data."
   ab_vega_offset: "offset defined such that m_Ab = m_Vega + offset"
   zeropoint_flux: "Flux Fv is Fv0*10**(-m_Vega/2.5). Fv0 should be in Jy!!"

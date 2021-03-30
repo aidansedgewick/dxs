@@ -3,9 +3,6 @@ import pickle
 import yaml
 from argparse import ArgumentParser
 
-import matplotlib
-matplotlib.use('Agg')
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,12 +16,12 @@ from treecorr import NNCorrelation, Catalog
 
 from dxs.utils.image import uniform_sphere, objects_in_coverage, calc_survey_area
 from dxs import QuickPlotter
-from dxs.utils.misc import calc_range, calc_mids
+from dxs.utils.misc import calc_range, calc_mids, print_header
 from dxs.utils.phot import ab_to_vega, vega_to_ab
 from dxs.utils.region import in_only_one_tile
 from dxs import paths
 
-logger = logging.getLogger("plots")
+logger = logging.getLogger("correlator")
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
@@ -50,12 +47,19 @@ dm = 0.5
 mag_bins = np.arange(mag_min, mag_max + 1. * dm, dm)
 mag_mids = calc_mids(mag_bins)
 
+ic_guess = 0.01
+
 default_treecorr_config_path = paths.config_path / "treecorr/treecorr_default.yaml"
 
 field_choices = ["SA", "LH", "EN", "XM"]
 object_choices = ["gals", "eros_245", "ero_295"]
 
 if __name__ == "__main__":
+
+    #import matplotlib
+    #matplotlib.use('Agg')
+
+
     parser = ArgumentParser()
     parser.add_argument("--fields", choices=field_choices, nargs="+", default=field_choices)
     parser.add_argument("--K-cut", action="store", default=20.7, type=float)
@@ -73,8 +77,6 @@ if __name__ == "__main__":
     with open(args.treecorr_config, "r") as f:
         treecorr_config = yaml.load(f, Loader=yaml.FullLoader)
     randoms_density = treecorr_config.pop("randoms_denity", 10_000) # sq. deg.
-
-    correlator_results = {}
 
     jwk_counts = pd.read_csv(jwk_number_counts_path, delim_whitespace=True, na_values=["-"])
     lao_counts = pd.read_csv(lao_number_counts_path)
@@ -111,14 +113,19 @@ if __name__ == "__main__":
         jwk_path = None
     if jwk_path is not None:
         jwk = pd.read_csv(jwk_path, names=["x", "w"])
-        corr_ax.scatter(jwk["x"], jwk["w"], color="k")
+        corr_ax.scatter(jwk["x"], jwk["w"], color="k", label="Kim+ 2014")
         
-
+    correlator_results = {}
     for ii, field in enumerate(fields):
+        print_header(f"look at field {field}")
         catalog_path = paths.get_catalog_path(field, 0, "", suffix="_panstarrs")
         if not catalog_path.exists():
             continue
         full_catalog = Table.read(catalog_path)
+
+        full_catalog[gmag] = vega_to_ab(full_catalog[gmag], band="g")
+        full_catalog[imag] = vega_to_ab(full_catalog[imag], band="i")
+        full_catalog[zmag] = vega_to_ab(full_catalog[zmag], band="z")
         
         full_catalog[Jmag] = vega_to_ab(full_catalog[Jmag], band="J")
         full_catalog[Kmag] = vega_to_ab(full_catalog[Kmag], band="K")
@@ -138,10 +145,10 @@ if __name__ == "__main__":
         ra_limits = calc_range(catalog["ra"])
         dec_limits = calc_range(catalog["dec"])
         opt_area = calc_survey_area(
-            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits
+            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e5
         )
         nir_area = calc_survey_area(
-            nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits
+            nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e5
         )
         
         print(f"{field}: NIR area: {nir_area:.2f}, opt_area: {opt_area:.2f}")
@@ -163,7 +170,7 @@ if __name__ == "__main__":
         Nero_ax.plot(mag_mids, gal_hist, color=f"C{ii}", ls="--")
 
         sf_gzK = Query(
-            f"({zmag}-{Kmag}) -1.27 * ({gmag}-{zmag}) >= -0.022", 
+            f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) >= -0.022", 
             f"{zmag} < 50.", 
             f"{gmag} < 50.",
         ).filter(catalog)
@@ -188,21 +195,30 @@ if __name__ == "__main__":
         NgzK_ax.semilogy()
         NgzK_ax.legend()
 
-        pkl_path = paths.data_path / f"{field}_{args.objects}_{int(K_cut*10)}_corr_data.pkl"
+        pkl_path = paths.data_path / f"{field}_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
         if not skip_correlation:
             if args.objects == "eros_245":
                 cat = eros_245
+                object_area = opt_area
+            if args.objects == "gals":
+                cat = gals
+                object_area = nir_area
 
-            correlate_catalog = Query(f"{Ktot_mag} < {K_cut}").filter(cat)
+            obj_cat = Query(f"{Ktot_mag} < {K_cut}").filter(cat)
+
+            obj_fig, obj_ax = plt.subplots()
+            obj_ax.scatter(obj_cat["ra"], obj_cat["dec"], s=1, color="k")           
+            
             data_catalog = Catalog(
-                ra=correlate_catalog["ra"], 
-                dec=correlate_catalog["dec"], 
+                ra=obj_cat["ra"], 
+                dec=obj_cat["dec"], 
                 ra_units="deg", dec_units="deg",
-                npatch=treecorr_config.get("npatch", 25),
+                npatch=treecorr_config.get("npatch", 1),
             )
             # Now sort some randoms.
             full_randoms = SkyCoord(
-                uniform_sphere(ra_limits, dec_limits, density=randoms_density), unit="degree"
+                uniform_sphere(ra_limits, dec_limits, density=randoms_density), 
+                unit="degree"
             )
             random_mask = objects_in_coverage(
                 opt_mask_list, full_randoms.ra, full_randoms.dec
@@ -236,10 +252,11 @@ if __name__ == "__main__":
                 "rr": rr.npairs,
                 "w_ls": w_ls,
                 "w_ls_var": w_ls_var,
-                "n_data": len(correlate_catalog),
+                "n_data": len(obj_cat),
                 "n_random": len(randoms.ra),
-                "area": opt_area,
+                "area": object_area,
                 "random_density": randoms_density,
+                "K_cut": K_cut
             }
 
             with open(pkl_path, "wb+") as f:
@@ -254,11 +271,35 @@ if __name__ == "__main__":
 
         if corr_data is not None:
             corr_ax.plot(corr_data["x"], corr_data["w_ls"], color=f"C{ii}", label=field)
-        
-corr_ax.loglog()
-corr_ax.set_xlim(3e-3, 3e0)
-corr_ax.set_ylim(5e-2, 1e1)
+            corr_ax.plot(corr_data["x"], corr_data["w_ls"] + ic_guess, color=f"C{ii}", ls="--", label=field)
+            correlator_results[field] = corr_data
+    DD_total = np.vstack([v["dd"] for k, v in correlator_results.items()]).sum(axis=0)
+    DR_total = np.vstack([v["dr"] for k, v in correlator_results.items()]).sum(axis=0)
+    RR_total = np.vstack([v["rr"] for k, v in correlator_results.items()]).sum(axis=0)
 
+    print(DD_total, DR_total, RR_total)
+    
+   
+    nD_total = np.sum([v["n_data"] for k, v in correlator_results.items()])
+    nR_total = np.sum([v["n_random"] for k, v in correlator_results.items()])
+    print(nD_total, nR_total)
+
+
+    dd_total = DD_total / (0.5 * nD_total * (nD_total - 1))
+    dr_total = DR_total / (nD_total * nR_total)
+    rr_total = RR_total / (0.5 * nR_total * (nR_total - 1))
+
+    ls_total = (dd_total - 2 * dr_total + rr_total) / rr_total
+
+    corr_ax.plot(corr_data["x"], ls_total, color="k")
+    corr_ax.plot(corr_data["x"], ls_total + ic_guess, ls="--", color="k")
+    
+
+corr_ax.loglog()
+corr_ax.set_xlim(3e-4, 3e0)
+corr_ax.set_ylim(5e-3, 1e1)
+corr_ax.legend()
+plt.show()
 plt.close()
 
 

@@ -11,4 +11,4 @@ var_method: "jackknife"
 nthreads: 16
 
 # not used by treecorr, but kept here for convenience
-randoms_density: 100000
+randoms_density: 360000

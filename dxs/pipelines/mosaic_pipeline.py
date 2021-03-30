@@ -83,15 +83,23 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         coverage_prep_kwargs = {"hdu_prefix": f"{stem}_u"}
         pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
         cov_builder = MosaicBuilder.coverage_from_dxs_spec(
-            *spec, pixel_scale=pixel_scale, hdu_prep_kwargs=coverage_prep_kwargs,
+            *spec, 
+            pixel_scale=pixel_scale, 
+            swarp_config=coverage_swarp_config, 
+            hdu_prep_kwargs=coverage_prep_kwargs,
         )
+        minimum_coverage = cov_builder.mosaic_stacks.groupby(["pointing"]).size().min()
+        print(f"minimum_coverage is {minimum_coverage}")
         cov_builder.build(n_cpus=n_cpus)
         cov_builder.add_extra_keys() 
-        scale_mosaic(
-            cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
-        )
+        #scale_mosaic(
+        #    cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
+        #)
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
-        make_good_coverage_map(cov_builder.mosaic_path, output_path=good_cov_path)
+        make_good_coverage_map(
+            cov_builder.mosaic_path, output_path=good_cov_path,
+            minimum_coverage=minimum_coverage
+        )
         if bright_star_processor is not None:
             region_masks = bright_star_processor.process_region_masks(mag_col=tmass_mag)
             mask_regions_in_mosaic(good_cov_path, region_masks)
@@ -161,6 +169,17 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         masked_builder.build(n_cpus=n_cpus,)
         masked_builder.add_extra_keys(magzpt_inc_exptime=False)
 
+        try:
+            with fits.open(masked_builder.mosaic_path) as f:
+                header = f[0].header # check we can open the file!
+            with open(masked_builder.swarp_list_path) as f:
+                hdu_list = f.read().splitlines()
+            remove_temp_data(hdu_list)
+        except Exception as e:
+            logger.warn(f"during delete temp: {e}")
+            pass
+                
+
 if __name__ == "__main__":
     
     parser = ArgumentParser()
@@ -178,6 +197,6 @@ if __name__ == "__main__":
         args.field, args.tile, args.band, n_cpus=args.n_cpus, 
         initial=args.initial, coverage=args.coverage, masked=args.masked
     )
-
+    print("Done!")
 
     

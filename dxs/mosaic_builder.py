@@ -292,8 +292,23 @@ class MosaicBuilder:
         return hdu_list
 
     def write_swarp_list(self, hdu_list):
+        """
+        SWARP does something very odd. it seems to IGNORE the first input file.
+        so we add a tiny file with not much data as the first file
+        """
+        tiny_header = build_mosaic_header(
+            center=self.swarp_config["center"], size=(2,2), pixel_scale=0.2
+        )
+        tiny_data = np.random.uniform(0, 1, (2,2))
+        tiny_hdu = fits.PrimaryHDU(data=tiny_data, header=tiny_header)
+        tiny_hdu_path = paths.temp_hdus_path / f"{self.mosaic_path.stem}_tiny_data.fits"
+        tiny_hdu.writeto(tiny_hdu_path, overwrite=True)
+        
         with open(self.swarp_list_path, "w+") as f:
-            f.writelines([str(hdu_path)+"\n" for hdu_path in hdu_list])        
+            hdu_path_list = (
+                [str(tiny_hdu_path)+"\n"] + [str(hdu_path)+"\n" for hdu_path in hdu_list]
+            )
+            f.writelines(hdu_path_list)        
     
     def initialise_astromatic(self, n_cpus=None):
         config = self.build_swarp_config()
@@ -428,7 +443,7 @@ class HDUPreparer:
 
     def __init__(
         self, hdu, hdu_path,
-        fill_value=None,
+        fill_value=None, fill_value_var=1e-3,
         resize=False, edges=25.0, 
         mask_sources=False, mask_header=None, mask_map=None,
         normalise_exptime=False, exptime=None, # check from_dxs_spec hdu_prep_kwargs...
@@ -437,8 +452,8 @@ class HDUPreparer:
     ):
         self.data = hdu.data
         if fill_value is not None:
-            self.data = np.random.uniform(
-                0.9999*fill_value, 1.0001*fill_value, hdu.data.shape
+            self.data = np.random.normal(
+                fill_value, fill_value_var, hdu.data.shape
             )
             # slight variations from fill_value - swarp doesn't like HDU full of constant.
         self.header = hdu.header
@@ -591,11 +606,13 @@ class HDUPreparer:
         ccds = ccds or survey_config["ccds"]
         with fits.open(stack_path) as f:
             try:
-                spec = ",".join(f[0].header["OBJECT"].split()[2:])
+                objsplit = f[0].header["OBJECT"].split()
+                spec = objsplit[2] + f[0].header["FILTER"] + objsplit[3]
             except:
                 spec = ""
             for ii, ccd in enumerate(ccds):
-                hdu_name = get_hdu_name(stack_path, ccd, prefix=hdu_prefix)
+                stack_str = stack_path.stem + spec
+                hdu_name = get_hdu_name(stack_str, ccd, prefix=hdu_prefix)
                 hdu_path = paths.temp_hdus_path / hdu_name # includes ".fits" already...
                 logger.info(f"prep {spec} {hdu_path.stem}")
                 if not overwrite and hdu_path.exists():
@@ -614,10 +631,14 @@ def _hdu_prep_wrapper(arg):
     args, kwargs = arg
     return HDUPreparer.prepare_stack(args, **kwargs)    
 
-def get_hdu_name(stack_path, ccd, weight=False, prefix=None):
+def get_hdu_name(stack_str, ccd, weight=False, prefix=None):
     weight = ".weight" if weight else ""
     prefix = prefix or ""
-    return f"{prefix}{stack_path.stem}_{ccd:02d}{weight}.fits"
+    try:
+        stack_str = stack_str.stem
+    except:
+        stack_str = str(stack_str)
+    return f"{prefix}{stack_str}_{ccd:02d}{weight}.fits"
 
 
 ##======== Finding out which stacks are important for a mosaic.
@@ -769,6 +790,7 @@ def build_mosaic_header(center, size, pixel_scale, proj="TAN"):
 
 def build_mosaic_wcs(center, size, pixel_scale, proj="TAN"):
     """
+    pixel_scale in ARCSEC.
     """
     w = WCS(naxis=2)
     w.wcs.crpix = [size[0]/2, size[1]/2]

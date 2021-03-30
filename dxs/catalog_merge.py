@@ -28,7 +28,7 @@ logger = logging.getLogger("catalog_merge")
 
 def merge_catalogs(
     catalog_list, mosaic_list, output_path, id_col, ra_col, dec_col, snr_col, 
-    error=0.4, value_check_column=None, rtol=1e-5, atol=1e-8
+    error=0.5, value_check_column=None, rtol=1e-5, atol=1e-8
 ):   
     output_path = Path(output_path)
     stem = output_path.stem

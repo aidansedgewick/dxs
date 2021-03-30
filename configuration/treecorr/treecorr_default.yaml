@@ -6,5 +6,6 @@ sep_units: "arcsec"
 brute: True
 verbose: 2
 metric: "Arc" # ie, great circle distance.
-npatch: 25 # ignored by the NNCorrelator(). Use in creating catalogs.
 var_method: "shot" #"jackknife"
+
+randoms_density: 36000

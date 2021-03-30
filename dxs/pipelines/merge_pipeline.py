@@ -22,6 +22,8 @@ measurement_lookup = {
 
 external_data = ["panstarrs", "cfhtls", "hsc", "unwise"]
 
+merge_config = survey_config["merge"]
+
 def merge_pipeline(
     field, tiles, bands, prefix=None, external=None, 
     external_match_ra="ra", external_match_dec="dec",
@@ -69,8 +71,10 @@ def merge_pipeline(
             ra_col = f"{band}_ra"
             dec_col = f"{band}_dec"
             snr_col = f"{band}_snr_auto"
+            merge_error = merge_config["tile_merge_error"]
             merge_catalogs(
                 catalog_list, mosaic_list, combined_output_path, 
+                error=merge_error,
                 id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col,
                 value_check_column=f"{band}_mag_aper_30", atol=0.1
             )
@@ -96,7 +100,7 @@ def merge_pipeline(
             ra1="J_ra", dec1="J_dec",
             ra2="K_ra", dec2="K_dec",
         )
-        nir_matcher.best_pair_match(error=1.0) # arcsec
+        nir_matcher.best_pair_match(error=merge_config["nir_match_error"]) # arcsec
         nir_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
         nir_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
         nir_matcher.ra = external_match_ra
@@ -123,9 +127,11 @@ def merge_pipeline(
     if "panstarrs" in external:
         ps_name = f"{field}_panstarrs"
         ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
+        ps_error = merge_config["panstarrs_match_error"]
+        logger.info("match panstarrs with error={ps_error:.2f}")
         nir_matcher.match_catalog(
             ps_catalog_path, ra="ra_panstarrs", dec="dec_panstarrs", 
-            error=1.0, find="best1"
+            error=ps_error, find="best1"
         )
         nir_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
     if "cfhtls" in external:
@@ -133,9 +139,10 @@ def merge_pipeline(
         cfhtls_catalog_path = (
             paths.input_data_path / f"external/cfhtls/{cfhtls_name}.fits"
         )
+        cfhtls_error = merge_config["cfhtls_match_error"]
         nir_matcher.match_catalog(
             cfhtls_catalog_path, ra="ra_cfhtls", dec="dec_cfhtls", 
-            error=0.5, find="best1"
+            error=cfhtls_error, find="best1"
         )
         nir_matcher.fix_column_names(column_lookup={"Separation": "cfhtls_separation"})
     if "hsc" in args.external:
@@ -143,9 +150,10 @@ def merge_pipeline(
         hsc_catalog_path = (
             paths.input_data_path / f"external/hsc/catalogs/{hsc_name}.fits"
         )
+        hsc_error=merge_config["hsc_match_error"]
         nir_matcher.match_catalog(
             hsc_catalog_path, ra="ra_hsc", dec="dec_hsc",
-            error=1.0, find="best1"
+            error=hsc_error, find="best1"
         )
         nir_matcher.fix_column_names(column_lookup={"Separation": "hsc_separation"})
     if "unwise" in args.external:
@@ -153,7 +161,12 @@ def merge_pipeline(
         unwise_catalog_path = (
             paths.input_data_path / f"external/unwise/catalogs/{field}" / unwise_name
         )
-        nir_matcher.match_catalog(unwise_catalog_path, ra="ra_unwise", dec="dec_unwise", error=2.0)
+        unwise_error = merge_config["unwise_match_error"]
+        logger.info("match unwise with error={unwise_error:.2f}")
+        nir_matcher.match_catalog(
+            unwise_catalog_path, ra="ra_unwise", dec="dec_unwise",
+            error=unwise_error, find="best1"
+        )
         nir_matcher.fix_column_names(column_lookup={"Separation": "unwise_separation"})
     
     else:

@@ -15,7 +15,7 @@ from treecorr import NNCorrelation, Catalog
 
 from dxs.utils.image import uniform_sphere, objects_in_coverage, calc_survey_area
 from dxs import QuickPlotter
-from dxs.utils.misc import calc_range
+from dxs.utils.misc import calc_range, print_header
 from dxs.utils.phot import ab_to_vega, vega_to_ab
 from dxs.utils.region import in_only_one_tile
 from dxs import paths

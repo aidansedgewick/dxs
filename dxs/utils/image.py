@@ -131,7 +131,7 @@ def objects_in_coverage(
     return full_mask
 
 def calc_survey_area(
-    image_list, ra_limits=None, dec_limits=None, density=1e4
+    image_list, ra_limits=None, dec_limits=None, density=1e4, return_randoms=False
 ):
     """
     Monte-carlo to find survey area from list of fits files.
@@ -173,6 +173,8 @@ def calc_survey_area(
     survey_mask = objects_in_coverage(image_list, randoms[:,0], randoms[:,1])
     factor = len(randoms[ survey_mask ]) / len(randoms)
     survey_area = factor * area_box
+    if return_randoms:
+        return survey_area, randoms[ survey_mask ]
     return survey_area
 
 def calc_spherical_rectangle_area(ra_limits, dec_limits):
@@ -186,8 +188,9 @@ def calc_spherical_rectangle_area(ra_limits, dec_limits):
 def make_good_coverage_map(
     coverage_map_path, 
     output_path=None,
+    minimum_coverage=None,
     minimum_num_pixels=None, absolute_minimum=3, frac=1.0,
-    weight_map_path=None, weight_minimum=0.8, # ??? a complete guess.
+    weight_map_path=None, minimum_weight=0.8, # ??? a complete guess.
     dilation_structure=None, dilation_iterations=150,
     hdu=0
 ):
@@ -195,20 +198,22 @@ def make_good_coverage_map(
     logger.info(f"modify {coverage_map_path.name}")
     with fits.open(coverage_map_path) as f:
         data = f[hdu].data.astype(int)
+        data = np.around(data, decimals=0)  
         fwcs = WCS(f[hdu].header)
-        if minimum_num_pixels is None:
-            minimum_num_pixels = estimate_minimum_num_pixels(fwcs)
-        minimum_coverage = get_minimum_coverage_value(
-            data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
-        )
+        if minimum_coverage is None:
+            if minimum_num_pixels is None:
+                minimum_num_pixels = estimate_minimum_num_pixels(fwcs)
+            minimum_coverage = get_minimum_coverage_value(
+                data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
+            )
         data[data < minimum_coverage] = 0.
         if weight_map_path is not None:
             with fits.open(weight_map_path) as weight:
                 wdat = weight[0].data
-                data[ wdat < weight_minimum ] = 0.
+                data[ wdat < minimum_weight ] = 0.
         if dilation_iterations > 0:
             data = dilate_zero_regions(
-                data, dilation_structure=dilation_structure, dilation_iterations=dilation_iterations
+                data, structure=dilation_structure, iterations=dilation_iterations
             )
         good_coverage = fits.PrimaryHDU(data=data, header=f[hdu].header)
         if output_path is None:
@@ -241,11 +246,11 @@ def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, fra
     logger.info(f"select minimum coverage as >{minimum_coverage}")
     return minimum_coverage
 
-def dilate_zero_regions(data, dilation_structure=None, dilation_iterations=150):
+def dilate_zero_regions(data, structure=None, iterations=150):
     mask = (data[2:-2, 2:-2] == 0)
     old_zeros = mask.sum()    
     mask = binary_dilation(
-        mask, structure=dilation_structure, iterations=dilation_iterations
+        mask, structure=structure, iterations=iterations
     )
     new_zeros = mask.sum()
     data[2:-2, 2:-2][ mask ] = 0.
