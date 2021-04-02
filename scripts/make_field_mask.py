@@ -77,7 +77,7 @@ if __name__ == "__main__":
     parser.add_argument("bands")
     parser.add_argument("--skip-reprojection", action="store_true", default=False)
     parser.add_argument("--skip-stars", action="store_true", default=False)
-    parser.add_argument("--resolution", default=2.0, type=float, required=False)
+    parser.add_argument("--resolution", default=1.0, type=float, required=False)
     parser.add_argument("--mosaic-type", choices=["data", "cov", "good_cov"], default="good_cov")
     parser.add_argument("--n_cpus", default=None, type=int)
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 

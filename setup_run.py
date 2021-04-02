@@ -52,7 +52,8 @@ if __name__ == "__main__":
     base_dir.mkdir(exist_ok=True, parents=True)
     
     python_script_path = Path(run_config["python_script_path"]).absolute()
-    script_maker = ScriptMaker(python_script_path, base_dir=base_dir)
+    job_name = run_config.get("job_name", None)
+    script_maker = ScriptMaker(python_script_path, base_dir=base_dir, job_name=job_name)
 
     arg_list = []
     for k, v in run_config.get("args",{}).items():

@@ -28,6 +28,13 @@ with open(survey_config_path, "r") as f:
 
 ###============= bits related to survey area/randoms. =============###
 
+def calc_spherical_rectangle_area(ra_limits, dec_limits):
+    dra = ra_limits[1] - ra_limits[0] # could * by pi / 180 here, but would have to undo in last line...
+    ddec = np.sin(dec_limits[1] * np.pi / 180.) - np.sin(dec_limits[0] * np.pi / 180.)
+    area_box = dra * ddec * 180. / np.pi # if radians in first line, would * (180 / pi)**2
+    return area_box    
+
+
 def uniform_sphere(
     ra_limits, dec_limits, size: int = 1, density: float = None,
 ):
@@ -59,7 +66,7 @@ def uniform_sphere(
     RA = ra_limits[0] + (ra_limits[1] - ra_limits[0]) * np.random.random(size)
     return np.column_stack([RA, DEC])
 
-def _single_image_coverage(
+def single_image_coverage(
     image_path, ra, dec, minimum_coverage=0.0, absolute_value=True, hdu=0
 ):
     with fits.open(image_path) as img:
@@ -70,7 +77,7 @@ def _single_image_coverage(
     ra = ra.flatten()
     dec = dec.flatten()
     coord = np.column_stack([ra, dec])
-    pix = fwcs.wcs_world2pix( coord, 0 ).astype(int)
+    pix = fwcs.wcs_world2pix( coord, 1 ).astype(int)
     mask = np.full(len(pix), False)
     xmask = (0 < pix[:,0]) & (pix[:,0] < header["NAXIS1"])
     ymask = (0 < pix[:,1]) & (pix[:,1] < header["NAXIS2"])
@@ -121,7 +128,7 @@ def objects_in_coverage(
     if not isinstance(hdu, list):
         hdu = [hdu] * len(image_list)
     for ii, image_path in enumerate(image_list):
-        mask = _single_image_coverage(
+        mask = single_image_coverage(
             image_path, ra, dec, 
             minimum_coverage=minimum_coverage[ii], 
             absolute_value=absolute_value[ii],
@@ -177,28 +184,22 @@ def calc_survey_area(
         return survey_area, randoms[ survey_mask ]
     return survey_area
 
-def calc_spherical_rectangle_area(ra_limits, dec_limits):
-    dra = ra_limits[1] - ra_limits[0]
-    ddec = np.sin(dec_limits[1] * np.pi / 180.) - np.sin(dec_limits[0] * np.pi / 180.)
-    area_box = dra * ddec * 180. / np.pi
-    return area_box    
-
 ###================== coverage mosaics ==================###
 
 def make_good_coverage_map(
     coverage_map_path, 
     output_path=None,
     minimum_coverage=None,
-    minimum_num_pixels=None, absolute_minimum=3, frac=1.0,
+    minimum_num_pixels=None, absolute_minimum=2, frac=1.0,
     weight_map_path=None, minimum_weight=0.8, # ??? a complete guess.
-    dilation_structure=None, dilation_iterations=150,
+    dilation_structure=None, dilation_iterations=50,
     hdu=0
 ):
     coverage_map_path = Path(coverage_map_path)
     logger.info(f"modify {coverage_map_path.name}")
     with fits.open(coverage_map_path) as f:
-        data = f[hdu].data.astype(int)
-        data = np.around(data, decimals=0)  
+        data = f[hdu].data #.astype(int)
+        data = np.around(data, decimals=0)
         fwcs = WCS(f[hdu].header)
         if minimum_coverage is None:
             if minimum_num_pixels is None:
@@ -214,7 +215,7 @@ def make_good_coverage_map(
         if dilation_iterations > 0:
             data = dilate_zero_regions(
                 data, structure=dilation_structure, iterations=dilation_iterations
-            )
+            )    
         good_coverage = fits.PrimaryHDU(data=data, header=f[hdu].header)
         if output_path is None:
             output_path = coverage_map_path.with_suffix(".good_cov.fits")
@@ -266,6 +267,9 @@ def mask_regions_in_mosaic(
     output_path=None,
 ):
     logger.info("start masking regions")
+    if len(region_list) == 0:
+        logger.info("No regions to mask.")
+        return None
     with fits.open(mosaic_path) as f:
         data = f[0].data.copy()
         header = f[0].header

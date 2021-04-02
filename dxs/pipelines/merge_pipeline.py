@@ -6,6 +6,8 @@ from itertools import product
 from astropy.table import Table
 
 from dxs import merge_catalogs, CatalogMatcher, CatalogPairMatcher
+from dxs.mosaic_builder import add_keys
+from dxs.utils.misc import get_git_info
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -78,9 +80,15 @@ def merge_pipeline(
                 id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col,
                 value_check_column=f"{band}_mag_aper_30", atol=0.1
             )
+            branch, local_SHA = get_git_info()
+            data = {
+                "branch": (branch, "pipeline branch"),
+                "localSHA": (local_SHA, "commit SHA ID"),
+            }
+            add_keys(combined_output_path, data, verbose=True)                        
         output_catalogs[band] = combined_output_path
         catalog_lists.append(catalog_list)
-        
+                
     J_output = output_catalogs.get("J", None)
     K_output = output_catalogs.get("K", None)
 

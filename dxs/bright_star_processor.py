@@ -41,7 +41,7 @@ class BrightStarProcessor:
         
         self.box_angles = bright_star_config["diffraction_spike_angles"] * u.degree
         coeffs = bright_star_config["region_coefficients"]
-        self.mag_ranges = np.array([0.] + coeffs["mag_ranges"])
+        self.mag_ranges = np.array([-20.] + coeffs["mag_ranges"])
         self.box_widths = np.array(coeffs["box_widths"]) * (pix_scale / 3600. * u.degree)
         self.box_heights = np.array(coeffs["box_heights"]) * (pix_scale / 3600. * u.degree)
         self.circle_radii = np.array(coeffs["circle_radii"]) * (pix_scale / 3600. * u.degree)
@@ -70,7 +70,7 @@ class BrightStarProcessor:
         queries = (f"{mag_min} < {mag_col}", f"{mag_col} < {mag_max}")
         table = Query(*queries).filter(self.star_table)
         mag_indices = np.digitize(table[mag_col], bins=self.mag_ranges)
-        assert all(mag_indices < len(mag_indices)) # there are no stars outside the min/max
+        assert all(mag_indices < len(self.mag_ranges)) # there are no stars outside the min/max
         assert all(mag_indices > 0) # there are none less than the min_mag
         mag_indices = mag_indices - 1 # digitize assumes that [-inf, bins[0]] is the 0th bin.
         coords = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit="degree")

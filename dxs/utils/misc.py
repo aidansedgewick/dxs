@@ -94,7 +94,9 @@ def create_file_backups(file_list: List[Path], temp_dir: Path):
     return new_paths
 
 def get_git_info():
-
+    """
+    find git branch name and commit ID
+    """
     dxs_git = Path(__file__).parent.parent.parent / ".git"
     branch_cmd = f"git --git-dir {dxs_git} rev-parse --abbrev-ref HEAD".split()
     try:

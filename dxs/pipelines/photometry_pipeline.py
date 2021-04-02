@@ -76,7 +76,6 @@ def fix_sextractor_column_names(catalog_path, band=None, prefix=None, suffix=Non
         suffix=suffix
     )
 
-
 def photometry_pipeline(
     field, tile, 
     prefix="", 
@@ -88,7 +87,6 @@ def photometry_pipeline(
     match_extras=True,
     n_cpus=None,
 ):
-
     field_name = survey_config["code_to_field"][field]
     star_catalog_path = (
         paths.input_data_path / f"external/tmass/tmass_{field_name}_stars.csv"

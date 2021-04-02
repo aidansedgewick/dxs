@@ -1,0 +1,8 @@
+\EQUINOX = 'J2000'
+\source = "hand-built"
+\
+|ra       |dec      |j_m   |j_cmsig|h_m   |h_cmsig|k_m   |k_cmsig|ph_qual|gal_contam|mp_flg|rd_flg|j_h    |h_k    |j_k    |
+|double   |double   |double|double |double|double |double|double |char   |int       |int   |char  |double |double |double |
+|deg      |deg      |mag   |mag    |mag   |mag    |mag   |mag    |       |          |      |      |       |       |       |
+|null     |null     |null  |null   |null  |null   |null  |null   |null   |null      |null  |null  |-      |-      |-      |
+ 34.836501 -2.978187 1.0    0.01    1.0    0.01    1.0    0.01    null    0          0      0      0       0       0     

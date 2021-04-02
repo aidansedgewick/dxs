@@ -31,8 +31,6 @@ with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 logger = logging.getLogger("mosaic_pipeline")
-
-
 def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, masked=False):
     if not any([initial, coverage, masked]):
         initial, coverage, masked = True, True, True
@@ -47,6 +45,11 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         bright_star_processor = BrightStarProcessor.from_file(
             bright_star_catalog_path, queries=("j_m - k_m < 1.0",), format="ascii"
         )
+        extreme_star_processor = BrightStarProcessor.from_file(
+            paths.config_path / "very_bright_stars.csv", format="ascii"
+        ) # A hand-written file to deal with MIRA in XM06.
+            
+
     tmass_mag = f"{band.lower()}_m"
 
     logger.info(f"Mosaics for {spec}, use {n_cpus} threads")
@@ -55,7 +58,11 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
 
     stem = paths.get_mosaic_stem(*spec)
     prep_kwargs = {"hdu_prefix": f"{stem}_i"}
-    builder = MosaicBuilder.from_dxs_spec(*spec, suffix="_init", hdu_prep_kwargs=prep_kwargs)
+    builder = MosaicBuilder.from_dxs_spec(
+        *spec, 
+        suffix="_init", 
+        hdu_prep_kwargs=prep_kwargs,
+    )
 
     if builder is None: # ie, if there are no stacks to build
         logger.info("Builder is None. Exiting")
@@ -89,20 +96,20 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
             hdu_prep_kwargs=coverage_prep_kwargs,
         )
         minimum_coverage = cov_builder.mosaic_stacks.groupby(["pointing"]).size().min()
+        print(cov_builder.mosaic_stacks.groupby(["pointing"]).size())
         print(f"minimum_coverage is {minimum_coverage}")
         cov_builder.build(n_cpus=n_cpus)
-        cov_builder.add_extra_keys() 
-        #scale_mosaic(
-        #    cov_builder.mosaic_path, value=1., save_path=cov_builder.mosaic_path, round_val=0
-        #)
+        cov_builder.add_extra_keys()
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
         make_good_coverage_map(
             cov_builder.mosaic_path, output_path=good_cov_path,
-            minimum_coverage=minimum_coverage
+            minimum_coverage=minimum_coverage       
         )
         if bright_star_processor is not None:
             region_masks = bright_star_processor.process_region_masks(mag_col=tmass_mag)
+            extreme_region_masks = extreme_star_processor.process_region_masks(mag_col=tmass_mag)
             mask_regions_in_mosaic(good_cov_path, region_masks)
+            mask_regions_in_mosaic(good_cov_path, extreme_region_masks, expand=10000)
 
         try:
             weight_path = cov_builder.mosaic_path.with_suffix(".weight.fits")

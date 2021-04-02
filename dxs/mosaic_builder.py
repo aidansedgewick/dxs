@@ -38,7 +38,7 @@ survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
-neighbors_path = paths.config_path / "dxs_positions.yaml"
+neighbors_path = paths.config_path / "dxs_arrangement.yaml"
 with open(neighbors_path) as f:
     neighbors_config = yaml.load(f, Loader=yaml.FullLoader)
     neighbors_config["arrangement_to_tile"] = {}

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage.morphology import binary_fill_holes
 
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from astropy.table import Table
 from astropy.wcs import WCS
 from astropy.wcs.utils import fit_wcs_from_points
@@ -79,13 +80,13 @@ if __name__ == "__main__":
         subprocess.run(["tar", "-vxf", tar_path, "-C", base_dir])
 
     for field in fields:
-        url_code = survey_config["hsc"]["catalog_urls"].get(field, None)
-        if url_code is None:
+        catalog_url_code = survey_config["hsc"]["catalog_urls"].get(field, None)
+        if catalog_url_code is None:
             continue
-        url = base_url + url_code
+        url = base_url + catalog_url_code
         output_path = base_dir / f"{field}_catalog.fits"
 
-        if not output_path.exists or args.force_download:
+        if not output_path.exists() or args.force_download:
             status = download_data(url, output_path)
             if status == 1:
                 query_path = base_dir / f"{field}_hsc_query.sql"
@@ -101,18 +102,43 @@ if __name__ == "__main__":
                     output_path, column_lookup={"ra": "ra_hsc", "dec": "dec_hsc"}
                 )
 
+        random_url_code = survey_config["hsc"]["random_urls"].get(field, None)
+        if random_url_code is None:
+            continue
+        url = base_url + random_url_code
+        random_output_path = base_dir / f"{field}_randoms.fits"
+        
+        if not random_output_path.exists() or args.force_download:
+            status = download_data(url, random_output_path)
+            if status == 1:
+                query_path = base_dir / f"{field}_hsc_query.sql"
+                try:
+                    print_path = query_path.relative_to(Path.cwd())
+                except:
+                    print_path = query_path
+                print("Try logging onto https://hsc-release.mtk.nao.ac.jp/doc/")
+                print("and using the query in:")
+                print(f"{print_path}")
+
+
         logger.info("reading catalog")
-        cat = Table.read(output_path)
-        cat = Query("i_magerr_kron < 0.1").filter(cat)
+        cat = Table.read(random_output_path)
+        cat = Query(
+            "isprimary", 
+            "~i_pixelflags_bad", 
+            "~i_pixelflags_saturatedcenter", 
+            "~i_pixelflags_edge", 
+            "~i_pixelflags_isnull"
+        ).filter(cat)
         logger.info("read.")        
 
-        pixscale = 10. / 3600.
+        pixscale = 20. / 3600.
 
-        min_ra, max_ra = calc_range(cat["ra_hsc"])
+        min_ra, max_ra = calc_range(cat["ra"])
         min_ra -= 0.1
         max_ra += 0.1
 
-        min_dec, max_dec = calc_range(cat["dec_hsc"])
+        min_dec, max_dec = calc_range(cat["dec"])
         min_dec -= 0.1
         max_dec += 0.1
 
@@ -134,35 +160,21 @@ if __name__ == "__main__":
         foursquare = np.array([[1,1,1,1],[1,0,0,1],[1,0,0,1],[1,1,1,1]])
 
 
-        data, _, _ = np.histogram2d(cat["dec_hsc"], cat["ra_hsc"], bins=[ybins, xbins])
+        data, _, _ = np.histogram2d(cat["dec"], cat["ra"], bins=[ybins, xbins])
         binary_data = data.copy()
-        binary_data[ binary_data > 1 ] =1
+        binary_data[ binary_data > 1 ] = 1
 
-        new_data = None
-
+        binary_data = binary_data.astype(float)
+        """
         fig, ax = plt.subplots()
         ax.imshow(data.astype(bool).T)
-        plt.show()
-
-        for i in range(10):
-            print(i)
-            new_data = binary_data.copy()
-            #new_data = binary_fill_holes(new_data, structure=vertical)
-            #new_data = binary_fill_holes(new_data, structure=horzontal)
-            new_data = binary_fill_holes(new_data, structure=foursquare)
-            if np.array_equal(binary_data, new_data):
-                print("break!")
-                break
-            binary_data = new_data
-
-        fig, ax = plt.subplots()
-        ax.imshow(data.astype(bool).T)
-
         fig, ax = plt.subplots()
         ax.imshow(binary_data.T)
-        plt.show()
+        plt.show()"""
 
-        make_field_mask(regions_path)
+        mask_hdu = fits.PrimaryHDU(data=binary_data, header=wcs.to_header())
+        mask_hdu.writeto(base_dir / f"{field}_mask.fits", overwrite=True)
+        
         
 
 

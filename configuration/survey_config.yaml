@@ -34,13 +34,18 @@ masks:
 bright_stars:
   diffraction_spike_angles: [45., 87.5, 135., 177.5] # boxes at each of these angles in degrees.
   region_coefficients:
-    # assume the all start at 0 or the previous mag?
-    mag_ranges: [5., 11., 13., 15.]
-    box_widths: [1000., 600., 300., 100.] # in pix.
-    box_heights: [20., 20., 10., 10.] # in pix.
-    circle_radii: [200., 100., 60., 30.] # in pix.
+    # how big should the regions be given the brightness of each star?
+    # assume the all start at -BIG or the previous mag? -BIG = -20.
+    mag_ranges: [2., 5., 11., 13., 15.] # so this is -BIG, 2, 5, 11, 13, 15
+    box_widths: [40000., 1000., 600., 300., 100.] # in pix.
+    box_heights: [500., 20., 20., 10., 10.] # in pix.
+    circle_radii: [4000., 200., 100., 60., 30.] # in pix.
+
+    # There is a "hand-built" table 
 
   stacks:
+    # stack stars in these ranges to look at how big 
+    # the diffraction spike mask should be.
     mag_ranges: [0., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.]
 
 merge:
@@ -120,7 +125,11 @@ hsc:
   catalog_urls:
     EN: d8ca24dfb64dc33557f3038373acfede8a85a97933c5b11bb05b5186d3cd6d26
     SA: 9c9e995238899a5ab2a81cf14266d9e3b43c37c41c69c7c9c3193726410dc146
-    # XM: 
+    # XM:
+  random_urls:
+    EN: 09d4d760a99610afd4ad441fe411b50cf9d94ef1c7403fcd514fea44c3917155
+    # SA:
+    # XM:
 
 
 
