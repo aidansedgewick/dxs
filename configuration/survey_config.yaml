@@ -125,12 +125,22 @@ hsc:
   catalog_urls:
     EN: d8ca24dfb64dc33557f3038373acfede8a85a97933c5b11bb05b5186d3cd6d26
     SA: 9c9e995238899a5ab2a81cf14266d9e3b43c37c41c69c7c9c3193726410dc146
-    # XM:
+    XM: e4d4cc1c21143ade10035b15b1ce4f6fa0b51eec45ab2cb3cf563f7fbb2343a9
   random_urls:
     EN: 09d4d760a99610afd4ad441fe411b50cf9d94ef1c7403fcd514fea44c3917155
     # SA:
     # XM:
 
+swire:
+  url_base: "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?"
+  field_lookup: {EN: elaisn1, XM: xmm, LH: lockman}
+  select_columns: [
+    "cntr", "object", "ra", "dec",
+    "flux_ap3_36", "uncf_ap3_36", "flux_kr_36", "uncf_kr_36",
+    "flux_ap3_45", "uncf_ap3_45", "flux_kr_45", "uncf_kr_45",
+    "flux_ap3_58", "uncf_ap3_58", "flux_kr_58", "uncf_kr_58",
+    "flux_ap3_80", "uncf_ap3_80", "flux_kr_80", "uncf_kr_80",
+  ]
 
 
 

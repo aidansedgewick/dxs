@@ -30,18 +30,6 @@ with open(survey_config_path, "r") as f:
 jwk_number_counts_path = paths.input_data_path / "plotting/jwk_AB_number_counts.csv"
 lao_number_counts_path = paths.input_data_path / "plotting/lao_AB_number_counts.csv"
 
-nir_mag_type = "aper_20"
-nir_tot_mag_type = "auto"
-opt_mag_type = "aper_30" # ps use aper_18 or aper_30, cfhtls use aper_2 or aper_3.
-
-gmag = f"g_mag_{opt_mag_type}"
-imag = f"i_mag_{opt_mag_type}"
-zmag = f"z_mag_{opt_mag_type}"
-Jmag = f"J_mag_{nir_mag_type}"
-Kmag = f"K_mag_{nir_mag_type}"
-Ktot_mag = f"K_mag_{nir_tot_mag_type}"
-
-
 mag_min, mag_max = 17.0, 23.0
 dm = 0.5
 mag_bins = np.arange(mag_min, mag_max + 1. * dm, dm)
@@ -51,7 +39,7 @@ ic_guess = 0.01
 
 default_treecorr_config_path = paths.config_path / "treecorr/treecorr_default.yaml"
 
-field_choices = ["SA", "LH", "EN", "XM"]
+field_choices = ["SA", "LH", "EN", "XM", "Euclid"]
 object_choices = ["gals", "eros_245", "ero_295"]
 
 if __name__ == "__main__":
@@ -76,7 +64,7 @@ if __name__ == "__main__":
 
     with open(args.treecorr_config, "r") as f:
         treecorr_config = yaml.load(f, Loader=yaml.FullLoader)
-    randoms_density = treecorr_config.pop("randoms_denity", 10_000) # sq. deg.
+    randoms_density = 1000 #treecorr_config.pop("randoms_denity", 10_000) # sq. deg.
 
     jwk_counts = pd.read_csv(jwk_number_counts_path, delim_whitespace=True, na_values=["-"])
     lao_counts = pd.read_csv(lao_number_counts_path)
@@ -118,29 +106,66 @@ if __name__ == "__main__":
     correlator_results = {}
     for ii, field in enumerate(fields):
         print_header(f"look at field {field}")
-        catalog_path = paths.get_catalog_path(field, 0, "", suffix="_panstarrs")
-        if not catalog_path.exists():
-            continue
-        full_catalog = Table.read(catalog_path)
 
-        full_catalog[gmag] = vega_to_ab(full_catalog[gmag], band="g")
-        full_catalog[imag] = vega_to_ab(full_catalog[imag], band="i")
-        full_catalog[zmag] = vega_to_ab(full_catalog[zmag], band="z")
-        
-        full_catalog[Jmag] = vega_to_ab(full_catalog[Jmag], band="J")
-        full_catalog[Kmag] = vega_to_ab(full_catalog[Kmag], band="K")
-        full_catalog[Ktot_mag] = vega_to_ab(full_catalog[Ktot_mag], band="K")
+        if field in ["SA", "EN", "LH", "XM"]:
+            catalog_path = paths.get_catalog_path(field, 0, "", suffix="_panstarrs")
+            if not catalog_path.exists():
+                print(f"skip {catalog_path}: missing")
+                continue
+            full_catalog = Table.read(catalog_path)
 
-        catalog = Query(
-            "J_crosstalk_flag < 1", "K_crosstalk_flag < 1", 
-            "J_coverage > 0", "K_coverage > 0"
-        ).filter(full_catalog)
-                
-        optical_mask_path = paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"
-        J_mask_path = paths.masks_path / f"{field}_J_good_cov_mask.fits"
-        K_mask_path = paths.masks_path / f"{field}_K_good_cov_mask.fits"
-        opt_mask_list = [J_mask_path, K_mask_path, optical_mask_path]
-        nir_mask_list = [J_mask_path, K_mask_path]
+            nir_mag_type = "aper_20"
+            nir_tot_mag_type = "auto"
+            opt_mag_type = "aper_30" # ps use aper_18 or aper_30, cfhtls use aper_2 or aper_3.
+
+            gmag = f"g_mag_{opt_mag_type}"
+            imag = f"i_mag_{opt_mag_type}"
+            zmag = f"z_mag_{opt_mag_type}"
+            Jmag = f"J_mag_{nir_mag_type}"
+            Kmag = f"K_mag_{nir_mag_type}"
+            Ktot_mag = f"K_mag_{nir_tot_mag_type}"
+
+            full_catalog[gmag] = vega_to_ab(full_catalog[gmag], band="g")
+            full_catalog[imag] = vega_to_ab(full_catalog[imag], band="i")
+            full_catalog[zmag] = vega_to_ab(full_catalog[zmag], band="z")
+            
+            full_catalog[Jmag] = vega_to_ab(full_catalog[Jmag], band="J")
+            full_catalog[Kmag] = vega_to_ab(full_catalog[Kmag], band="K")
+            full_catalog[Ktot_mag] = vega_to_ab(full_catalog[Ktot_mag], band="K")
+
+            catalog = Query(
+                "J_crosstalk_flag < 1", "K_crosstalk_flag < 1", 
+                "J_coverage > 0", "K_coverage > 0"
+            ).filter(full_catalog)
+
+            optical_mask_path = paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"
+            J_mask_path = paths.masks_path / f"{field}_J_good_cov_mask.fits"
+            K_mask_path = paths.masks_path / f"{field}_K_good_cov_mask.fits"
+            opt_mask_list = [J_mask_path, K_mask_path, optical_mask_path]
+            nir_mask_list = [J_mask_path, K_mask_path]
+
+        if field == "Euclid":
+            euclid_cat_path = paths.input_data_path / "external/euclidsim/euclid_k.cat.fits"
+            catalog = Table.read(euclid_cat_path)
+            opt_mask_list = [paths.input_data_path / "external/euclidsim/euclid_mask.fits"]
+            nir_mask_list = opt_mask_list
+
+            nir_mag_type = "kron"
+            nir_tot_mag_type = "kron"
+            opt_mag_type = "kron" # ps use aper_18 or aper_30, cfhtls use aper_2 or aper_3.
+
+            gmag = f"g_mag_{opt_mag_type}"
+            imag = f"i_mag_{opt_mag_type}"
+            zmag = f"z_mag_{opt_mag_type}"
+            Jmag = f"J_mag_{nir_mag_type}"
+            Kmag = f"K_mag_{nir_mag_type}"
+            Ktot_mag = f"K_mag_{nir_tot_mag_type}"
+
+            h_factor = np.log10(0.7)
+            print(h_factor)
+            for mag_col in [gmag, imag, zmag, Jmag, Kmag, Ktot_mag]:                
+                catalog[mag_col] = catalog[mag_col] + h_factor
+
 
         ra_limits = calc_range(catalog["ra"])
         dec_limits = calc_range(catalog["dec"])
@@ -170,7 +195,7 @@ if __name__ == "__main__":
         Nero_ax.plot(mag_mids, gal_hist, color=f"C{ii}", ls="--")
 
         sf_gzK = Query(
-            f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) >= -0.022", 
+            f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) >= -0.022",
             f"{zmag} < 50.", 
             f"{gmag} < 50.",
         ).filter(catalog)
@@ -194,6 +219,18 @@ if __name__ == "__main__":
 
         NgzK_ax.semilogy()
         NgzK_ax.legend()
+        """
+        iK_fig, iK_ax = plt.subplots()
+        iK_ax.scatter(catalog[Kmag], catalog[imag]-catalog[Kmag], s=1, color="k")
+        iK_fig.suptitle(field)
+
+        gzK_fig, gzK_ax = plt.subplots()
+        gzK_ax.scatter(catalog[gmag] - catalog[zmag], catalog[zmag] - catalog[Kmag], s=1, color="k")
+        gzK_ax.scatter(sf_gzK[gmag] - sf_gzK[zmag], sf_gzK[zmag] - sf_gzK[Kmag], s=1, color="r")
+        gzK_ax.scatter(pe_gzK[gmag] - pe_gzK[zmag], pe_gzK[zmag] - pe_gzK[Kmag], s=1, color="r")        
+        """
+        
+        
 
         pkl_path = paths.data_path / f"{field}_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
         if not skip_correlation:
@@ -272,28 +309,51 @@ if __name__ == "__main__":
         if corr_data is not None:
             corr_ax.plot(corr_data["x"], corr_data["w_ls"], color=f"C{ii}", label=field)
             corr_ax.plot(corr_data["x"], corr_data["w_ls"] + ic_guess, color=f"C{ii}", ls="--", label=field)
-            correlator_results[field] = corr_data
-    DD_total = np.vstack([v["dd"] for k, v in correlator_results.items()]).sum(axis=0)
-    DR_total = np.vstack([v["dr"] for k, v in correlator_results.items()]).sum(axis=0)
-    RR_total = np.vstack([v["rr"] for k, v in correlator_results.items()]).sum(axis=0)
+            if field in ["SA", "EN", "LH", "XM"]:
+                correlator_results[field] = corr_data
 
-    print(DD_total, DR_total, RR_total)
-    
-   
-    nD_total = np.sum([v["n_data"] for k, v in correlator_results.items()])
-    nR_total = np.sum([v["n_random"] for k, v in correlator_results.items()])
-    print(nD_total, nR_total)
+    if len(fields) > 1:
+        DD_total = np.vstack([v["dd"] for k, v in correlator_results.items()]).sum(axis=0)
+        DR_total = np.vstack([v["dr"] for k, v in correlator_results.items()]).sum(axis=0)
+        RR_total = np.vstack([v["rr"] for k, v in correlator_results.items()]).sum(axis=0)
+
+        print(DD_total, DR_total, RR_total)
+        
+       
+        nD_total = np.sum([v["n_data"] for k, v in correlator_results.items()])
+        nR_total = np.sum([v["n_random"] for k, v in correlator_results.items()])
+        object_area_total = np.sum([v["area"] for k, v in correlator_results.items()])
+        print(nD_total, nR_total)
 
 
-    dd_total = DD_total / (0.5 * nD_total * (nD_total - 1))
-    dr_total = DR_total / (nD_total * nR_total)
-    rr_total = RR_total / (0.5 * nR_total * (nR_total - 1))
+        dd_total = DD_total / (0.5 * nD_total * (nD_total - 1))
+        dr_total = DR_total / (nD_total * nR_total)
+        rr_total = RR_total / (0.5 * nR_total * (nR_total - 1))
 
-    ls_total = (dd_total - 2 * dr_total + rr_total) / rr_total
+        w_ls = (dd_total - 2 * dr_total + rr_total) / rr_total
 
-    corr_ax.plot(corr_data["x"], ls_total, color="k")
-    corr_ax.plot(corr_data["x"], ls_total + ic_guess, ls="--", color="k")
-    
+        corr_ax.plot(corr_data["x"], w_ls, color="k")
+        corr_ax.plot(corr_data["x"], w_ls + ic_guess, ls="--", color="k")
+
+        w_ls_var = (1. + w_ls) / np.sqrt(DD_total)
+
+        pkl_path = paths.data_path / f"total_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
+        corr_data = {
+            "x": corr_data["x"],
+            "dd": DD_total,
+            "dr": DR_total,
+            "rr": RR_total,
+            "w_ls": w_ls,
+            "w_ls_var": w_ls_var,
+            "n_data": nD_total,
+            "n_random": nR_total,
+            "area": object_area_total,
+            "random_density": randoms_density,
+            "K_cut": K_cut
+        }
+
+        with open(pkl_path, "wb+") as f:
+            pickle.dump(corr_data, f)
 
 corr_ax.loglog()
 corr_ax.set_xlim(3e-4, 3e0)

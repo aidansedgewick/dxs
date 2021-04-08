@@ -135,11 +135,13 @@ if __name__ == "__main__":
             logger.info(f"written {output_path}")
 
             input_list = []
+        print("Done {field} {band}")        
 
-        if args.skip_stars is True:
-            print("Done!")
-            continue # as we are in a loop for bands
+        #if args.skip_stars is True:
+        #    print("Done!")
+        #    continue # as we are in a loop for bands
 
+        """
         catalog_path = paths.catalogs_path / f"{field}00/sm{field}00_panstarrs.fits"
         catalog = Table.read(catalog_path)
 
@@ -171,7 +173,7 @@ if __name__ == "__main__":
         hdu = fits.PrimaryHDU(data=masked_array, header=header)
         hdu.writeto(masked_output_path, overwrite=True)
         output_mask_paths.append(masked_output_path)
-        logger.info(f"write {masked_output_path}")
+        logger.info(f"write {masked_output_path}")"""
 
 #ds9_cmd = build_ds9_command(output_mask_paths)
 #print(f"now do:\n    {ds9_cmd}")

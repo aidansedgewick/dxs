@@ -78,7 +78,7 @@ def log_prior(params, func):
     elif func.__name__ == "double_power_law":
         if params[1] < params[3]:
             return -np.inf
-        if params[3] > 0.7 or params[3] < 0.3:
+        if params[3] < 0.05:
             return -np.inf
     elif func.__name__ == "broken_power_law":
         if params[4] < 1.1:
@@ -129,7 +129,9 @@ def fit_parameters(
         else:
             return params, pcov
 
-def parameters_from_samples(samples, selection="mode", log_bins=False, bins=100, burn_in=None):
+def parameters_from_samples(
+    samples, selection="mode", log_bins=False, bins=100, burn_in=None
+):
     if burn_in is not None:
         samples = samples[burn_in:, :, :]
     if selection == "median":
@@ -168,7 +170,7 @@ def calc_ic(
     return ic, params
 
 def pprint(l):
-    pl = [f"{x:.3f}" if x > 0.001 and x < 1000.0 else f"{x:3e}" for x in l ]
+    pl = [f"{x:.3e}" if x > 0.001 and x < 1000.0 else f"{x:3e}" for x in l ]
     return pl
 
 def plot_sampler(sampler, params=None, burn_in=1000, log_scale=True):
@@ -210,9 +212,9 @@ if __name__ == "__main__":
 
     ic = 0.
 
-    burn_in=1000
+    burn_in = 1000
 
-    pkl_path = "./EN_corr_data.pkl"
+    pkl_path = paths.data_path / "EN_eros_245_K207_Ncorr_data.pkl"
     with open(pkl_path, "rb") as f:
         corr_data = pickle.load(f)
 
@@ -220,23 +222,22 @@ if __name__ == "__main__":
     jwk = pd.read_csv(jwk_path, names=["x", "w"])
 
     theta = corr_data["x"]
-    w_init = corr_data["xi_ls"]
+    w_init = corr_data["w_ls"]
     rr = corr_data["rr"]
     dd = corr_data["dd"]
-    w_err = np.sqrt(corr_data["var_xi"])
+    w_err = np.sqrt(corr_data["w_ls_var"])
 
     include_f = False
 
-    func = fixed_double_power_law # power_exp_law
+    func = double_power_law # power_exp_law # 
     p0 = p0_lookup[func.__name__]
 
-    xmin, xmax = 1e-3, 0.33
+    xmin, xmax = 8e-4, 0.5
     params, pcov, sampler = fit_parameters(
         theta, w_init, w_err, func, rr=rr, p0=p0, xmin=xmin, xmax=xmax,
         nsteps=10000, nwalkers=64,
     )
-
-    #plot_sampler(sampler, params=params, log_scale=True, burn_in=burn_in)
+    plot_sampler(sampler, params=params, log_scale=True, burn_in=burn_in)
 
     samples = sampler.get_chain()[burn_in:, :, :]
     ndim = samples.shape[2]
@@ -251,14 +252,17 @@ if __name__ == "__main__":
     #    theta, w_init, w_err, func, rr, p0=p0, xmin=xmin, xmax=xmax
     #)
 
-    xvals = np.logspace(np.log10(theta.min()), np.log10(theta.max()), 1000)
+    xvals = np.logspace(
+        np.log10(theta.min()), 
+        np.log10(theta.max()), 
+        1000
+    )
     yvals = func(xvals, *params)
-
 
     fig, ax = plt.subplots()
     ax.errorbar(theta, w_init, yerr=w_err, color="C0", ls="-", marker="^", label="LS est.")
     ax.scatter(theta, w_init + ic_guess, color="C1", ls="--", marker="^", label="LS + ic guess")
-    ax.scatter(theta, w_init + ic_est, color="C2", ls="--", marker="^", label="LS + ic guess")
+    ax.scatter(theta, w_init + ic_est, color="C2", ls="--", marker="^", label="LS + ic est")
 
     ax.plot(xvals, yvals, color="k", label="fit")
     ax.scatter(jwk["x"], jwk["w"], color="k", s=10, zorder=5, label="Kim+ 2014")

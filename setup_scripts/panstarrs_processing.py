@@ -289,15 +289,18 @@ if __name__ == "__main__":
 
     catalog_dir = paths.input_data_path / "external/panstarrs/"
 
+    field_choices = ["EN", "SA", "LH", "XM"]
+
     parser = ArgumentParser()
-    parser.add_argument("--fields", default="SA,EN,LH,XM", required=False)
+    parser.add_argument(
+        "--fields", choices=field_choices, nargs="+", default=field_choices, required=False
+    )
     parser.add_argument("--skip-catalog", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
     parser.add_argument("--mask-extension", default=".unconv.mask.fits")
     parser.add_argument("--resolution", default=2.0, type=float)
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
-    fields = args.fields.split(",")
 
     for ii, field in enumerate(fields):
         ps_field = ps_config["from_dxs_field"][field]
