@@ -261,7 +261,8 @@ class CrosstalkProcessor:
 def calc_crosstalk_magnitude_coeffs(cat, band):
     """
     """
-
+    raise NotImplementedError
+    """
     fig,axes = plt.subplots(2,4, figsize=(10,6))
     axes = axes.flatten()
 
@@ -282,7 +283,7 @@ def calc_crosstalk_magnitude_coeffs(cat, band):
         for yoff in [6,7,8,9,10,11,12]:
             axes[ii].plot((0,20), (yoff, 20+yoff), color="k", ls="--", alpha=0.2)
         axes[ii].set_xlim(6,13)
-        axes[ii].set_ylim(14,22)
+        axes[ii].set_ylim(14,22)"""
 
     return fig
 
