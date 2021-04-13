@@ -66,19 +66,25 @@ class CrosstalkProcessor:
         )
 
     def collate_crosstalks(
-        self, mag_column, mag_limit=15.0, ra="ra", dec="dec", save_path=None, n_cpus=None
+        self, mag_column, mag_limit=15.0, ra="ra", dec="dec", 
+        save_path=None, n_cpus=None, ccds=None
     ):
         crosstalk_table_list = []
         logger.info(f"collate crosstalks from {len(self.stack_list)} stacks")
         if n_cpus is None:
             for ii, stack_path in tqdm.tqdm(enumerate(self.stack_list)):
                 stack_crosstalks = self.get_crosstalks_in_stack(
-                    stack_path, mag_column=mag_column, mag_limit=mag_limit, ra="ra", dec="dec"
+                    stack_path, mag_column=mag_column, mag_limit=mag_limit, 
+                    ra="ra", dec="dec", ccds=ccds,
                 )
                 crosstalk_table_list.append(stack_crosstalks)
         else:
             kwargs = {
-                "mag_column": mag_column, "mag_limit": mag_limit, "ra": ra, "dec": dec,
+                "mag_column": mag_column, 
+                "mag_limit": mag_limit, 
+                "ra": ra, 
+                "dec": dec,
+                "ccds": ccds,
             }
             arg_list = [(stack_path, kwargs) for stack_path in self.stack_list]
             with Pool(n_cpus) as pool:
@@ -110,12 +116,14 @@ class CrosstalkProcessor:
         return self.get_crosstalks_in_stack(args, **kwargs)    
             
     def get_crosstalks_in_stack(
-        self, stack_path, mag_column=None, mag_limit=15.0, ra="ra", dec="dec"
+        self, stack_path, mag_column=None, mag_limit=15.0, ra="ra", dec="dec", ccds=None
     ):
+        if ccds is None:
+            ccds = survey_config["ccds"]
         crosstalk_table_list = []
         with fits.open(stack_path) as f:
             pointing = f[0].header["OBJECT"].split()[3]
-            for ii, ccd in enumerate(survey_config["ccds"]):
+            for ii, ccd in enumerate(ccds):
                 header = f[ccd].header
                 fwcs = wcs.WCS(header)
                 xlen = header["NAXIS1"]

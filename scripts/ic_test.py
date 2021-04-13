@@ -43,11 +43,11 @@ def power_exp_law(x, A, d, alpha, beta):
 p0_lookup = {
     "power_law": [1e-3, 0.8],
     "exp_law": [1e-1, 10.],
-    "double_power_law": [1e-4, 1.0, 1e-3, 0.4],
-    "double_power_law_C": [1e-4, 1.0, 1e-4, 0.4, 0.008],
+    "double_power_law": [1e-3, 1.0, 1e-2, 0.4],
+    "double_power_law_C": [1e-3, 1.0, 1e-2, 0.4, 0.008],
     "broken_power_law": [0.02, 1.0, 0.4, 0.02, 2.0],
     "fixed_double_power_law": [1e-4, 1e-3],
-    "power_exp_law": [1e-3, 1.0, 5e-3, 10.],
+    "power_exp_law": [1e-4, 1.0, 5e-3, 10.],
 }
 
 composite_lookup = {
@@ -63,11 +63,15 @@ def IC_roche(params, theta, func, rr):
 
 def log_likelihood(params, x, y, yerr, func, rr):
     model = func(x, *params)
-    if rr is not None:
-        model = model - IC_roche(params, x, func, rr)
-    resid2 = (y - model) * (y - model)
+    #if rr is not None:
+    #    model = model - IC_roche(params, x, func, rr)
+    #yerr = yerr / model
     sigma2 = yerr * yerr
-    return -0.5 * np.sum( resid2 / sigma2 + np.log(sigma2) ) # 2*pi in log not important.
+    #model = np.log10(model)
+    #y = np.log(y)
+    resid2 = (y - model) * (y - model)
+
+    return -0.5 * np.sum( resid2 / sigma2 + np.log(2 * np.pi * sigma2) ) # 2*pi in log not important.
 
 def log_prior(params, func):
     if any([p < 0 for p in params]):
@@ -77,8 +81,6 @@ def log_prior(params, func):
         pass
     elif func.__name__ == "double_power_law":
         if params[1] < params[3]:
-            return -np.inf
-        if params[3] < 0.05:
             return -np.inf
     elif func.__name__ == "broken_power_law":
         if params[4] < 1.1:
@@ -130,7 +132,7 @@ def fit_parameters(
             return params, pcov
 
 def parameters_from_samples(
-    samples, selection="mode", log_bins=False, bins=100, burn_in=None
+    samples, selection="mode", log_bins=False, Nbins=100, burn_in=None
 ):
     if burn_in is not None:
         samples = samples[burn_in:, :, :]
@@ -142,14 +144,15 @@ def parameters_from_samples(
         params = np.zeros(samples.shape[2])
         for ii in range(samples.shape[2]):
             data = samples[:, :, ii].flatten()
-            if isinstance(bins, int):
-                if log_bins:
-                    bins = np.logspace(np.log10(data.min()), np.log10(data.max()))
-                else:
-                    bins = np.linspace(data.min(), data.max())
-            hist = np.histogram(data, bins=bins)
+            #if isinstance(bins, int):
+            if log_bins:
+                bins = np.logspace(np.log10(data.min()), np.log10(data.max()), Nbins+1)
+            else:
+                bins = np.linspace(data.min(), data.max(), Nbins+1)
+            hist, _ = np.histogram(data, bins=bins)
+            bin_mids = 0.5 * (bins[:-1] + bins[1:])
             max_ind = np.argmax(hist)
-            params[ii] = bins[max_ind]
+            params[ii] = bin_mids[max_ind]
     else:
         raise ValueError("use selection from 'median', 'mean', 'mode'")
     return params
@@ -176,14 +179,31 @@ def pprint(l):
 def plot_sampler(sampler, params=None, burn_in=1000, log_scale=True):
     samples = sampler.get_chain()
     ndim = samples.shape[2] # third dimension.
-    gs = plt.GridSpec(ndim, 3)
-    fig = plt.figure(figsize=(9, ndim*1.5)) #, sharex=True)
+    #gs = plt.GridSpec(ndim, 3)
+    #fig = plt.figure(figsize=(9, ndim*1.5)) #, sharex=True)
+
+    fig, axes = plt.subplots(
+        ndim, 2, sharey="row", gridspec_kw={"width_ratios": [2, 1]}, 
+        figsize=(9, ndim*1.5)
+    )
+
+    median_params = parameters_from_samples(
+        samples, selection="median", burn_in=burn_in
+    )
+    mode_params = parameters_from_samples(
+        samples, selection="mode", burn_in=burn_in, log_bins=log_scale, Nbins=50
+    )
+    print("mode params", mode_params)
+    mean_params = parameters_from_samples(
+        samples, selection="mean", burn_in=burn_in
+    )
+
     for jj in range(ndim):
-        ax1 = plt.subplot(gs[jj, :-1])
+        ax1 = axes[jj, 0] #plt.subplot(gs[jj, :-1])
         ax1.plot(samples[:, :, jj], "k", alpha=0.3)
         ax1.set_xlim(0, len(samples))
 
-        ax2 = plt.subplot(gs[jj, -1:])
+        ax2 = axes[jj, 1] #plt.subplot(gs[jj, -1:])
         data = samples[burn_in:, :, jj].flatten()
         full_data = samples[:, :, jj].flatten()
         if log_scale:
@@ -200,6 +220,12 @@ def plot_sampler(sampler, params=None, burn_in=1000, log_scale=True):
         if params is not None:
             ax1.axhline(params[jj], color="r")
             ax2.axhline(params[jj], color="r")
+        ax1.axhline(median_params[jj], color="C0")
+        ax2.axhline(median_params[jj], color="C0")
+        ax1.axhline(mode_params[jj], color="C1")
+        ax2.axhline(mode_params[jj], color="C1")
+        ax1.axhline(mean_params[jj], color="C2")
+        ax2.axhline(mean_params[jj], color="C2")
         if log_scale:
             ax1.semilogy()
             ax2.semilogy()
@@ -231,23 +257,32 @@ if __name__ == "__main__":
 
     func = double_power_law # power_exp_law # 
     p0 = p0_lookup[func.__name__]
+    print(p0)
 
-    xmin, xmax = 8e-4, 0.5
+    xmin, xmax = 1e-3, 0.5
     params, pcov, sampler = fit_parameters(
         theta, w_init, w_err, func, rr=rr, p0=p0, xmin=xmin, xmax=xmax,
-        nsteps=10000, nwalkers=64,
+        nsteps=10000, nwalkers=128,
     )
     plot_sampler(sampler, params=params, log_scale=True, burn_in=burn_in)
 
     samples = sampler.get_chain()[burn_in:, :, :]
     ndim = samples.shape[2]
     flat_samples = samples.transpose(2, 0, 1).reshape(ndim, -1).T
-    flat_samples = np.log10(flat_samples)
+    #flat_samples = np.log10(flat_samples)
     fig = corner.corner(flat_samples)
 
+    mode_params = parameters_from_samples(
+        samples, selection="mode", Nbins=500, 
+    )
+    
+    print(mode_params)
+
     ic_est = IC_roche(params, theta, func, rr)
+    ic_mode = IC_roche(mode_params, theta, func, rr)
     print(f"params are: {pprint(params)}")
     print(f"first IC est is {ic_est:.4f}")
+    print(f"first IC mode is {ic_mode:.4f}")
     #ic_est, params = calc_ic(
     #    theta, w_init, w_err, func, rr, p0=p0, xmin=xmin, xmax=xmax
     #)
@@ -258,13 +293,17 @@ if __name__ == "__main__":
         1000
     )
     yvals = func(xvals, *params)
+    mode_yvals = func(xvals, *mode_params)
 
     fig, ax = plt.subplots()
     ax.errorbar(theta, w_init, yerr=w_err, color="C0", ls="-", marker="^", label="LS est.")
     ax.scatter(theta, w_init + ic_guess, color="C1", ls="--", marker="^", label="LS + ic guess")
     ax.scatter(theta, w_init + ic_est, color="C2", ls="--", marker="^", label="LS + ic est")
+    ax.scatter(theta, w_init + ic_mode, color="C3", ls="--", marker="^", label="LS + ic mode")
+
 
     ax.plot(xvals, yvals, color="k", label="fit")
+    ax.plot(xvals, mode_yvals, color="r", label="fit")
     ax.scatter(jwk["x"], jwk["w"], color="k", s=10, zorder=5, label="Kim+ 2014")
     
     composite_list = composite_lookup.get(func.__name__, [])
