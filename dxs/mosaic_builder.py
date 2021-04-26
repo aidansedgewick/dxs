@@ -22,7 +22,7 @@ import reproject as rpj
 from astromatic_wrapper.api import Astromatic
 from photutils.background import SExtractorBackground, Background2D
 
-#from dxs.utils.image import 
+from dxs.utils.image import build_mosaic_header
 from dxs.utils.misc import (
     check_modules, format_flags, get_git_info, AstropyFilter
 )
@@ -127,6 +127,33 @@ class MosaicBuilder:
         swarp_config_file=None, 
         hdu_prep_kwargs=None,
     ):
+        """provide a field, tile (as integer) and band.
+        eg.
+
+        >>> prep_kwargs = {}
+        >>> builder = mosaic_builder.from_dxs_spec("EN", 4, "K", hdu_prep_kwargs=prep_kwargs)
+        >>> print(builder.mosaic_path) # mosaic will be saved here.
+        >>> builder.build(n_cpus=4)      
+
+        Parameters
+        ----------
+        field
+        tile
+        band
+        prefix
+            prefix.suffix give mosaic name eg. [prefix]EN04K[suffix].fits
+        suffix
+        extension
+            defaults to ".fits" - eg. EN04K.fits    
+        add_flux_scale
+            whether to scale the flux of each input stack to a common zeropoint.
+        swarp_config
+            dict overwrites values in swarp_config_file. c
+            eg swarp_config={"detect_sigma": 5.0", "size": (1000,1000)}
+            floats, ints, tuples are formatted correctly internally.
+        swarp_config_file
+            path to a swarp config file. by default .../dxs/configuration/mosaic.swarp
+        """
         mosaic_dir = paths.get_mosaic_dir(field, tile, band)
         mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix, suffix=suffix)
         extension = f".{extension}" if extension is not None else ""
@@ -194,7 +221,8 @@ class MosaicBuilder:
         cls, field, tile, band, 
         pixel_scale, 
         include_neighbors=True,
-        prefix=None, 
+        prefix=None,
+        suffix=None,
         swarp_config=None, 
         swarp_config_file=None, 
         hdu_prep_kwargs=None,
@@ -213,7 +241,10 @@ class MosaicBuilder:
         hdu_prep_kwargs = hdu_prep_kwargs or {}
         hdu_prep_kwargs["fill_value"] = 1.0
         return cls.from_dxs_spec(
-            field, tile, band, prefix=prefix, include_neighbors=True,
+            field, tile, band, 
+            prefix=prefix, 
+            suffix=suffix, 
+            include_neighbors=include_neighbors,
             extension="cov", 
             add_flux_scale=False,
             swarp_config=swarp_config, 
@@ -751,9 +782,9 @@ def calculate_mosaic_geometry(
     dec_limits = (np.min(dec_values), np.max(dec_values))
 
     # center is easy.
-    center = (np.mean(ra_limits), np.mean(dec_limits))
+    center = SkyCoord(ra=np.mean(ra_limits), dec=np.mean(dec_limits), unit="degree")
     # image size takes a bit more thought because of spherical things.
-    cos_dec = np.cos(center[1] * np.pi / 180.)
+    cos_dec = np.cos(center.dec * np.pi / 180.)
     pixel_scale = pixel_scale or survey_config["mosaics"]["pixel_scale"]
     plate_factor = 3600. / pixel_scale
     x_size = abs(ra_limits[1] - ra_limits[0]) * plate_factor * cos_dec
@@ -771,37 +802,10 @@ def calculate_mosaic_geometry(
             f" \n check configuration/survey_config.yaml"
         )
     logger.info(f"geom - size {mosaic_size[0]},{mosaic_size[1]}")
-    logger.info(f"geom - center {center[0]:.3f}, {center[1]:.3f}")
+    logger.info(f"geom - center {center.ra:.3f}, {center.dec:.3f}")
     return center, mosaic_size
 
-def build_mosaic_header(center, size, pixel_scale, proj="TAN"):
-    """
-    NOT for use in FITS files. Useful for cropping input stacks down to size.
-    """
-    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj)
-    h = w.to_header()
-    #h.insert(0, "SIMPLE", "T")
-    #h.insert(1, "BITPIX", -32)
-    #h.insert(2, "NAXIS", 2)
-    #h.insert(3, "NAXIS1", size[0])
-    #h.insert(4, "NAXIS2", size[1])
-    #print(h["SIMPLE"])
-    return h   
 
-def build_mosaic_wcs(center, size, pixel_scale, proj="TAN"):
-    """
-    pixel_scale in ARCSEC.
-    """
-    w = WCS(naxis=2)
-    w.wcs.crpix = [size[0]/2, size[1]/2]
-    w.wcs.cdelt = [pixel_scale / 3600., pixel_scale / 3600.]
-    w.wcs.crval = list(center)
-    w.wcs.ctype = [
-        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
-    ]
-    w.fix()
-    return w
-    
 
 
 ###============= misc? ================###

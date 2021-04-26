@@ -5,6 +5,8 @@ from itertools import product
 
 from astropy.table import Table
 
+from regions import read_ds9
+
 from dxs import merge_catalogs, CatalogMatcher, CatalogPairMatcher
 from dxs.mosaic_builder import add_keys
 from dxs.utils.misc import get_git_info
@@ -22,7 +24,7 @@ measurement_lookup = {
     "H": "",
 }
 
-external_data = ["panstarrs", "cfhtls", "hsc", "unwise"]
+external_data = ["panstarrs", "cfhtls", "hsc", "unwise", "swire"]
 
 merge_config = survey_config["merge"]
 
@@ -41,22 +43,28 @@ def merge_pipeline(
             cat_band = band    
         catalog_lists = []
         catalog_list = []
-        mosaic_list = []
+        region_list = []
         for tile in tiles:
             catalog_dir = paths.get_catalog_dir(field, tile, band)
             catalog_stem = paths.get_catalog_stem(
                 field, tile, cat_band, prefix=prefix
             )
             catalog_list.append(catalog_dir / f"{catalog_stem}.cat.fits")
-            mosaic_path = paths.get_mosaic_path(
-                field, tile, band, extension=".cov.good_cov.fits"
+            #mosaic_path = paths.get_mosaic_path(
+            #    field, tile, band, extension=".cov.good_cov.fits"
+            #)
+            #mosaic_list.append(mosaic_path)
+            region_path = paths.get_mosaic_path(
+                field, tile, band, extension=".reg"
             )
-            mosaic_list.append(mosaic_path)
+            region = read_ds9(region_path)
+            assert len(region) == 1
+            region_list.append(region[0])
 
         print("merging", [x.stem for x in catalog_list])
         
         if require_all:
-            if not all([mp.exists() for mp in mosaic_list]):
+            if not all([mp.exists() for mp in region_list]):
                 logger.info("skipping merge")
                 continue
 
@@ -75,10 +83,12 @@ def merge_pipeline(
             snr_col = f"{band}_snr_auto"
             merge_error = merge_config["tile_merge_error"]
             merge_catalogs(
-                catalog_list, mosaic_list, combined_output_path, 
+                catalog_list, region_list, combined_output_path, 
                 error=merge_error,
                 id_col=id_col, ra_col=ra_col, dec_col=dec_col, snr_col=snr_col,
-                value_check_column=f"{band}_mag_aper_30", atol=0.1
+                coverage_col = f"{band}_coverage", 
+                value_check_column=f"{band}_mag_auto", 
+                atol=0.1
             )
             branch, local_SHA = get_git_info()
             data = {
@@ -136,7 +146,7 @@ def merge_pipeline(
         ps_name = f"{field}_panstarrs"
         ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
         ps_error = merge_config["panstarrs_match_error"]
-        logger.info("match panstarrs with error={ps_error:.2f}")
+        logger.info(f"match panstarrs with error={ps_error:.2f}")
         nir_matcher.match_catalog(
             ps_catalog_path, ra="ra_panstarrs", dec="dec_panstarrs", 
             error=ps_error, find="best1"
@@ -176,7 +186,18 @@ def merge_pipeline(
             error=unwise_error, find="best1"
         )
         nir_matcher.fix_column_names(column_lookup={"Separation": "unwise_separation"})
-    
+    if "swire" in args.external:
+        swire_name = f"{field}_swire.cat.fits"
+        swire_catalog_path = (
+            paths.input_data_path / "external/swire/catalogs" / swire_name
+        )
+        swire_error = merge_config["swire_match_error"]
+        logger.info(f"match swire with error={swire_error:.2f}")
+        nir_matcher.match_catalog(
+            swire_catalog_path, ra="ra_swire", dec="dec_swire",
+            error=swire_error, find="best1"
+        )        
+
     else:
         return None
 

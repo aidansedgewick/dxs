@@ -2,6 +2,7 @@ import logging
 import os
 import yaml
 from pathlib import Path
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -183,6 +184,41 @@ def calc_survey_area(
     if return_randoms:
         return survey_area, randoms[ survey_mask ]
     return survey_area
+
+###==================== mosaics
+
+def build_mosaic_header(center: SkyCoord, size: Tuple[int, int], pixel_scale: float, proj="TAN"):
+    """
+    NOT for use in FITS files. Useful for cropping input stacks down to size.
+    pixel_scale in ARCSEC.
+    """
+    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj)
+    h = w.to_header()
+    #h.insert(0, "SIMPLE", "T")
+    #h.insert(1, "BITPIX", -32)
+    #h.insert(2, "NAXIS", 2)
+    #h.insert(3, "NAXIS1", size[0])
+    #h.insert(4, "NAXIS2", size[1])
+    #print(h["SIMPLE"])
+    return h   
+
+def build_mosaic_wcs(center, size: Tuple[int, int], pixel_scale, proj="TAN"):
+    """
+    pixel_scale in ARCSEC.
+    """
+    w = WCS(naxis=2)
+    w.wcs.crpix = [size[0]/2, size[1]/2]
+    w.wcs.cdelt = [pixel_scale / 3600., pixel_scale / 3600.]
+    if isinstance(center, SkyCoord):
+        w.wcs.crval = [center.ra.value, center.dec.value]
+    else:
+        w.wcs.crval = [center[0], center[1]]
+    w.wcs.ctype = [
+        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
+    ]
+    w.fix()
+    return w
+    
 
 ###================== coverage mosaics ==================###
 

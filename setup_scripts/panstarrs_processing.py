@@ -94,7 +94,7 @@ def process_panstarrs_catalog(
     jcat = join(
         primary_catalog, aperture_catalog, keys="stackDetectID", join_type="left"
     )
-    logger.info(f"joined in {t1-time():.2f} sec")
+    logger.info(f"joined in {time()-t1:.2f} sec")
     drop_cols = ["primaryF_1", "primaryF_2", "objID_ap", "stackDetectID"]
     jcat.remove_columns(drop_cols)
 
@@ -139,10 +139,11 @@ def process_panstarrs_catalog(
             logger.warn(f"{ap} has {missing_err} missing flux_err values.")
 
         snr_col[flux_mask] = flux_col[flux_mask] / flux_err_col[flux_mask]
-        mag_col[flux_mask] = jcat["zp"][flux_mask] - 2.5*np.log10( flux_col[flux_mask] )
-        mag_err_col[flux_mask] = np.sqrt(
-            jcat["zp_err"][flux_mask]**2 + ( err_factor * 1. / snr_col[flux_mask] )**2 
-        )
+        mag_col[flux_mask] = jcat["zp"][flux_mask] - 2.5 * np.log10( flux_col[flux_mask] )
+        mag_err_col[flux_mask] = err_factor / snr_col[flux_mask]
+        #np.sqrt(
+        #    jcat["zp_err"][flux_mask]**2 + ( err_factor * 1. / snr_col[flux_mask] )**2 
+        #)
         jcat.add_column(snr_col, name=ap.snr)
         jcat.add_column(mag_col, name=ap.mag)
         jcat.add_column(mag_err_col, name=ap.mag_err)
@@ -156,7 +157,7 @@ def process_panstarrs_catalog(
     for ap in apertures:
         if ap.name == "kron":
             continue
-        drop_cols = [ap.new_flux, ap.new_flux_err, ap.snr]
+        drop_cols = [ap.new_flux, ap.new_flux_err]
         jcat.remove_columns(drop_cols)
     jcat.remove_columns(["zp", "zp_err"])
 
@@ -302,7 +303,7 @@ if __name__ == "__main__":
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
 
-    for ii, field in enumerate(fields):
+    for ii, field in enumerate(args.fields):
         ps_field = ps_config["from_dxs_field"][field]
         logger.info(f"{ii}: {ps_field} = {field}")
         primary_catalog_path = catalog_dir / f"stackdetectionfull_{ps_field}.fit"

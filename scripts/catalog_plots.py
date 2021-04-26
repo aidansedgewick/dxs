@@ -11,13 +11,14 @@ from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from astropy import units as u
 
+from dustmaps import sfd
 from easyquery import Query
 from treecorr import NNCorrelation, Catalog
 
 from dxs.utils.image import uniform_sphere, objects_in_coverage, calc_survey_area
 from dxs import QuickPlotter
 from dxs.utils.misc import calc_range, calc_mids, print_header
-from dxs.utils.phot import ab_to_vega, vega_to_ab
+from dxs.utils.phot import ab_to_vega, vega_to_ab, apply_extinction
 from dxs.utils.region import in_only_one_tile
 from dxs import paths
 
@@ -40,6 +41,7 @@ ic_guess = 0.01
 default_treecorr_config_path = paths.config_path / "treecorr/treecorr_default.yaml"
 
 field_choices = ["SA", "LH", "EN", "XM", "Euclid"]
+default_fields = ["SA", "LH", "EN", "XM"]
 object_choices = ["gals", "eros_245", "ero_295"]
 
 if __name__ == "__main__":
@@ -49,7 +51,7 @@ if __name__ == "__main__":
 
 
     parser = ArgumentParser()
-    parser.add_argument("--fields", choices=field_choices, nargs="+", default=field_choices)
+    parser.add_argument("--fields", choices=field_choices, nargs="+", default=default_fields)
     parser.add_argument("--K-cut", action="store", default=20.7, type=float)
     parser.add_argument("--objects", action="store", choices=object_choices, default="eros_245")
     parser.add_argument(
@@ -64,7 +66,8 @@ if __name__ == "__main__":
 
     with open(args.treecorr_config, "r") as f:
         treecorr_config = yaml.load(f, Loader=yaml.FullLoader)
-    randoms_density = 1000 #treecorr_config.pop("randoms_denity", 10_000) # sq. deg.
+    randoms_density = treecorr_config.pop("randoms_density", 10_000) # sq. deg.
+    print(f"RANDOMS DENSITY IS: {randoms_density}")
 
     jwk_counts = pd.read_csv(jwk_number_counts_path, delim_whitespace=True, na_values=["-"])
     lao_counts = pd.read_csv(lao_number_counts_path)
@@ -93,6 +96,7 @@ if __name__ == "__main__":
         s=20, marker="^", color="k", label="AO+2019, passive"
     )
 
+    sfdq = sfd.SFDQuery()
 
     corr_fig, corr_ax = plt.subplots()
     if args.objects == "eros_245":
@@ -114,7 +118,7 @@ if __name__ == "__main__":
                 continue
             full_catalog = Table.read(catalog_path)
 
-            nir_mag_type = "aper_20"
+            nir_mag_type = "aper_30"
             nir_tot_mag_type = "auto"
             opt_mag_type = "aper_30" # ps use aper_18 or aper_30, cfhtls use aper_2 or aper_3.
 
@@ -124,10 +128,19 @@ if __name__ == "__main__":
             Jmag = f"J_mag_{nir_mag_type}"
             Kmag = f"K_mag_{nir_mag_type}"
             Ktot_mag = f"K_mag_{nir_tot_mag_type}"
+            
+            logger.info("apply reddening")
+            coords = SkyCoord(ra=full_catalog["ra"], dec=full_catalog["dec"], unit="deg")
+            ebv = sfdq(coords)
 
-            full_catalog[gmag] = vega_to_ab(full_catalog[gmag], band="g")
-            full_catalog[imag] = vega_to_ab(full_catalog[imag], band="i")
-            full_catalog[zmag] = vega_to_ab(full_catalog[zmag], band="z")
+            full_catalog[gmag] = apply_extinction(full_catalog[gmag], ebv, band="g")
+            full_catalog[imag] = apply_extinction(full_catalog[imag], ebv, band="g")
+            full_catalog[zmag] = apply_extinction(full_catalog[zmag], ebv, band="g")
+
+            logger.info("do ab transform")
+            #full_catalog[gmag] = vega_to_ab(full_catalog[gmag], band="g")
+            #full_catalog[imag] = vega_to_ab(full_catalog[imag], band="i")
+            #full_catalog[zmag] = vega_to_ab(full_catalog[zmag], band="z")
             
             full_catalog[Jmag] = vega_to_ab(full_catalog[Jmag], band="J")
             full_catalog[Kmag] = vega_to_ab(full_catalog[Kmag], band="K")
@@ -161,32 +174,34 @@ if __name__ == "__main__":
             Kmag = f"K_mag_{nir_mag_type}"
             Ktot_mag = f"K_mag_{nir_tot_mag_type}"
 
-            h_factor = np.log10(0.7)
-            print(h_factor)
-            for mag_col in [gmag, imag, zmag, Jmag, Kmag, Ktot_mag]:                
-                catalog[mag_col] = catalog[mag_col] + h_factor
+            #h_factor = 0.0np.log10(0.7)
+            #print(h_factor)
+            #for mag_col in [gmag, imag, zmag, Jmag, Kmag, Ktot_mag]:                
+            #    catalog[mag_col] = catalog[mag_col] + h_factor
 
 
         ra_limits = calc_range(catalog["ra"])
         dec_limits = calc_range(catalog["dec"])
         opt_area = calc_survey_area(
-            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e5
+            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e4
         )
         nir_area = calc_survey_area(
-            nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e5
+            nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e4
         )
         
         print(f"{field}: NIR area: {nir_area:.2f}, opt_area: {opt_area:.2f}")
 
-        gals = Query(f"({Jmag}-0.9) - ({Kmag}-1.9) > 1.0").filter(catalog)
+        gals = Query(
+            f"({Jmag}-0.938) - ({Kmag}-1.9) > 1.0",
+        ).filter(catalog)
         gal_hist, _ = np.histogram(gals[Ktot_mag], bins=mag_bins)
-        gal_hist = gal_hist / nir_area
+        gal_hist = gal_hist / (nir_area)
 
-        eros_245 = Query(f"{imag} - {Kmag} > 2.45", f"{imag} < 25.0").filter(catalog)
+        eros_245 = Query(f"{imag} - {Kmag} > 2.45", f"{imag} < 25.0").filter(gals)
         ero245_hist, _ = np.histogram(eros_245[Ktot_mag], bins=mag_bins)
         ero245_hist = ero245_hist / (opt_area)
         
-        eros_295 = Query(f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0").filter(catalog)
+        eros_295 = Query(f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0").filter(gals)
         ero295_hist, _ = np.histogram(eros_295[Ktot_mag], bins=mag_bins)
         ero295_hist = ero295_hist / (opt_area)
 
@@ -203,7 +218,7 @@ if __name__ == "__main__":
         sf_gzK_hist = sf_gzK_hist / (opt_area)
 
         pe_gzK = Query(
-            f"({zmag}-{Kmag}) -1.27 * ({gmag}-{zmag}) < -0.022", 
+            f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) < -0.022", 
             f"{zmag}-{Kmag} > 2.55",
             f"{zmag} < 50.",
             f"{gmag} < 50.",
@@ -230,9 +245,9 @@ if __name__ == "__main__":
         gzK_ax.scatter(pe_gzK[gmag] - pe_gzK[zmag], pe_gzK[zmag] - pe_gzK[Kmag], s=1, color="r")        
         """
         
-        
-
-        pkl_path = paths.data_path / f"{field}_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
+        pkl_path = (
+            paths.data_path / f"{field}_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
+        )
         if not skip_correlation:
             if args.objects == "eros_245":
                 cat = eros_245
@@ -313,6 +328,9 @@ if __name__ == "__main__":
                 correlator_results[field] = corr_data
 
     if len(fields) > 1:
+
+        print(correlator_results)
+
         DD_total = np.vstack([v["dd"] for k, v in correlator_results.items()]).sum(axis=0)
         DR_total = np.vstack([v["dr"] for k, v in correlator_results.items()]).sum(axis=0)
         RR_total = np.vstack([v["rr"] for k, v in correlator_results.items()]).sum(axis=0)

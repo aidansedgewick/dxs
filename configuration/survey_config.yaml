@@ -49,12 +49,13 @@ bright_stars:
     mag_ranges: [0., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.]
 
 merge:
-  tile_merge_error: 0.5
-  nir_match_error: 1.0
+  tile_merge_error: 0.5 # ie, finding repeated objects at the edge of images.
+  nir_match_error: 1.0 #
   panstarrs_match_error: 1.0
   cfhtls_match_error: 1.0
   unwise_match_error: 1.0
   hsc_match_error: 1.0
+  swire_match_error: 1.0
   
 
 help:
@@ -67,7 +68,7 @@ help:
 
 ab_vega_offset:
   g: -0.08
-  z: 0.16
+  r: 0.16
   i: 0.39
   z: 0.54
   y: 0.634
@@ -76,12 +77,12 @@ ab_vega_offset:
   K: 1.900
   W1: 2.699 # https://catalog.unwise.me/catalogs.html#bandmerged 
   W2: 3.339
-  "[3.6]": 2.820
-  "[4.5]": 3.290
+  I1: 2.820
+  I2: 3.290
 
 zeropoint_flux:
   g: 3991.0
-  z: 3174.0
+  r: 3174.0
   i: 2593.0
   z: 2232.0
   y: 2026.0
@@ -90,8 +91,22 @@ zeropoint_flux:
   K: 631.0
   w1: 309.54
   w2: 171.79
-  "[3.6]": "NONE"
-  "[4.5]": "NONE"
+  I1: "NONE"
+  I2: "NONE"
+
+reddening_coeffs: # https://iopscience.iop.org/article/10.1088/0004-637X/750/2/99/pdf
+  g: 3.613
+  r: 2.585
+  i: 1.908
+  z: 1.499
+  y: 1.251
+  J: None
+  H: None
+  K: None
+  I1: None
+  I2: None
+  I3: None
+  I4: None
   
 wavelengths:
   g: 475.0
@@ -104,8 +119,8 @@ wavelengths:
   K: 2201.0
   w1: 3368.0
   w2: 4618.0
-  "[3.6]": 3600.0
-  "[4.5]": 4500.0
+  I1: 3600.0
+  I2: 4500.0
 
 
 ###===== external catalogs =====###
@@ -142,7 +157,11 @@ swire:
     "flux_ap3_80", "uncf_ap3_80", "flux_kr_80", "uncf_kr_80",
   ]
 
-
+  bulk_image_download_url_base: https://irsa.ipac.caltech.edu/workspace/TMP_lpkNJP_6197/Atlas/
+  bulk_image_download_urls:
+    EN: 242.75498_55.028390_eq_6197.v0001//wget_data.bat
+    XM: 35.3295_-4.49945_eq_17415.v0001//wget_data.bat
+    LH: 161.29286_57.94361_eq_20863.v0001//wget_data.bat
 
 
 

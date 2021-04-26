@@ -5,6 +5,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from dxs import mosaic_builder
+from dxs.utils.image import build_mosaic_header
 
 from dxs import paths
 
@@ -40,7 +41,7 @@ def test_calc_mosaic_geometry():
     hdu_list = []
     for ii, center in enumerate(centers):
         data = np.random.uniform(0, 1, size)
-        header = mosaic_builder.build_mosaic_header(center, size, pix_scale)
+        header = build_mosaic_header(center, size, pix_scale)
         hdu_path = paths.temp_test_path / f"calc_geom_test_hdu_{ii}.fits"
         hdu = fits.PrimaryHDU(data=data, header=header)
         hdu.writeto(hdu_path, overwrite=True)
@@ -49,7 +50,7 @@ def test_calc_mosaic_geometry():
     center, mosaic_size = mosaic_builder.calculate_mosaic_geometry(
         hdu_list, pixel_scale=1. # arcsec
     )
-    assert np.allclose(np.array([180., 0.]), np.array(center), atol=1e-3)
+    assert np.allclose(np.array([180., 0.]), np.array([center.ra.value, center.dec.value]), atol=1e-3)
     assert np.allclose((600., 600.), np.array(mosaic_size), rtol=0.02) # spherical-ness.
 
     center2, mosaic_size2 = mosaic_builder.calculate_mosaic_geometry(
@@ -59,7 +60,7 @@ def test_calc_mosaic_geometry():
     assert np.allclose(mosaic_size2, np.array([1257., 1257.]), rtol=0.02)
 
 def test_add_keys():
-    empty_header = mosaic_builder.build_mosaic_header(
+    empty_header = build_mosaic_header(
         (330., 0.), (1000, 1000), pixel_scale=1. / 3600.
     )
     data = np.random.uniform(0, 1, (1000, 1000))

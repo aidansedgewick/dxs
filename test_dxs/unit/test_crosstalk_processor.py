@@ -7,7 +7,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from dxs import CrosstalkProcessor
-from dxs.mosaic_builder import build_mosaic_header
+from dxs.utils.image import build_mosaic_header
 from dxs import paths
 
 

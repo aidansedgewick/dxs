@@ -12,7 +12,7 @@ def test__bsp_init():
     assert len(bsp.mag_ranges) == len(bsp.circle_radii) + 1
     # check anything to see that it's initialised properly.
 
-def test__bsp_regions():
+#def test__bsp_regions():
 
     
     

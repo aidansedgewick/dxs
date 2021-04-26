@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
+from astropy.coordinates import SkyCoord
 from astropy.io import fits
 
-from dxs.mosaic_builder import build_mosaic_header
 from dxs.utils import image
 
 from dxs import paths
@@ -61,7 +61,9 @@ def test__uniform_sphere():
 def test__single_coverage():
     # make an empty image.
     image_size = (7200, 7200)
-    header = build_mosaic_header(center=(180.0, 0.0), size=image_size, pixel_scale=1.0)
+    header = image.build_mosaic_header(
+        center=SkyCoord(ra=180.0, dec=0.0, unit="degree"), size=image_size, pixel_scale=1.0
+    )
     data = np.zeros(image_size)
     data[1800:5400, 1800:5400] = 5.0
     hdu = fits.PrimaryHDU(data=data, header=header)
@@ -70,7 +72,7 @@ def test__single_coverage():
 
     randoms = image.uniform_sphere((179., 181.), (-1., 1.), density=1e6)
     mask = image.single_image_coverage(test_path, randoms[:, 0], randoms[:, 1])
-    assert np.isclose(len(randoms) / 4, mask.sum(), rtol=0.001)
+    assert np.isclose(len(randoms) / 4, mask.sum(), rtol=0.01)
 
     masked_randoms = randoms[ mask ]
 
@@ -79,17 +81,17 @@ def test__single_coverage():
     dec_mask = ( -delta < masked_randoms[:, 1]) & (masked_randoms[:, 1] < delta)
     assert all( ra_mask & dec_mask )
     
-def test__multi_image_coverage():
-    pass
+#def test__multi_image_coverage():
+#    pass
 
-def test__objects_in_coverage():
-    pass
+#def test__objects_in_coverage():
+#    pass
 
-def test__calc_survey_area():
-    pass
+#def test__calc_survey_area():
+#    pass
 
-def test__make_good_coverage_map():
-    pass
+#def test__make_good_coverage_map():
+#    pass
 
 
 

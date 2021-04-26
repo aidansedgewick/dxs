@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import List
 
+from astropy.coordinates import SkyCoord
+
 from dxs import paths
 
 logger = logging.getLogger("utils.misc")
@@ -65,7 +67,9 @@ def format_flags(config, capitalise=True, float_precision=6):
         elif isinstance(value, float):
             formatted_config[key] = f"{value:.{float_precision}f}"
         elif isinstance(value, int):
-            formatted_config[key] = str(value)        
+            formatted_config[key] = str(value)
+        elif isinstance(value, SkyCoord):
+            formatted_config[key] = f"{value.ra.value:.{float_precision}f},{value.dec.value:.{float_precision}f}"
         elif isinstance(value, tuple):
             if all(isinstance(x, int) for x in value):
                 formatted_config[key] = ','.join(f"{x}" for x in value)
