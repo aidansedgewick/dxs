@@ -79,6 +79,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip-stars", action="store_true", default=False)
     parser.add_argument("--resolution", default=1.0, type=float, required=False)
     parser.add_argument("--mosaic-type", choices=["data", "cov", "good_cov"], default="good_cov")
+    parser.add_argument("--output-suffix", default="mask")
     parser.add_argument("--n_cpus", default=None, type=int)
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
@@ -104,7 +105,7 @@ if __name__ == "__main__":
             logger.info("no mosaics - continue")
             continue
 
-        output_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_mask.fits"
+        output_path = paths.masks_path / f"{field}_{band}_{args.mosaic_type}_{args.output_suffix}.fits"
         if args.skip_reprojection:
             with fits.open(output_path) as f:
                 output_array = f[0].data
@@ -124,7 +125,7 @@ if __name__ == "__main__":
             output_array, footprint = mosaicking.reproject_and_coadd(
                 input_list, wcs_out, shape_out=shape_out,
                 reproject_function=reproject_interp,
-                combine_function="sum"
+                combine_function="mean"
             )
             logger.info("finished reprojection")
             header = wcs_out.to_header()
@@ -135,7 +136,7 @@ if __name__ == "__main__":
             logger.info(f"written {output_path}")
 
             input_list = []
-        print("Done {field} {band}")        
+        print(f"Done {field} {band}")        
 
         #if args.skip_stars is True:
         #    print("Done!")

@@ -134,13 +134,16 @@ def process_catalog(field):
         column_lookup={"ra": "ra_unwise", "dec": "dec_unwise"}
     )
 
+
 if __name__ == "__main__":
+
+    field_choices = ["EN", "SA", "LH", "XM"]
     parser = ArgumentParser()
-    parser.add_argument("--fields", required=False, default="SA,LH,EN,XM")
+    parser.add_argument("--fields", required=False, choices=field_choices, nargs="+", default=field_choices)
     parser.add_argument("-f", "--force-download", default=False, action="store_true")
 
     args = parser.parse_args()
-    fields = args.fields.split(",")
+    fields = args.fields
 
     for field in fields:
         print_header(f"process unwise for {field}")

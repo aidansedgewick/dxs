@@ -7,6 +7,9 @@ field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
 code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
 tiles_per_field: {SA: 12, LH: 11, EN: 12, XM: 8}
 
+bands: [J, H, K]
+eazy_filter_codes: {J: 263, H: 264, K: 265}
+
 wfcam:
   ccd_sidelength: 0.228 # degrees
   ccd_spacing: 0.215 # degrees
@@ -23,7 +26,11 @@ field_limits:
   EN: {ra: [239.0, 247.0], dec: [53.0, 57.0]}
   XM: {ra: [34.0, 38.0], dec: [-5.5, -2.0]}
 
-#catalogs:
+catalogs:
+  # this is NAMING ONLY!! must change apertures in configuration/sextractor/indiv.sex
+  apertures: [18, 20, 30, 40]
+  # NAMING ONLY!!! must change flux_radii in configuration/sextractor/indiv.sex
+  flux_radii: [20, 50, 90]
 
 masks:
   mosaic_extensions:
@@ -41,7 +48,7 @@ bright_stars:
     box_heights: [500., 20., 20., 10., 10.] # in pix.
     circle_radii: [4000., 200., 100., 60., 30.] # in pix.
 
-    # There is a "hand-built" table 
+    # There is a "hand-built" table in ./configuration/very_bright_stars.csv
 
   stacks:
     # stack stars in these ranges to look at how big 
@@ -91,22 +98,24 @@ zeropoint_flux:
   K: 631.0
   w1: 309.54
   w2: 171.79
-  I1: "NONE"
-  I2: "NONE"
+  I1: null
+  I2: null
 
-reddening_coeffs: # https://iopscience.iop.org/article/10.1088/0004-637X/750/2/99/pdf
+reddening_coeffs: 
+  # panstarrs https://iopscience.iop.org/article/10.1088/0004-637X/750/2/99/pdf
+  # each also has a term depending on (g-i) of the order ~0.01*(g-i) - ignore these...?
   g: 3.613
   r: 2.585
   i: 1.908
   z: 1.499
   y: 1.251
-  J: None
-  H: None
-  K: None
-  I1: None
-  I2: None
-  I3: None
-  I4: None
+  J: null
+  H: null
+  K: null
+  I1: null
+  I2: null
+  I3: null
+  I4: null
   
 wavelengths:
   g: 475.0
@@ -125,28 +134,39 @@ wavelengths:
 
 ###===== external catalogs =====###
 
-# arxiv.org/pdf/1612.05560.pdf --table7 (p18)
+
 panstarrs:
   fields: [md01, md05, md08, md09]
+  # arxiv.org/pdf/1612.05560.pdf --table7 (p18)
   from_dxs_field: {SA: md09, LH: md05, EN: md08, XM: md01}
   bands: [g, r, i, z, y]
-
   ab_to_vega: {g: -0.08, r: 0.16, i: 0.37, z: 0.54, y: 0.634}
   apertures: [1.04, 1.76, 3.00, 4.64, 7.44, 11.42, 18.20, 28.20, 44.22 ]
+  eazy_filter_codes: {g: 334, r: 335, i: 336, z: 337, y: 338}
+
 
 hsc:
+  bands: [g, r, i, z, y]
+  eazy_filter_codes: {g: 314, r: 315, i: 316, z: 317, y: 318}
   mask_tar_url: https://hsc-release.mtk.nao.ac.jp/rsrc/S18A_starmask.tar.xz
   url_base: https://hsc-release.mtk.nao.ac.jp/datasearch/catalog_jobs/download/
   catalog_urls:
-    EN: d8ca24dfb64dc33557f3038373acfede8a85a97933c5b11bb05b5186d3cd6d26
-    SA: 9c9e995238899a5ab2a81cf14266d9e3b43c37c41c69c7c9c3193726410dc146
-    XM: e4d4cc1c21143ade10035b15b1ce4f6fa0b51eec45ab2cb3cf563f7fbb2343a9
+
+    EN: a9a96aae788859825c8f0e6e19ba17165c18ab2f84c51756d3fc92e7c24cae86
+    # old-- d8ca24dfb64dc33557f3038373acfede8a85a97933c5b11bb05b5186d3cd6d26
+    SA: ba60da052f0c101b858a1b2a794b947e35052dc49f0db0f6d482f3a85fb9fd72
+    # old-- 9c9e995238899a5ab2a81cf14266d9e3b43c37c41c69c7c9c3193726410dc146
+    XM: 871536aa4d6f317e89553702ad3c430f873bd1fe981276df58bcd614ee424200
+    # old-- e4d4cc1c21143ade10035b15b1ce4f6fa0b51eec45ab2cb3cf563f7fbb2343a9
+    
   random_urls:
     EN: 09d4d760a99610afd4ad441fe411b50cf9d94ef1c7403fcd514fea44c3917155
-    # SA:
-    # XM:
+    SA: f7313bc14c583c9875c3cc9c8931ad669c0b6128da0dabdb5cb44a41cfde4ba6
+    XM: 4c6ab32cdefc489bca410382085c879a537680f1c83d5f403ecae890c15c38d5
 
 swire:
+  bands: [I1, I2, I3, I4]
+  eazy_filter_codes: {I1: 18, I2: 19, I3: 20, I4: 21}
   url_base: "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?"
   field_lookup: {EN: elaisn1, XM: xmm, LH: lockman}
   select_columns: [
@@ -157,14 +177,14 @@ swire:
     "flux_ap3_80", "uncf_ap3_80", "flux_kr_80", "uncf_kr_80",
   ]
 
-  bulk_image_download_url_base: https://irsa.ipac.caltech.edu/workspace/TMP_lpkNJP_6197/Atlas/
   bulk_image_download_urls:
-    EN: 242.75498_55.028390_eq_6197.v0001//wget_data.bat
-    XM: 35.3295_-4.49945_eq_17415.v0001//wget_data.bat
-    LH: 161.29286_57.94361_eq_20863.v0001//wget_data.bat
+    EN: https://irsa.ipac.caltech.edu/workspace/TMP_lpkNJP_6197/Atlas/242.75498_55.028390_eq_6197.v0001//wget_data.bat
+    XM: https://irsa.ipac.caltech.edu/workspace/TMP_9ew6E1_17929/Atlas/35.3295_-4.49945_eq_20675.v0001//wget_data.bat
+    LH: https://irsa.ipac.caltech.edu/workspace/TMP_9ew6E1_17929/Atlas/161.29286_57.94361_eq_17929.v0001//wget_data.bat
 
-
-
+unwise:
+  bands: [W1, W2]
+  eazy_filter_codes: {W1: 244, W2: 245}
 
 
 

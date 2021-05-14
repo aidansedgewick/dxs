@@ -16,6 +16,7 @@ from astropy.wcs import WCS
 from reproject import reproject_interp
 from reproject import mosaicking
 
+from dxs.utils.image import build_mosaic_wcs
 from dxs import paths
 
 import matplotlib.pyplot as plt
@@ -41,9 +42,11 @@ def download_catalog(field, output_path):
     ra_limits = survey_config["field_limits"].get(field, {}).get("ra", [242.0, 242.5])
     dec_limits = survey_config["field_limits"].get(field, {}).get("dec", [54.8, 55.2])
 
+    print("Prep catalog download")
+
     constraints = (
-        f"({ra_limits[0]} < ra) and (ra < {ra_limits[1]}) and "
-        f"({dec_limits[0]} < dec) and (dec < {dec_limits[1]})"
+        f"({ra_limits[0]}<ra) and (ra<{ra_limits[1]}) and "
+        f"({dec_limits[0]}<dec) and (dec<{dec_limits[1]})"
     )
     query = (
         f"{url_base}"
@@ -95,7 +98,7 @@ def process_catalog(input_path, output_path):
             mag_data[flux_mask] = -2.5 * np.log10(cat[old_flux_col][flux_mask].data) + 8.9
             cat[mag_col] = mag_data
 
-            print(f"{old_band}->{new_band}, {old_ap}->{new_ap} \n", cat[mag_col])
+            #print(f"{old_band}->{new_band}, {old_ap}->{new_ap} \n", cat[mag_col])
             new_fluxerr_col = f"{new_band}_fluxerr_{new_ap}"
             snr_col = cat[old_flux_col] / cat[old_fluxerr_col]
             cat[magerr_col] = err_factor * 1. / snr_col
@@ -108,17 +111,14 @@ def process_catalog(input_path, output_path):
     cat.write(output_path, overwrite=True)
 
 def download_images(field, image_type=None, force_download=False):
-
     image_type = ["mask"]
     bulk_download_script_path = base_dir / f"{field}_wget_data.bat"     
     if not bulk_download_script_path.exists() or force_download:
-        bulk_download_script_url = (
-            swire_config["bulk_image_download_url_base"]
-            + swire_config["bulk_image_download_urls"][field]
-        )
+        bulk_download_script_url = swire_config["bulk_image_download_urls"][field]
         download_cmd = [
             "wget", bulk_download_script_url, "-O", bulk_download_script_path
         ]
+        print(download_cmd)
         status = subprocess.run(download_cmd)
 
 
@@ -126,9 +126,9 @@ def download_images(field, image_type=None, force_download=False):
     image_dir.mkdir(exist_ok=True, parents=True) 
     with open(bulk_download_script_path, "r") as f:
         script_lines = f.readlines()
-    
+
     image_type_pattern = "(" + "|".join(t for t in image_type) + ")"
-    pattern = f"wget .*swire.*I[1,2].*_{image_type}.fits"
+    pattern = f"wget .*swire.*I[1,2].*_{image_type_pattern}.fits"
     for line in script_lines:
         if not re.match(pattern, line):
             continue
@@ -156,6 +156,8 @@ def make_mask(field, band, output_path, image_type="mask", resolution=2.0):
     print(f"mask from {len(mosaic_list)} images")
 
     input_list = []
+    ra_vals = []
+    dec_vals = []
     for mosaic_path in mosaic_list:
         with fits.open(mosaic_path) as mos:
             data_array = mos[0].data.copy()
@@ -163,10 +165,28 @@ def make_mask(field, band, output_path, image_type="mask", resolution=2.0):
         data_array = (data_array == 0)
         t = (data_array, img_wcs)
         input_list.append(t)
+        fp = img_wcs.calc_footprint()
+        ra_vals.extend(fp[:,0])
+        dec_vals.extend(fp[:,1])
+
+    center = [
+        0.5 * (min(ra_vals) + max(ra_vals)),
+        0.5 * (min(dec_vals) + max(dec_vals)),
+    ]
+    delta_coord = [
+        max(ra_vals) - min(ra_vals), max(dec_vals) - min(dec_vals)
+    ]
+    dres = (resolution / 3600.)
+    shape_out = [
+        int(1.05 * (delta_coord[0]) / dres * np.cos(np.radians(center[1])) ),
+        int(1.05 * (delta_coord[1]) / dres)
+    ]
         
-    wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
-        input_list, resolution=resolution * u.arcsec
-    )
+    #wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
+    #    input_list, resolution=resolution * u.arcsec
+    #)
+    wcs_out = build_mosaic_wcs(center, shape_out, resolution)
+
     logger.info("starting reprojection")
     array_out, footprint = mosaicking.reproject_and_coadd(
         input_list, wcs_out, shape_out=shape_out,

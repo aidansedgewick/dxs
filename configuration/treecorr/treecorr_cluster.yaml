@@ -8,7 +8,8 @@ verbose: 2
 metric: "Arc" # ie, great circle distance.
 npatch: 25 # ignored by the NNCorrelator(). Use in creating catalogs.
 var_method: "jackknife"
-nthreads: 16
+num_threads: 16
+output_dots: false
 
 # not used by treecorr, but kept here for convenience
-randoms_density: 360000
+randoms_density: 100000

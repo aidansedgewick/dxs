@@ -28,8 +28,16 @@ survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
-jwk_number_counts_path = paths.input_data_path / "plotting/jwk_AB_number_counts.csv"
-lao_number_counts_path = paths.input_data_path / "plotting/lao_AB_number_counts.csv"
+J_offset = survey_config["ab_vega_offset"]["J"]
+K_offset = survey_config["ab_vega_offset"]["K"]
+
+pldat_dir = paths.input_data_path / "plotting"
+
+kim11_number_counts_path = pldat_dir / "kim11_number_counts.csv"
+kim14_number_counts_path = pldat_dir / "kim14_number_counts.csv"
+arcilaosejo19_number_counts_path = pldat_dir / "arcilaosejo19_number_counts.csv"
+mccracken10_number_counts_path = pldat_dir / "mccracken10_number_counts.csv"
+kajisawa06_number_counts_path = pldat_dir / "kajisawa06_number_counts.csv"
 
 mag_min, mag_max = 17.0, 23.0
 dm = 0.5
@@ -64,40 +72,83 @@ if __name__ == "__main__":
     K_cut = args.K_cut
     skip_correlation = args.skip_correlation
 
+    print("look at fields")
+
     with open(args.treecorr_config, "r") as f:
         treecorr_config = yaml.load(f, Loader=yaml.FullLoader)
     randoms_density = treecorr_config.pop("randoms_density", 10_000) # sq. deg.
     print(f"RANDOMS DENSITY IS: {randoms_density}")
 
+    """
     jwk_counts = pd.read_csv(jwk_number_counts_path, delim_whitespace=True, na_values=["-"])
     lao_counts = pd.read_csv(lao_number_counts_path)
+    mccracken_counts = pd.read_csv(mccracken_number_counts_path)
+    kajisawa_counts = pd.read_csv(kajisawa_number_counts_path)"""
+
+    kim11_dat = pd.read_csv(kim11_number_counts_path)
+    kim14_dat = pd.read_csv(kim14_number_counts_path)
+    arcilaosejo19_dat = pd.read_csv(arcilaosejo19_number_counts_path)
+    mccracken10_dat = pd.read_csv(mccracken10_number_counts_path)
+    kajisawa06_dat = pd.read_csv(kajisawa06_number_counts_path)
 
     Nero_fig, Nero_ax = plt.subplots()
+    Nero_fig.suptitle("Number counts EROs")
     Nero_ax.scatter(
-        jwk_counts["Kmag"].values, jwk_counts["galaxies"].values, 
+        kim14_dat["Kmag"].values, kim14_dat["galaxies"].values, 
         s=20, marker="o", color="k", label="Kim+14, galaxies"
     )
     Nero_ax.scatter(
-        jwk_counts["Kmag"].values, jwk_counts["ero245_ps"].values, 
-        s=20, marker="x", color="k", label=r"Kim+14, EROs $i-K>2.45$"
+        kim14_dat["Kmag"].values, kim14_dat["ero245_hsc"].values, 
+        s=20, marker="x", color="k", label=r"Kim+2014, EROs $i-K>2.45$"
     )
     Nero_ax.scatter(
-        jwk_counts["Kmag"].values, jwk_counts["ero295_ps"].values, 
-        s=20, marker="^", color="k", label=r"Kim+14, EROs $i-K>2.95$"
-    )   
-
-    NgzK_fig, NgzK_ax = plt.subplots()
-    NgzK_ax.scatter(
-        lao_counts["Kmag"].values, lao_counts["sf_gzK"].values, 
-        s=20, marker="x", color="k", label="AO+2019, starforming",
-    )
-    NgzK_ax.scatter(
-        lao_counts["Kmag"].values, lao_counts["pe_gzK"].values, 
-        s=20, marker="^", color="k", label="AO+2019, passive"
+        kim14_dat["Kmag"].values, kim14_dat["ero295_hsc"].values, 
+        s=20, marker="^", color="k", label=r"Kim+2014, EROs $i-K>2.95$"
     )
 
+    NsfgzK_fig, NsfgzK_ax = plt.subplots()
+    NsfgzK_fig.suptitle("Number counts SF galaxies")
+    NsfgzK_ax.scatter(
+        arcilaosejo19_dat["Kmag"].values, arcilaosejo19_dat["sf_gzK"].values, 
+        s=20, marker="x", color="k", label="Arcila-Osejo+2019, SF gzK",
+    )
+    NsfgzK_ax.scatter(
+        mccracken10_dat["Kmag"].values, mccracken10_dat["sf_BzK"].values, 
+        s=20, marker="^", color="k", label="McCracken+2010, SF BzK",
+    )
+    NsfgzK_ax.scatter(
+        mccracken10_dat["Kmag"].values, mccracken10_dat["galaxies"].values, 
+        s=20, marker="o", color="k", label="McCracken+2010, galaxies"
+    )
+
+    NpegzK_fig, NpegzK_ax = plt.subplots()
+    NpegzK_fig.suptitle("Number counts PE galaxies")
+    NpegzK_ax.scatter(
+        arcilaosejo19_dat["Kmag"].values, arcilaosejo19_dat["pe_gzK"].values, 
+        s=20, marker="x", color="k", label="Arcila-Osejo+2019"
+    )
+    NpegzK_ax.scatter(
+        mccracken10_dat["Kmag"].values, mccracken10_dat["pe_BzK"].values, 
+        s=20, marker="^", color="k", label="McCracken+2010"
+    )
+    NpegzK_ax.scatter(
+        mccracken10_dat["Kmag"].values, mccracken10_dat["galaxies"].values, 
+        s=20, marker="o", color="k", label="McCracken+2010, galaxies"
+    )
+
+    Ndrg_fig, Ndrg_ax = plt.subplots()
+    Ndrg_fig.suptitle("Number counts DRGs")
+    Ndrg_ax.scatter(
+        kajisawa06_dat["Kmag"].values, kajisawa06_dat["drg"].values, 
+        s=20, marker="^", color="k", label="Kajisawa+2006, J-K[Vega] > 2.3"
+    )
+    Ndrg_ax.scatter(
+        kim11_dat["Kmag"].values, kim11_dat["drg"].values, 
+        s=20, marker="x", color="k", label="Kim+2011, J-K[Vega] > 2.3"
+    )
     sfdq = sfd.SFDQuery()
 
+    """
     corr_fig, corr_ax = plt.subplots()
     if args.objects == "eros_245":
         jwk_path = paths.input_data_path / "plotting/jwk_2pcf_ps_eros_245.csv"
@@ -105,14 +156,15 @@ if __name__ == "__main__":
         jwk_path = None
     if jwk_path is not None:
         jwk = pd.read_csv(jwk_path, names=["x", "w"])
-        corr_ax.scatter(jwk["x"], jwk["w"], color="k", label="Kim+ 2014")
+        corr_ax.scatter(jwk["x"], jwk["w"], color="k", label="Kim+ 2014")"""
         
     correlator_results = {}
     for ii, field in enumerate(fields):
         print_header(f"look at field {field}")
 
         if field in ["SA", "EN", "LH", "XM"]:
-            catalog_path = paths.get_catalog_path(field, 0, "", suffix="_panstarrs")
+            suffix = "_panstarrs"
+            catalog_path = paths.get_catalog_path(field, 0, "", suffix=suffix)
             if not catalog_path.exists():
                 print(f"skip {catalog_path}: missing")
                 continue
@@ -134,8 +186,8 @@ if __name__ == "__main__":
             ebv = sfdq(coords)
 
             full_catalog[gmag] = apply_extinction(full_catalog[gmag], ebv, band="g")
-            full_catalog[imag] = apply_extinction(full_catalog[imag], ebv, band="g")
-            full_catalog[zmag] = apply_extinction(full_catalog[zmag], ebv, band="g")
+            full_catalog[imag] = apply_extinction(full_catalog[imag], ebv, band="i")
+            full_catalog[zmag] = apply_extinction(full_catalog[zmag], ebv, band="z")
 
             logger.info("do ab transform")
             #full_catalog[gmag] = vega_to_ab(full_catalog[gmag], band="g")
@@ -151,7 +203,18 @@ if __name__ == "__main__":
                 "J_coverage > 0", "K_coverage > 0"
             ).filter(full_catalog)
 
-            optical_mask_path = paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"
+            if "panstarrs" in suffix and "hsc" not in suffix:
+                opt = "panstarrs"
+            elif "hsc" in suffix and "panstarrs" not in suffix:
+                opt = "hsc"
+            elif "panstarrs" in suffix and "hsc" in suffix:
+                raise ValueError(f"suffix {suffix} contains hsc AND panstarrs?!")
+            else:
+                raise ValueError(f"suffix {suffix} has no optical data?")
+            optical_mask_path = paths.input_data_path / f"external/{opt}/masks/{field}_mask.fits"
+            print_path = optical_mask_path.relative_to(paths.base_path)
+            print(f"optical mask at\n    {print_path}")
+            
             J_mask_path = paths.masks_path / f"{field}_J_good_cov_mask.fits"
             K_mask_path = paths.masks_path / f"{field}_K_good_cov_mask.fits"
             opt_mask_list = [J_mask_path, K_mask_path, optical_mask_path]
@@ -183,57 +246,99 @@ if __name__ == "__main__":
         ra_limits = calc_range(catalog["ra"])
         dec_limits = calc_range(catalog["dec"])
         opt_area = calc_survey_area(
-            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e4
+            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=randoms_density
         )
         nir_area = calc_survey_area(
-            nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=1e4
+            nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=randoms_density
         )
         
         print(f"{field}: NIR area: {nir_area:.2f}, opt_area: {opt_area:.2f}")
 
+        ##=========== select galaxies ===========]##
+
+        opt_catalog_mask = objects_in_coverage(
+            opt_mask_list, catalog["ra"], catalog["dec"]
+        )
+        opt_catalog = catalog[ opt_catalog_mask ]
+
         gals = Query(
-            f"({Jmag}-0.938) - ({Kmag}-1.9) > 1.0",
+            f"({Jmag}-{J_offset}) - ({Kmag}-{K_offset}) > 1.0",
         ).filter(catalog)
         gal_hist, _ = np.histogram(gals[Ktot_mag], bins=mag_bins)
-        gal_hist = gal_hist / (nir_area)
+        gal_norm = gal_hist / (nir_area)
+        gal_err = np.sqrt(gal_hist) / nir_area
 
-        eros_245 = Query(f"{imag} - {Kmag} > 2.45", f"{imag} < 25.0").filter(gals)
+        ##=========== select eros  ===========##
+    
+        eros_245 = Query(f"{imag} - {Kmag} > 2.45", f"{imag} < 25.0").filter(opt_catalog) #gals)
         ero245_hist, _ = np.histogram(eros_245[Ktot_mag], bins=mag_bins)
-        ero245_hist = ero245_hist / (opt_area)
-        
-        eros_295 = Query(f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0").filter(gals)
-        ero295_hist, _ = np.histogram(eros_295[Ktot_mag], bins=mag_bins)
-        ero295_hist = ero295_hist / (opt_area)
+        ero245_norm = ero245_hist / (opt_area)
+        ero245_err = np.sqrt(ero245_hist) / opt_area
 
-        Nero_ax.plot(mag_mids, ero245_hist, color=f"C{ii}", label=field)
-        Nero_ax.plot(mag_mids, ero295_hist, color=f"C{ii}", ls=":")
-        Nero_ax.plot(mag_mids, gal_hist, color=f"C{ii}", ls="--")
+        ero_fig, ero_ax = plt.subplots()
+        ero_ax.scatter(eros_245["ra"], eros_245["dec"], s=1, color="k")
+        
+        eros_295 = Query(f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0").filter(opt_catalog) #gals)
+        ero295_hist, _ = np.histogram(eros_295[Ktot_mag], bins=mag_bins)
+        ero295_norm = ero295_hist / (opt_area)
+        ero295_err = np.sqrt(ero295_hist) / opt_area
+
+        Nero_ax.plot(mag_mids, ero245_norm, color=f"C{ii}", label=field)
+        Nero_ax.plot(mag_mids, ero295_norm, color=f"C{ii}", ls=":")
+        Nero_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
+
+        ##=========== select SF gzKs ===========##
 
         sf_gzK = Query(
             f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) >= -0.022",
             f"{zmag} < 50.", 
             f"{gmag} < 50.",
-        ).filter(catalog)
+        ).filter(opt_catalog)
         sf_gzK_hist, _ = np.histogram(sf_gzK[Ktot_mag], bins=mag_bins)
-        sf_gzK_hist = sf_gzK_hist / (opt_area)
+        sf_gzK_norm = sf_gzK_hist / (opt_area)
+        sf_gzK_err = np.sqrt(sf_gzK_hist) / (opt_area)
+        NsfgzK_ax.plot(mag_mids, sf_gzK_norm, color=f"C{ii}", label=field)
+        NsfgzK_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
 
+        ##========== select PE gzKs ===========##
+    
         pe_gzK = Query(
             f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) < -0.022", 
             f"{zmag}-{Kmag} > 2.55",
             f"{zmag} < 50.",
             f"{gmag} < 50.",
-        ).filter(catalog)
+        ).filter(opt_catalog)
         pe_gzK_hist, _ = np.histogram(pe_gzK[Ktot_mag], bins=mag_bins)
-        pe_gzK_hist = pe_gzK_hist / (opt_area)
+        pe_gzK_norm = pe_gzK_hist / (opt_area)
+        pe_gzK_err = np.sqrt(pe_gzK_hist) / opt_area
+        NpegzK_ax.plot(mag_mids, pe_gzK_norm, color=f"C{ii}", label=field)
+        NpegzK_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
 
-        NgzK_ax.plot(mag_mids, pe_gzK_hist, color=f"C{ii}", label=field)
-        NgzK_ax.plot(mag_mids, sf_gzK_hist, color=f"C{ii}", ls="--")
+        ##===========select drgs ===========##
+
+        JK_cut = 2.3 + J_offset - K_offset
+
+        drg = Query(
+            f"({Jmag}-{Kmag} > {JK_cut})", #f"({Jmag} < 22.0 + {J_offset})"
+        ).filter(gals)
+        drg_hist, _ = np.histogram(drg[Ktot_mag], bins=mag_bins)
+        drg_norm = drg_hist / nir_area
+        Ndrg_ax.plot(mag_mids, drg_norm, color=f"C{ii}", label=field)
+        Ndrg_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
 
         Nero_ax.legend()
         Nero_ax.semilogy()
 
-        NgzK_ax.semilogy()
-        NgzK_ax.legend()
+        NsfgzK_ax.semilogy()
+        NsfgzK_ax.legend()
+
+        NpegzK_ax.semilogy()
+        NpegzK_ax.legend()
+
+        Ndrg_ax.semilogy()
+        Ndrg_ax.legend()
+        
+
         """
         iK_fig, iK_ax = plt.subplots()
         iK_ax.scatter(catalog[Kmag], catalog[imag]-catalog[Kmag], s=1, color="k")
@@ -244,147 +349,6 @@ if __name__ == "__main__":
         gzK_ax.scatter(sf_gzK[gmag] - sf_gzK[zmag], sf_gzK[zmag] - sf_gzK[Kmag], s=1, color="r")
         gzK_ax.scatter(pe_gzK[gmag] - pe_gzK[zmag], pe_gzK[zmag] - pe_gzK[Kmag], s=1, color="r")        
         """
+    plt.show()
         
-        pkl_path = (
-            paths.data_path / f"{field}_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
-        )
-        if not skip_correlation:
-            if args.objects == "eros_245":
-                cat = eros_245
-                object_area = opt_area
-            if args.objects == "gals":
-                cat = gals
-                object_area = nir_area
-
-            obj_cat = Query(f"{Ktot_mag} < {K_cut}").filter(cat)
-
-            obj_fig, obj_ax = plt.subplots()
-            obj_ax.scatter(obj_cat["ra"], obj_cat["dec"], s=1, color="k")           
-            
-            data_catalog = Catalog(
-                ra=obj_cat["ra"], 
-                dec=obj_cat["dec"], 
-                ra_units="deg", dec_units="deg",
-                npatch=treecorr_config.get("npatch", 1),
-            )
-            # Now sort some randoms.
-            full_randoms = SkyCoord(
-                uniform_sphere(ra_limits, dec_limits, density=randoms_density), 
-                unit="degree"
-            )
-            random_mask = objects_in_coverage(
-                opt_mask_list, full_randoms.ra, full_randoms.dec
-            )
-            randoms = full_randoms[ random_mask ]
-            random_catalog = Catalog(
-                ra=randoms.ra, 
-                dec=randoms.dec, 
-                ra_units="deg", dec_units="deg",
-                patch_centers=data_catalog.patch_centers,
-            )
-            if "num_threads" not in treecorr_config:
-                treecorr_config["num_threads"] = 3
-            dd = NNCorrelation(config=treecorr_config)
-            rr = NNCorrelation(config=treecorr_config)
-            dr = NNCorrelation(config=treecorr_config)
-
-            logger.info("starting dd process")
-            dd.process(data_catalog)
-            logger.info("starting rr process")
-            rr.process(random_catalog)
-            logger.info("starting dr process")
-            dr.process(data_catalog, random_catalog)
-
-            w_ls, w_ls_var = dd.calculateXi(rr=rr, dr=dr)
-
-            corr_data = {
-                "x": dd.rnom/3600.,
-                "dd": dd.npairs,
-                "dr": dr.npairs,
-                "rr": rr.npairs,
-                "w_ls": w_ls,
-                "w_ls_var": w_ls_var,
-                "n_data": len(obj_cat),
-                "n_random": len(randoms.ra),
-                "area": object_area,
-                "random_density": randoms_density,
-                "K_cut": K_cut
-            }
-
-            with open(pkl_path, "wb+") as f:
-                pickle.dump(corr_data, f)
-
-        else:
-            if pkl_path.exists():
-                with open(pkl_path, "rb") as f:
-                    corr_data = pickle.load(f)
-            else:
-                corr_data = None
-
-        if corr_data is not None:
-            corr_ax.plot(corr_data["x"], corr_data["w_ls"], color=f"C{ii}", label=field)
-            corr_ax.plot(corr_data["x"], corr_data["w_ls"] + ic_guess, color=f"C{ii}", ls="--", label=field)
-            if field in ["SA", "EN", "LH", "XM"]:
-                correlator_results[field] = corr_data
-
-    if len(fields) > 1:
-
-        print(correlator_results)
-
-        DD_total = np.vstack([v["dd"] for k, v in correlator_results.items()]).sum(axis=0)
-        DR_total = np.vstack([v["dr"] for k, v in correlator_results.items()]).sum(axis=0)
-        RR_total = np.vstack([v["rr"] for k, v in correlator_results.items()]).sum(axis=0)
-
-        print(DD_total, DR_total, RR_total)
-        
-       
-        nD_total = np.sum([v["n_data"] for k, v in correlator_results.items()])
-        nR_total = np.sum([v["n_random"] for k, v in correlator_results.items()])
-        object_area_total = np.sum([v["area"] for k, v in correlator_results.items()])
-        print(nD_total, nR_total)
-
-
-        dd_total = DD_total / (0.5 * nD_total * (nD_total - 1))
-        dr_total = DR_total / (nD_total * nR_total)
-        rr_total = RR_total / (0.5 * nR_total * (nR_total - 1))
-
-        w_ls = (dd_total - 2 * dr_total + rr_total) / rr_total
-
-        corr_ax.plot(corr_data["x"], w_ls, color="k")
-        corr_ax.plot(corr_data["x"], w_ls + ic_guess, ls="--", color="k")
-
-        w_ls_var = (1. + w_ls) / np.sqrt(DD_total)
-
-        pkl_path = paths.data_path / f"total_{args.objects}_K{int(K_cut*10)}_Ncorr_data.pkl"
-        corr_data = {
-            "x": corr_data["x"],
-            "dd": DD_total,
-            "dr": DR_total,
-            "rr": RR_total,
-            "w_ls": w_ls,
-            "w_ls_var": w_ls_var,
-            "n_data": nD_total,
-            "n_random": nR_total,
-            "area": object_area_total,
-            "random_density": randoms_density,
-            "K_cut": K_cut
-        }
-
-        with open(pkl_path, "wb+") as f:
-            pickle.dump(corr_data, f)
-
-corr_ax.loglog()
-corr_ax.set_xlim(3e-4, 3e0)
-corr_ax.set_ylim(5e-3, 1e1)
-corr_ax.legend()
-plt.show()
-plt.close()
-
-
-        
-        
-
-
-
-
 

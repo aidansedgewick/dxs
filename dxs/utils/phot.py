@@ -60,7 +60,7 @@ def apply_extinction(mag, ebv, band=None):
     rv = get_rv(band)
     if rv is None:
         raise ValueError("no rv value in survey_config")
-    return mag - rv * ebv
+    return mag - rv * ebv # make magnitude BRIGHTER.
 
 """
 def select_starforming(

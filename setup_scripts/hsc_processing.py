@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.ndimage.morphology import binary_fill_holes
+from scipy.ndimage.morphology import binary_fill_holes, binary_erosion
 
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
@@ -18,6 +18,7 @@ from astropy.wcs.utils import fit_wcs_from_points
 from easyquery import Query
 from regions import DS9Parser
 
+from dxs.utils.image import build_mosaic_wcs
 from dxs.utils.misc import calc_range
 from dxs.utils.table import fix_column_names
 
@@ -57,17 +58,21 @@ def make_field_mask(region_list_path):
     
 
 if __name__ == "__main__":
+    default_fields = ["EN", "SA", "XM"]
+
     parser = ArgumentParser()
-    parser.add_argument("--fields", default="SA,LH,EN,XM", required=False)
+    parser.add_argument("--fields", nargs="+", choices=default_fields, default=default_fields, required=False)
     parser.add_argument("--force-download", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
     args = parser.parse_args()
     
-    fields = args.fields.split(",")
+    fields = args.fields #.split(",")
     base_dir = paths.input_data_path / "external/hsc"
     base_dir.mkdir(exist_ok=True, parents=True)
     catalog_dir = base_dir / "catalogs"
     catalog_dir.mkdir(exist_ok=True, parents=True)
+    mask_dir = base_dir / "masks"
+    mask_dir.mkdir(exist_ok=True, parents=True)
 
     base_url = survey_config["hsc"]["url_base"]
 
@@ -82,9 +87,10 @@ if __name__ == "__main__":
     for field in fields:
         catalog_url_code = survey_config["hsc"]["catalog_urls"].get(field, None)
         if catalog_url_code is None:
+            print(f"No download URL for field {field}")
             continue
         url = base_url + catalog_url_code
-        output_path = base_dir / f"{field}_catalog.fits"
+        output_path = catalog_dir / f"{field}_catalog.fits"
 
         if not output_path.exists() or args.force_download:
             status = download_data(url, output_path)
@@ -101,6 +107,9 @@ if __name__ == "__main__":
                 fix_column_names(
                     output_path, column_lookup={"ra": "ra_hsc", "dec": "dec_hsc"}
                 )
+
+        if args.skip_mask:
+            continue
 
         random_url_code = survey_config["hsc"]["random_urls"].get(field, None)
         if random_url_code is None:
@@ -130,41 +139,52 @@ if __name__ == "__main__":
             "~i_pixelflags_edge", 
             "~i_pixelflags_isnull"
         ).filter(cat)
-        logger.info("read.")        
 
-        pixscale = 20. / 3600.
+        cat = cat[ 
+            (~cat["i_pixelflags_bad"])
+            & (~cat["i_pixelflags_saturatedcenter"])
+            & (~cat["i_pixelflags_edge"])
+            & (cat["isprimary"])
+            & (~cat["i_pixelflags_isnull"])
+        ]
+        
+        logger.info("loaded")
 
-        min_ra, max_ra = calc_range(cat["ra"])
-        min_ra -= 0.1
-        max_ra += 0.1
+        
 
-        min_dec, max_dec = calc_range(cat["dec"])
-        min_dec -= 0.1
-        max_dec += 0.1
+        resolution = 20.
+        d_res = (resolution / 3600.)
 
-        nx_pix = int(np.ceil( (max_ra - min_ra)/pixscale))
-        ny_pix = int(np.ceil( (max_dec - min_dec)/pixscale))
+        min_ra = min(cat["ra"]) - 0.1
+        max_ra = max(cat["ra"]) + 0.1
+        min_dec = min(cat["dec"]) - 0.1
+        max_dec = max(cat["dec"]) + 0.1
 
-        xbins = np.linspace(min_ra, max_ra, nx_pix)
-        ybins = np.linspace(min_dec, max_dec, ny_pix)
+        print(min_ra, max_ra)
+        print(min_dec, max_dec)
 
-        print(nx_pix, ny_pix)
-        xy = (np.array([1,nx_pix]), np.array([1 , ny_pix]))
-        sky_coord = SkyCoord(ra=[min_ra, max_ra], dec=[min_dec, max_dec], unit="degree")
-        print(sky_coord)
-        wcs = fit_wcs_from_points(xy, sky_coord, projection="TAN", sip_degree=3)
-        print(wcs)
+        center = [
+            0.5 * (min_ra + max_ra),
+            0.5 * (min_dec + max_dec),
+        ]
+        delta_coord = [max_ra - min_ra, max_dec - min_dec]
+        shape_out = [
+            int(delta_coord[0] / d_res * np.cos(np.radians(center[1])) ),
+            int(delta_coord[1] / d_res),
+        ]
+        wcs_out = build_mosaic_wcs(center=center, size=shape_out, pixel_scale=resolution)
 
-        horizontal = np.array([[1,0,1]]) # vertical 'structure' type
-        vertical = horizontal.T                # horizontal 'structure'.
-        foursquare = np.array([[1,1,1,1],[1,0,0,1],[1,0,0,1],[1,1,1,1]])
-
+        xbins = np.linspace(min_ra, max_ra, shape_out[0])
+        ybins = np.linspace(min_dec, max_dec, shape_out[1])
 
         data, _, _ = np.histogram2d(cat["dec"], cat["ra"], bins=[ybins, xbins])
         binary_data = data.copy()
         binary_data[ binary_data > 1 ] = 1
 
+        binary_data = binary_erosion(binary_data, iterations=2)
+
         binary_data = binary_data.astype(float)
+        binary_data = np.flip(binary_data, axis=1)
         """
         fig, ax = plt.subplots()
         ax.imshow(data.astype(bool).T)
@@ -172,8 +192,12 @@ if __name__ == "__main__":
         ax.imshow(binary_data.T)
         plt.show()"""
 
-        mask_hdu = fits.PrimaryHDU(data=binary_data, header=wcs.to_header())
-        mask_hdu.writeto(base_dir / f"{field}_mask.fits", overwrite=True)
+
+        mask_path = mask_dir / f"{field}_mask.fits"
+        mask_hdu = fits.PrimaryHDU(data=binary_data, header=wcs_out.to_header())
+        mask_hdu.writeto(mask_path, overwrite=True)
+
+        print(f"written mask to {mask_path.relative_to(paths.base_path)}")
         
         
 

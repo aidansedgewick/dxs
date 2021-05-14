@@ -106,7 +106,7 @@ def process_panstarrs_catalog(
         d = {
             "name": ap, "flux": f"{ap}Flux", "flux_err": f"{ap}FluxErr", 
             "mag": f"mag_{ap}", "mag_err": f"magerr_{ap}", "snr": f"snr_{ap}", 
-            "new_flux": f"flux_{ap}", "new_flux_err": f"flux_err_{ap}"
+            "new_flux": f"flux_{ap}", "new_flux_err": f"fluxerr_{ap}"
         }
         apertures.append(Aperture(**d))
     for N_aper in range(1, max_aper+1):
@@ -134,13 +134,13 @@ def process_panstarrs_catalog(
         mag_col = np.full(len(jcat), 99.0)
         mag_err_col = np.full(len(jcat), 99.0)
 
-        missing_err = np.sum(flux_err_col[flux_mask] == 0)
+        missing_err = np.sum(flux_err_col[ flux_mask ] == 0)
         if missing_err > 0:
             logger.warn(f"{ap} has {missing_err} missing flux_err values.")
 
-        snr_col[flux_mask] = flux_col[flux_mask] / flux_err_col[flux_mask]
-        mag_col[flux_mask] = jcat["zp"][flux_mask] - 2.5 * np.log10( flux_col[flux_mask] )
-        mag_err_col[flux_mask] = err_factor / snr_col[flux_mask]
+        snr_col[ flux_mask ] = flux_col[ flux_mask ] / flux_err_col[ flux_mask ]
+        mag_col[ flux_mask ] = jcat["zp"][ flux_mask ] - 2.5 * np.log10( flux_col[ flux_mask ] )
+        mag_err_col[ flux_mask ] = err_factor * 1. / snr_col[ flux_mask ]
         #np.sqrt(
         #    jcat["zp_err"][flux_mask]**2 + ( err_factor * 1. / snr_col[flux_mask] )**2 
         #)

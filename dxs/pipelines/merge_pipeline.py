@@ -3,6 +3,8 @@ import yaml
 from argparse import ArgumentParser
 from itertools import product
 
+import numpy as np
+
 from astropy.table import Table
 
 from regions import read_ds9
@@ -124,6 +126,11 @@ def merge_pipeline(
         nir_matcher.ra = external_match_ra
         nir_matcher.dec = external_match_dec
 
+        tab = Table.read(nir_matcher.catalog_path)
+        if "id" not in tab.columns:
+            tab.add_column(np.arange(len(tab)), name="id")
+        tab.write(nir_matcher.catalog_path, overwrite=True)
+
     elif (J_output and not K_output) or (K_output and not J_output):
         band = "J" if J_output else "K"
         catalog = J_output if J_output else K_output
@@ -138,7 +145,6 @@ def merge_pipeline(
         nir_matcher.ra = f"{band}_ra"
         nir_matcher.dec = f"{band}_dec"
         
-
     if external is None:
         return None
 

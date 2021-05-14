@@ -78,7 +78,7 @@ def single_image_coverage(
     ra = ra.flatten()
     dec = dec.flatten()
     coord = np.column_stack([ra, dec])
-    pix = fwcs.wcs_world2pix( coord, 1 ).astype(int)
+    pix = fwcs.wcs_world2pix( coord, 0 ).astype(int)
     mask = np.full(len(pix), False)
     xmask = (0 < pix[:,0]) & (pix[:,0] < header["NAXIS1"])
     ymask = (0 < pix[:,1]) & (pix[:,1] < header["NAXIS2"])
@@ -202,13 +202,16 @@ def build_mosaic_header(center: SkyCoord, size: Tuple[int, int], pixel_scale: fl
     #print(h["SIMPLE"])
     return h   
 
-def build_mosaic_wcs(center, size: Tuple[int, int], pixel_scale, proj="TAN"):
+def build_mosaic_wcs(
+    center, size: Tuple[int, int], pixel_scale, proj="TAN"
+):
     """
     pixel_scale in ARCSEC.
     """
+    
     w = WCS(naxis=2)
     w.wcs.crpix = [size[0]/2, size[1]/2]
-    w.wcs.cdelt = [pixel_scale / 3600., pixel_scale / 3600.]
+    w.wcs.cdelt = [-pixel_scale / 3600., pixel_scale / 3600.]
     if isinstance(center, SkyCoord):
         w.wcs.crval = [center.ra.value, center.dec.value]
     else:
@@ -218,6 +221,7 @@ def build_mosaic_wcs(center, size: Tuple[int, int], pixel_scale, proj="TAN"):
     ]
     w.fix()
     return w
+
     
 
 ###================== coverage mosaics ==================###

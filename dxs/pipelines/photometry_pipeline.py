@@ -34,6 +34,9 @@ with open(survey_config_path, "r") as f:
 
 default_lookup_path = paths.config_path / "sextractor/column_name_lookup.yaml"
 
+aperture_suffixes = survey_config["catalogs"].get("apertures", None)
+flux_radii_suffixes = survey_config["catalogs"].get("flux_radii", None)
+
 snr_fluxes = ["AUTO"] #, "ISO", "APER"]
 snr_flux_formats = {
     "flux_format": "FLUX_{flux}", 
@@ -128,10 +131,10 @@ def photometry_pipeline(
             J_ex.catalog_path, ra="J_ra", dec="J_dec", output_path=J_output_path
         )
         fix_crosstalk_column_names(J_output_path, band="J")
-        explode_columns_in_fits(J_output_path, "J_flux_radius", suffixes=[20, 50, 90])
+        explode_columns_in_fits(J_output_path, "J_flux_radius", suffixes=flux_radii_suffixes)
         J_aper_cols = ["J_mag_aper", "J_magerr_aper"] #"J_flux_aper", "J_fluxerr_aper", 
         explode_columns_in_fits(
-            J_output_path, J_aper_cols, suffixes=[10, 18, 20, 30], remove=True
+            J_output_path, J_aper_cols, suffixes=aperture_suffixes, remove=True
         )
         #remove_objects_in_bad_coverage(J_output_path, coverage_column="J_coverage")
         logger.info(f"xtalk-matched J cat at {J_output_path}")
@@ -195,10 +198,10 @@ def photometry_pipeline(
             K_ex.catalog_path, ra="K_ra", dec="K_dec", output_path=K_output_path, 
         )
         fix_crosstalk_column_names(K_output_path, band="K")
-        explode_columns_in_fits(K_output_path, "K_flux_radius", suffixes=[20, 50, 90])
+        explode_columns_in_fits(K_output_path, "K_flux_radius", suffixes=flux_radii_suffixes)
         K_aper_cols = ["K_mag_aper", "K_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
         explode_columns_in_fits(
-            K_output_path, K_aper_cols, suffixes=[10, 18, 20, 30], remove=True
+            K_output_path, K_aper_cols, suffixes=aperture_suffixes, remove=True
         )
         #remove_objects_in_bad_coverage(K_output_path, coverage_column="K_coverage")
         logger.info(f"xtalk-matched K cat at {K_output_path}")
