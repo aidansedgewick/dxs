@@ -151,13 +151,15 @@ hsc:
   mask_tar_url: https://hsc-release.mtk.nao.ac.jp/rsrc/S18A_starmask.tar.xz
   url_base: https://hsc-release.mtk.nao.ac.jp/datasearch/catalog_jobs/download/
   catalog_urls:
-
-    EN: a9a96aae788859825c8f0e6e19ba17165c18ab2f84c51756d3fc92e7c24cae86
-    # old-- d8ca24dfb64dc33557f3038373acfede8a85a97933c5b11bb05b5186d3cd6d26
-    SA: ba60da052f0c101b858a1b2a794b947e35052dc49f0db0f6d482f3a85fb9fd72
-    # old-- 9c9e995238899a5ab2a81cf14266d9e3b43c37c41c69c7c9c3193726410dc146
-    XM: 871536aa4d6f317e89553702ad3c430f873bd1fe981276df58bcd614ee424200
-    # old-- e4d4cc1c21143ade10035b15b1ce4f6fa0b51eec45ab2cb3cf563f7fbb2343a9
+    EN: 5d5dfc1ea6a3b7e7be2a3afdb08f743bb731c84c106c345607dc936291d45698
+    # old-- a9a96aae788859825c8f0e6e19ba17165c18ab2f84c51756d3fc92e7c24cae86
+    # v-old-- d8ca24dfb64dc33557f3038373acfede8a85a97933c5b11bb05b5186d3cd6d26
+    SA: 0f6f64e0b298553222e58722717ad24f85a2f39ea73a2374785ab9c7506fbdf9
+    # old-- ba60da052f0c101b858a1b2a794b947e35052dc49f0db0f6d482f3a85fb9fd72
+    # v-old-- 9c9e995238899a5ab2a81cf14266d9e3b43c37c41c69c7c9c3193726410dc146
+    XM: 748b2afe2181970c4f97e8f8baa5aa7ff3c57ace81c20c1a28e431eb31e2c4ba
+    # old-- 871536aa4d6f317e89553702ad3c430f873bd1fe981276df58bcd614ee424200
+    # v-old-- e4d4cc1c21143ade10035b15b1ce4f6fa0b51eec45ab2cb3cf563f7fbb2343a9
     
   random_urls:
     EN: 09d4d760a99610afd4ad441fe411b50cf9d94ef1c7403fcd514fea44c3917155

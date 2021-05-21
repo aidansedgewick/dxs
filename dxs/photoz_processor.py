@@ -36,8 +36,10 @@ class PhotozProcessor:
         input_catalog_path, 
         aperture, 
         external_catalog_apertures, 
-        output_dir=None, 
-        basename="photoz"
+        output_dir=None,
+        Nobj=None,
+        basename="photoz",
+        n_cpus=1,
     ):
         """
         Parameters
@@ -52,14 +54,17 @@ class PhotozProcessor:
         """
 
         self.input_catalog_path = Path(input_catalog_path)
-        self.catalog_s = self.input_catalog_path.name
+        print(f"read {self.input_catalog_path}")
+        self.catalog_stem = self.input_catalog_path.name.split(".")[0]
 
         if output_dir is None:
             output_dir = input_catalog_path.parent / "photoz"
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir).absolute()
         self.output_dir.mkdir(exist_ok=True, parents=True)
 
         self.basename = basename
+
+        self.Nobj = Nobj
 
         self.translate_file_path = self.output_dir / f"{self.basename}.translate"
 
@@ -69,6 +74,7 @@ class PhotozProcessor:
 
         self.aperture = aperture
         self.external_catalog_apertures = external_catalog_apertures
+        self.n_cpus = n_cpus
 
     def prepare_input_catalog(
         self,
@@ -88,6 +94,9 @@ class PhotozProcessor:
         coords = SkyCoord(ra=full_catalog["ra"], dec=full_catalog["dec"], unit="deg")
         sfdq = sfd.SFDQuery()
         ebv = sfdq(coords)
+
+        if convert_from_vega is None:
+            convert_from_vega = []
         
         d = {"dxs": self.aperture, **self.external_catalog_apertures}
         translate_dict = {}
@@ -105,7 +114,8 @@ class PhotozProcessor:
                     logger.info(f"missing {data_col}")
                     continue
                 if magnitudes:
-                    if data_col in [convert_from_vega]:
+                    if data_col in convert_from_vega:
+                        logger.info(f"convert {data_col} to AB")
                         full_catalog[data_col] = vega_to_ab(full_catalog[data_col], band=band)
                     if survey_config["reddening_coeffs"].get(band, None) is not None:
                         full_catalog[data_col] = apply_extinction(
@@ -147,7 +157,9 @@ class PhotozProcessor:
             catalog = Query(*query).filter(full_catalog)
         else:
             catalog = full_catalog
-        
+
+        if self.Nobj is not None:
+            logger.info("selecting first {self.Nobj} objects, AFTER query...")        
         catalog.write(self.photoz_input_path, overwrite=True)
         
 
@@ -160,11 +172,11 @@ class PhotozProcessor:
         )
         param.write(self.eazy_parameters_path)
         
-    def initialize_eazy(self, n_cpus=1):
+    def initialize_eazy(self, ):
         self.phz = PhotoZ(
             param_file=str(self.eazy_parameters_path), 
             translate_file=str(self.translate_file_path), 
-            n_proc=n_cpus
+            n_proc=self.n_cpus,
         )
 
     def run(self):
@@ -175,10 +187,23 @@ class PhotozProcessor:
         rate = self.phz.NOBJ / dt 
         print(f"fit {self.phz.NOBJ} parallel in {dt:.2f} s (={rate:.2e}  obj / s)")
         t1 = time.time()
-        zout, hdu = self.phz.standard_output(prior=True, beta_prior=True, save_fits=True)
+        zout, hdu = self.phz.standard_output(
+            prior=True, beta_prior=True, save_fits=True, n_proc=self.n_cpus,
+        )
         t2 = time.time()
         dt = t2 - t1
         print(f"write stdout in {t2-t1}")
+
+    def make_plots(self,):
+        plot_dir = self.output_dir / "SED_plots"
+        plot_dir.mkdir(exist_ok=True, parents=True)
+        for ii in range(self.phz.NOBJ):
+            print(f"plot {ii}")
+            fig, params = self.phz.show_fit(ii, id_is_idx=True)
+            fig_name = plot_dir / f"{self.catalog_stem}_{ii:06d}.png"
+            fig.savefig(fig_name)
+            plt.close()
+                
 
 def modified_eazy_parameters(
     paths_to_modify=None, **kwargs
@@ -202,13 +227,34 @@ def modified_eazy_parameters(
 
 
 if __name__ == "__main__":
+    #pzp = PhotozProcessor(
+    #    paths.catalogs_path / "EN00/EN00_panstarrs_swire.cat.fits",
+    #    "aper_30", {"panstarrs": "aper_30", "swire": "aper_30"},
+    #)
+    parser = ArgumentParser()
+    parser.add_argument("catalog_path")
+    parser.add_argument("--Nobj", type=int, default=None)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--K-cut", type=float, default=30.0)
+    args = parser.parse_args()
+
+    input_path = Path(args.catalog_path).absolute()
+    output_dir = args.output_dir
+    N = args.Nobj
+
     pzp = PhotozProcessor(
-        paths.catalogs_path / "EN00/EN00_panstarrs_swire.cat.fits",
-        "aper_30", {"panstarrs": "aper_30", "swire": "aper_30"},
+        input_path, "aper_30", {"panstarrs": "aper_30", "swire": "aper_30"},
+        output_dir=args.output_dir,
+        n_cpus=3
     )
+
     pzp.prepare_input_catalog(
         convert_from_vega=["J_mag_aper_30", "K_mag_aper_30"],
-        query=("J_mag_auto - K_mag_auto < 1.0", "K_mag_auto + 1.900 < 21.5")        
+        query=(
+            f"(J_mag_aper_30 - 0.938) - (K_mag_aper_30 - 1.900) > 1.0", 
+            f"i_mag_aper_30 - K_mag_aper_30 > 2.45", "i_mag_aper_30 < 25.0",
+            f"K_mag_auto + 1.900 < {args.K_cut}",
+        )
     )
     pzp.prepare_eazy_parameters(
         paths_to_modify=[
@@ -218,8 +264,9 @@ if __name__ == "__main__":
         prior_filter="K_flux",
         prior_file="templates/prior_K_TAO.dat",
     )
-    pzp.initialize_eazy(n_cpus=3)
+    pzp.initialize_eazy()
     pzp.run()
+    pzp.make_plots()
 
 
             
