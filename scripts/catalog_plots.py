@@ -22,7 +22,7 @@ from dxs.utils.phot import ab_to_vega, vega_to_ab, apply_extinction
 from dxs.utils.region import in_only_one_tile
 from dxs import paths
 
-logger = logging.getLogger("correlator")
+logger = logging.getLogger("counts")
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
@@ -39,7 +39,7 @@ arcilaosejo19_number_counts_path = pldat_dir / "arcilaosejo19_number_counts.csv"
 mccracken10_number_counts_path = pldat_dir / "mccracken10_number_counts.csv"
 kajisawa06_number_counts_path = pldat_dir / "kajisawa06_number_counts.csv"
 
-mag_min, mag_max = 17.0, 23.0
+mag_min, mag_max = 14.0, 23.0
 dm = 0.5
 mag_bins = np.arange(mag_min, mag_max + 1. * dm, dm)
 mag_mids = calc_mids(mag_bins)
@@ -60,17 +60,24 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--fields", choices=field_choices, nargs="+", default=default_fields)
-    parser.add_argument("--K-cut", action="store", default=20.7, type=float)
+    #parser.add_argument("--K-cut", action="store", default=20.7, type=float)
     parser.add_argument("--objects", action="store", choices=object_choices, default="eros_245")
     parser.add_argument(
         "--treecorr-config", action="store", default=default_treecorr_config_path
     )
-    parser.add_argument("--skip-correlation", action="store_true", default=False)
+
+    parser.add_argument("--optical", default="panstarrs")
+    parser.add_argument("--mir", default=None)
     args = parser.parse_args()
 
     fields = args.fields
-    K_cut = args.K_cut
-    skip_correlation = args.skip_correlation
+    #K_cut = args.K_cut
+    #skip_correlation = args.skip_correlation
+
+
+    suffix = f"_{args.optical}"
+    if args.mir is not None:
+        suffix = suffix + f"_{args.mir}"
 
     print("look at fields")
 
@@ -163,11 +170,13 @@ if __name__ == "__main__":
         print_header(f"look at field {field}")
 
         if field in ["SA", "EN", "LH", "XM"]:
-            suffix = "_panstarrs"
+
             catalog_path = paths.get_catalog_path(field, 0, "", suffix=suffix)
+            rel_path = catalog_path.relative_to(paths.base_path)
             if not catalog_path.exists():
-                print(f"skip {catalog_path}: missing")
+                print(f"skip {rel_path}: missing")
                 continue
+            print(f"reading {rel_path}")
             full_catalog = Table.read(catalog_path)
 
             nir_mag_type = "aper_30"
@@ -211,13 +220,16 @@ if __name__ == "__main__":
                 raise ValueError(f"suffix {suffix} contains hsc AND panstarrs?!")
             else:
                 raise ValueError(f"suffix {suffix} has no optical data?")
-            optical_mask_path = paths.input_data_path / f"external/{opt}/masks/{field}_mask.fits"
-            print_path = optical_mask_path.relative_to(paths.base_path)
-            print(f"optical mask at\n    {print_path}")
+            g_mask_path = paths.input_data_path / f"external/{opt}/masks/{field}_g_mask.fits"
+            i_mask_path = paths.input_data_path / f"external/{opt}/masks/{field}_i_mask.fits"
+            z_mask_path = paths.input_data_path / f"external/{opt}/masks/{field}_z_mask.fits"
+            print_path = i_mask_path.relative_to(paths.base_path)
+            print(f"i mask at\n    {print_path}")
             
             J_mask_path = paths.masks_path / f"{field}_J_good_cov_mask.fits"
             K_mask_path = paths.masks_path / f"{field}_K_good_cov_mask.fits"
-            opt_mask_list = [J_mask_path, K_mask_path, optical_mask_path]
+            iK_mask_list = [J_mask_path, K_mask_path, i_mask_path]
+            gzK_mask_list = [J_mask_path, K_mask_path, g_mask_path, z_mask_path]
             nir_mask_list = [J_mask_path, K_mask_path]
 
         if field == "Euclid":
@@ -245,21 +257,24 @@ if __name__ == "__main__":
 
         ra_limits = calc_range(catalog["ra"])
         dec_limits = calc_range(catalog["dec"])
-        opt_area = calc_survey_area(
-            opt_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=randoms_density
+        iK_area = calc_survey_area(
+            iK_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=randoms_density
+        )
+        gzK_area = calc_survey_area(
+            gzK_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=randoms_density
         )
         nir_area = calc_survey_area(
             nir_mask_list, ra_limits=ra_limits, dec_limits=dec_limits, density=randoms_density
         )
         
-        print(f"{field}: NIR area: {nir_area:.2f}, opt_area: {opt_area:.2f}")
+        print(f"{field}: NIR area: {nir_area:.2f}, iK_area: {iK_area:.2f}, gzK_area: {gzK_area:.2f}")
 
         ##=========== select galaxies ===========]##
 
-        opt_catalog_mask = objects_in_coverage(
-            opt_mask_list, catalog["ra"], catalog["dec"]
+        iK_catalog_mask = objects_in_coverage(
+            iK_mask_list, catalog["ra"], catalog["dec"]
         )
-        opt_catalog = catalog[ opt_catalog_mask ]
+        iK_catalog = catalog[ iK_catalog_mask ]
 
         gals = Query(
             f"({Jmag}-{J_offset}) - ({Kmag}-{K_offset}) > 1.0",
@@ -270,35 +285,57 @@ if __name__ == "__main__":
 
         ##=========== select eros  ===========##
     
-        eros_245 = Query(f"{imag} - {Kmag} > 2.45", f"{imag} < 25.0").filter(opt_catalog) #gals)
+        eros_245 = Query(f"{imag} - {Kmag} > 2.45", f"{imag} < 25.0").filter(iK_catalog) #gals)
         ero245_hist, _ = np.histogram(eros_245[Ktot_mag], bins=mag_bins)
-        ero245_norm = ero245_hist / (opt_area)
-        ero245_err = np.sqrt(ero245_hist) / opt_area
+        ero245_norm = ero245_hist / (iK_area)
+        ero245_err = np.sqrt(ero245_hist) / iK_area
+       
+        eros_295 = Query(f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0").filter(iK_catalog) #gals)
+        ero295_hist, _ = np.histogram(eros_295[Ktot_mag], bins=mag_bins)
+        ero295_norm = ero295_hist / (iK_area)
+        ero295_err = np.sqrt(ero295_hist) / iK_area
+
+        ero_dropouts = Query(
+            f"({Jmag}-{J_offset}) - ({Kmag}-{K_offset}) > 1.0",
+            f"{Jmag} < 50.0", 
+            f"{imag} > 30.0"
+        ).filter(iK_catalog)
+        erodropout_hist, _ = np.histogram(ero_dropouts[Ktot_mag], bins=mag_bins)
+        erodropout_norm = erodropout_hist / (iK_area)
+        erodropout_err = np.sqrt(erodropout_hist) / iK_area
 
         ero_fig, ero_ax = plt.subplots()
         ero_ax.scatter(eros_245["ra"], eros_245["dec"], s=1, color="k")
-        
-        eros_295 = Query(f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0").filter(opt_catalog) #gals)
-        ero295_hist, _ = np.histogram(eros_295[Ktot_mag], bins=mag_bins)
-        ero295_norm = ero295_hist / (opt_area)
-        ero295_err = np.sqrt(ero295_hist) / opt_area
 
-        Nero_ax.plot(mag_mids, ero245_norm, color=f"C{ii}", label=field)
-        Nero_ax.plot(mag_mids, ero295_norm, color=f"C{ii}", ls=":")
+        Nero_ax.errorbar(mag_mids, ero245_norm, yerr=ero245_err, color=f"C{ii}", label=field)
+        Nero_ax.errorbar(mag_mids, ero295_norm, yerr=ero295_err, color=f"C{ii}", ls="--")
+        Nero_ax.plot(mag_mids, erodropout_norm, color=f"C{ii}", ls=":")
         Nero_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
 
         ##=========== select SF gzKs ===========##
+
+        gzK_catalog_mask = objects_in_coverage(
+            gzK_mask_list, catalog["ra"], catalog["dec"]
+        )
+        gzK_catalog = catalog[ gzK_catalog_mask ]
+
 
         sf_gzK = Query(
             f"({zmag}-{Kmag}) - 1.27 * ({gmag}-{zmag}) >= -0.022",
             f"{zmag} < 50.", 
             f"{gmag} < 50.",
-        ).filter(opt_catalog)
+        ).filter(gzK_catalog)
         sf_gzK_hist, _ = np.histogram(sf_gzK[Ktot_mag], bins=mag_bins)
-        sf_gzK_norm = sf_gzK_hist / (opt_area)
-        sf_gzK_err = np.sqrt(sf_gzK_hist) / (opt_area)
-        NsfgzK_ax.plot(mag_mids, sf_gzK_norm, color=f"C{ii}", label=field)
-        NsfgzK_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
+        sf_gzK_norm = sf_gzK_hist / (gzK_area)
+        sf_gzK_err = np.sqrt(sf_gzK_hist) / (gzK_area)
+
+        sfgzK_ax_fig, sfgzK_ax = plt.subplots()
+        sfgzK_ax.scatter(sf_gzK["ra"], sf_gzK["dec"], s=1, color="k")
+
+        NsfgzK_ax.errorbar(mag_mids, sf_gzK_norm, yerr=sf_gzK_err, color=f"C{ii}", label=field)
+        NsfgzK_ax.errorbar(mag_mids, gal_norm, color=f"C{ii}", ls="--")
+
+        
 
         ##========== select PE gzKs ===========##
     
@@ -307,11 +344,11 @@ if __name__ == "__main__":
             f"{zmag}-{Kmag} > 2.55",
             f"{zmag} < 50.",
             f"{gmag} < 50.",
-        ).filter(opt_catalog)
+        ).filter(gzK_catalog)
         pe_gzK_hist, _ = np.histogram(pe_gzK[Ktot_mag], bins=mag_bins)
-        pe_gzK_norm = pe_gzK_hist / (opt_area)
-        pe_gzK_err = np.sqrt(pe_gzK_hist) / opt_area
-        NpegzK_ax.plot(mag_mids, pe_gzK_norm, color=f"C{ii}", label=field)
+        pe_gzK_norm = pe_gzK_hist / (gzK_area)
+        pe_gzK_err = np.sqrt(pe_gzK_hist) / gzK_area
+        NpegzK_ax.errorbar(mag_mids, pe_gzK_norm, yerr=pe_gzK_err, color=f"C{ii}", label=field)
         NpegzK_ax.plot(mag_mids, gal_norm, color=f"C{ii}", ls="--")
 
         ##===========select drgs ===========##

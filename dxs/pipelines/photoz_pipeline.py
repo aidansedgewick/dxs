@@ -10,6 +10,7 @@ field_choices = ["SA", "EN", "LH", "XM"]
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("field", choices=field_choices)
+    parser.add_argument("--aper", default="aper_30")
     parser.add_argument("--optical", default="panstarrs")
     parser.add_argument("--optical-aper", default="aper_30")
     parser.add_argument("--mir", default="swire")
@@ -23,27 +24,37 @@ if __name__ == "__main__":
     suffix = f"_{args.optical}_{args.mir}"
     input_catalog = paths.get_catalog_path(args.field, 00, "", suffix=suffix)
 
-    output_dir = paths.get_catalog_dir(args.field, 00, "") / f"photoz{suffix}"
+    output_dir = paths.get_catalog_dir(args.field, 00, "") / f"photoz{suffix}_{args.aper}"
 
     pzp = PhotozProcessor(
-        paths.catalogs_path / "EN00/EN00_panstarrs_swire.cat.fits",
-        "aper_30", {args.optical: args.optical_aper, args.mir: args.mir_aper},
-        output_dir=output_dir
+        input_catalog,
+        args.aper, {args.optical: args.optical_aper, args.mir: args.mir_aper},
+        output_dir=output_dir,
+        n_cpus=args.n_cpus,
     )
+
+    bands_to_convert = [f"J_mag_{args.aper}", f"K_mag_{args.aper}"]
+    if args.aper != "aper_30":
+        assert "J_mag_aper_30" not in bands_to_convert
+        bands_to_convert.extend(["J_mag_aper_30", "K_mag_aper_30"])
+
     pzp.prepare_input_catalog(
-        convert_from_vega=["J_mag_aper_30", "K_mag_aper_30"],
+        convert_from_vega=bands_to_convert,
         query=(
-            "(J_mag_aper_30 - 0.938) - (K_mag_aper_30 - 1.900) > 1.0", 
-            f"K_mag_auto + 1.900 < {args.K_cut}"
-        less)        
+            f"(J_mag_aper_30 - 0.938) - (K_mag_aper_30 - 1.900) > 1.0", 
+            f"K_mag_auto + 1.900 < {args.K_cut}",
+        )        
     )
     pzp.prepare_eazy_parameters(
         paths_to_modify=[
             "prior_file", "templates_file", "wavelength_file", "temp_err_file",
         ],
         z_max=6.0, 
-        prior_filter="K_flux",
-        prior_file="templates/prior_K_TAO.dat",
+        prior_filter="265",
+        prior_abzp=23.9,
+        prior_file="templates/prior_K_extend.dat",
     )
-    pzp.initialize_eazy(n_cpus=args.n_cpus)
+    pzp.initialize_eazy()
     pzp.run()
+
+    pzp.make_plots(N=3000)

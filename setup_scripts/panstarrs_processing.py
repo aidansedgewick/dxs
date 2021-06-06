@@ -217,26 +217,27 @@ def process_panstarrs_catalog(
     logger.info(f"catalog written to {print_path} in {(time()-t1)/60.:.2f} min")
 
 def process_panstarrs_mosaic_mask(
-    ps_field, output_path, extension=None, base_dir=None, pixel_scale=1.0
+    ps_field, output_path, band="i", extension=None, base_dir=None, pixel_scale=1.0, hdu=0
 ):
+
+    print(f"process {ps_field} {output_path}")
     if base_dir is None:
         base_dir = paths.input_data_path / f"external/panstarrs/images"
     if extension is None:
         extension = ".unconv.fits"
-    glob_str = str(base_dir / f"{ps_field}/i/skycell**")
+    glob_str = str(base_dir / f"{ps_field}/{band}/skycell**")
     dir_list = glob(glob_str)
     mosaic_list = []
     for directory in dir_list:
         directory = Path(directory)
         mosaic_list.append( glob(str(directory / f"*{extension}"))[0] )
-    
 
     input_list = []
     for mosaic_path in mosaic_list:
         with fits.open(mosaic_path) as mos:
-            data_array = mos[1].data.copy()
-            img_wcs = WCS(mos[1].header)
-        data_array = (data_array == 0)
+            data_array = mos[hdu].data.copy()
+            img_wcs = WCS(mos[hdu].header)
+        #data_array = (data_array == 0)
         t = (data_array, img_wcs)
         input_list.append(t)
         
@@ -247,7 +248,7 @@ def process_panstarrs_mosaic_mask(
     array_out, footprint = mosaicking.reproject_and_coadd(
         input_list, wcs_out, shape_out=shape_out,
         reproject_function=reproject_interp,
-        combine_function="sum"
+        combine_function="mean"
     )
     logger.info("finished reprojection")
     header = wcs_out.to_header()
@@ -298,8 +299,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--skip-catalog", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
-    parser.add_argument("--mask-extension", default=".unconv.mask.fits")
+    parser.add_argument("--mask-extension", default=".unconv.fits")
     parser.add_argument("--resolution", default=2.0, type=float)
+    parser.add_argument("--mask-bands", default=["i"], choices=["g", "r", "i", "z", "y"], nargs="+")
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
 
@@ -316,10 +318,16 @@ if __name__ == "__main__":
             )
         if not args.skip_mask:
             mask_dir = paths.input_data_path / f"external/panstarrs/masks"
-            mask_dir.mkdir(exist_ok=True, parents=True)
-            output_path = mask_dir / f"{field}_mask.fits"
-            process_panstarrs_mosaic_mask(
-                ps_field, output_path=output_path, extension=args.mask_extension
-            )
+            extension_split = args.mask_extension.split(".")[2:-1]
+            if len(extension_split) == 0:
+                extension = ""
+            else:
+                extension = "_" + "_".join(extension_split)
+            for band in args.mask_bands:
+                mask_dir.mkdir(exist_ok=True, parents=True)
+                output_path = mask_dir / f"{field}_{band}{extension}.fits"
+                process_panstarrs_mosaic_mask(
+                    ps_field, output_path=output_path, band=band, extension=args.mask_extension
+                )
 
 

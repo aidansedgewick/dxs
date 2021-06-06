@@ -146,7 +146,7 @@ def merge_pipeline(
         nir_matcher.dec = f"{band}_dec"
         
     if external is None:
-        return None
+        external = []
 
     if "panstarrs" in external:
         ps_name = f"{field}_panstarrs"
@@ -204,8 +204,14 @@ def merge_pipeline(
             error=swire_error, find="best1"
         )        
 
-    else:
-        return None
+    try:
+        print_path = nir_output_path.relative_to(paths.base_path)
+    except:
+        print_path = nir_output_path
+    logger.info(f"final output at\n    {print_path}")
+
+    #else:
+    #    return None
 
 if __name__ == "__main__":
 

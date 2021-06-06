@@ -8,6 +8,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+import matplotlib
 import matplotlib.pyplot as plt
 
 from astropy import units as u
@@ -194,10 +196,14 @@ class PhotozProcessor:
         dt = t2 - t1
         print(f"write stdout in {t2-t1}")
 
-    def make_plots(self,):
+    def make_plots(self, N=None):
         plot_dir = self.output_dir / "SED_plots"
         plot_dir.mkdir(exist_ok=True, parents=True)
-        for ii in range(self.phz.NOBJ):
+        matplotlib.use('Agg')
+        if N is None:
+            N = self.phz.NOBJ
+
+        for ii in range(N):
             print(f"plot {ii}")
             fig, params = self.phz.show_fit(ii, id_is_idx=True)
             fig_name = plot_dir / f"{self.catalog_stem}_{ii:06d}.png"
@@ -266,7 +272,7 @@ if __name__ == "__main__":
     )
     pzp.initialize_eazy()
     pzp.run()
-    pzp.make_plots()
+    pzp.make_plots(N=10000)
 
 
             

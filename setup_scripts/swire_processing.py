@@ -89,8 +89,8 @@ def process_catalog(input_path, output_path):
             new_flux_col = f"{new_band}_flux_{new_ap}"
             mag_col = f"{new_band}_mag_{new_ap}"
             magerr_col = f"{new_band}_magerr_{new_ap}"
-            ## What is this equation!?! 
-            ## https://en.wikipedia.org/wiki/AB_magnitude#Definition
+            ## What is this equation!?!
+            ## https://en.wikipedia.org/wiki/AB_magnitude#Definition    dfdfgdfgdfgdfg
             ## for f_nu in Jy.
 
             mag_data = np.full(len(cat), 99.0)
@@ -111,7 +111,8 @@ def process_catalog(input_path, output_path):
     cat.write(output_path, overwrite=True)
 
 def download_images(field, image_type=None, force_download=False):
-    image_type = ["mask"]
+    if image_type is None:
+        image_type = ["mask"]
     bulk_download_script_path = base_dir / f"{field}_wget_data.bat"     
     if not bulk_download_script_path.exists() or force_download:
         bulk_download_script_url = swire_config["bulk_image_download_urls"][field]
@@ -120,7 +121,6 @@ def download_images(field, image_type=None, force_download=False):
         ]
         print(download_cmd)
         status = subprocess.run(download_cmd)
-
 
     image_dir = base_dir / f"images/{field}"
     image_dir.mkdir(exist_ok=True, parents=True) 
@@ -131,11 +131,14 @@ def download_images(field, image_type=None, force_download=False):
     pattern = f"wget .*swire.*I[1,2].*_{image_type_pattern}.fits"
     for line in script_lines:
         if not re.match(pattern, line):
+            #print("no match", line.split("/")[-1])
             continue
+        else:
+            print("use", line.split("/")[-1].strip())
         if "I1" in line:
             band = "I1"
         elif "I2" in line:
-            band = "I2"                
+            band = "I2"
         output_dir = image_dir / band
         output_dir.mkdir(exist_ok=True, parents=True)
         line = line.replace("\"", "")
@@ -162,13 +165,17 @@ def make_mask(field, band, output_path, image_type="mask", resolution=2.0):
         with fits.open(mosaic_path) as mos:
             data_array = mos[0].data.copy()
             img_wcs = WCS(mos[0].header)
-        data_array = (data_array == 0)
+        #data_array = (data_array == 0)
         t = (data_array, img_wcs)
         input_list.append(t)
-        fp = img_wcs.calc_footprint()
-        ra_vals.extend(fp[:,0])
-        dec_vals.extend(fp[:,1])
+        #fp = img_wcs.calc_footprint()
+        #ra_vals.extend(fp[:,0])
+        #dec_vals.extend(fp[:,1])
 
+    wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
+        input_list, resolution=resolution * u.arcsec
+    )
+    """
     center = [
         0.5 * (min(ra_vals) + max(ra_vals)),
         0.5 * (min(dec_vals) + max(dec_vals)),
@@ -181,11 +188,8 @@ def make_mask(field, band, output_path, image_type="mask", resolution=2.0):
         int(1.05 * (delta_coord[0]) / dres * np.cos(np.radians(center[1])) ),
         int(1.05 * (delta_coord[1]) / dres)
     ]
-        
-    #wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
-    #    input_list, resolution=resolution * u.arcsec
-    #)
-    wcs_out = build_mosaic_wcs(center, shape_out, resolution)
+    wcs_out = build_mosaic_wcs(center, shape_out, resolution)    
+    """
 
     logger.info("starting reprojection")
     array_out, footprint = mosaicking.reproject_and_coadd(

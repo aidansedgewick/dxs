@@ -21,7 +21,7 @@ from dxs import paths
 cosmol = cosmology.FlatLambdaCDM(H0=70.0, Om0=0.3, ) #Planck15
 
 field = "LH"
-suffix = "_panstarrs_zphot"
+suffix = "_panstarrs_swire_zphot"
 
 if "panstarrs" in suffix and "hsc" not in suffix:
     opt = "panstarrs"
@@ -105,6 +105,7 @@ print(z_grid[0])
 
 dL_grid = cosmol.luminosity_distance(z_grid).to(u.pc)
 print(dL_grid)
+
 
 zmax_func_vals = K_faint - (5. * np.log10(dL_grid / (10. * u.pc))) + 2.5 * np.log10(1. + z_grid)
 zmax_diff_vals = abs(zmax_func_vals[:, None] - cat["absM"].data) # Each row is a z_max point -- cols are gals.
@@ -302,7 +303,6 @@ for ii, (z_low, z_high) in enumerate(zip(z_bins[:-1], z_bins[1:])):
         [z_low, z_high], [M_faint[ii], M_faint[ii]], [M_bright[ii], M_bright[ii]],
         alpha=0.3, color=f"C{ii}"
     )
-#plt.show()
 phi_fig, phi_axes = plt.subplots(3,3, figsize=(9,9))
 phi_axes = phi_axes.flatten()
 for ii, (z_low, z_high) in enumerate(zip(z_bins[:-1], z_bins[1:])):

@@ -1,5 +1,5 @@
 bin_type: "Log"
-nbins: 38 # ie log(dr) = 0.1 # 19 for log(dr) = 0.2
+nbins: 19 # ie log(dr) = 0.1 # 19 for log(dr) = 0.2
 min_sep: 1.43318 # 10**-3.4 degrees
 max_sep: 9042.79115 # 10**0.4 =~3 degrees.
 sep_units: "arcsec"

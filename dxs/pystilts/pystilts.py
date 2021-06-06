@@ -45,7 +45,7 @@ class Stilts:
         if your `stilts` executable is not in the path (ie, can't run "stilts" 
         from the command line), provide path to executable here.
     kwargs
-        extra kwargs to pass to stilts
+        extra kwargs to pass to stilts - will overwrite duplicates in flags.
 
     """
 
@@ -125,7 +125,7 @@ class Stilts:
 
     @classmethod
     def tmatch2_fits(
-        cls, file1, file2, output_path, flags=None, **kwargs
+        cls, file1, file2, output_path, flags=None, stilts_exe="stilts", **kwargs
     ):
         raise NotImplementedError
         if file1 == file2:
@@ -144,9 +144,36 @@ class Stilts:
         flags["ifmt2"] = "fits"
         flags["omode"] = "out"
         flags["ofmt"] = "fits"
-        flags["out"] = output
+        flags["out"] = output_path
         
-        return cls("tmatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)        
+        return cls("tmatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)
+
+    @classmethod
+    def tmatch2_exact_fits(
+        cls, file1, file2, output_path, values, flags=None, stilts_exe="stilts", **kwargs
+    ):
+        if file1 == file2:
+            raise StiltsError("exact_match: file1 == file2!?! {file1} {file2}")
+        if file1 == output_path and file1.exists():
+            new_paths = create_file_backups(file1, paths.temp_data_path)
+            file1 = new_paths[0] # filebackups returns list.
+        elif file2 == output_path and file2.exists():
+            new_paths = create_file_backups(file2, paths.temp_data_path)
+            file2 = new_paths[0]
+    
+        flags = flags or {}
+        flags["in1"] = file1
+        flags["in2"] = file2
+        flags["ifmt1"] = "fits"
+        flags["ifmt2"] = "fits"
+        flags["omode"] = "out"
+        flags["ofmt"] = "fits"
+        flags["out"] = output_path
+        flags["values1"] = values
+        flags["values2"] = values
+        flags["matcher"] = "exact"
+
+        return cls("tmatch2", flags=flags, stilts_exe=stilts_exe, **kwargs)
 
     @classmethod
     def tcat_fits(
