@@ -94,6 +94,36 @@ def get_catalog_path(
     return catalog_dir / f"{catalog_stem}{extension}"
 
 if __name__ == "__main__":
-    print("creating all paths")
-    create_all_paths()
+    from argparse import ArgumentParser
+    
+    parser = ArgumentParser()
+    parser.add_argument("-m", "--make-paths", default=False)    
+    args = parser.parse_args()
+    
+    if args.make_paths:
+        print("creating all paths")
+        create_all_paths()
 
+    path_str = (
+        f"PATHS\n==========================\n"
+        + f"base_path = {base_path}\n"
+        + f"(all other paths relative to base_path)\n"
+        + f"\ninput paths:\n"
+        + f" input_data_path = {input_data_path.relative_to(base_path)}\n"
+        + f" stack_data_path = {stack_data_path.relative_to(base_path)}\n"
+        + f" config_path = {config_path.relative_to(base_path)}\n"
+        + f"\ntemp paths:\n"
+        + f" temp_data_path = {temp_data_path.relative_to(base_path)}\n"
+        + f" temp_hdus_path = {temp_hdus_path.relative_to(base_path)}\n"
+        + f" temp_swarp_path = {temp_swarp_path.relative_to(base_path)}\n"
+        + f" temp_sextractor_path = {temp_sextractor_path.relative_to(base_path)}\n"
+        + f" temp_stilts_path = {temp_stilts_path.relative_to(base_path)}\n"
+        + f" temp_test_path = {temp_test_path.relative_to(base_path)}\n"
+        + f"\ndata paths:\n"
+        + f" data_path = {data_path.relative_to(base_path)}\n"
+        + f" catalogs_path = {catalogs_path.relative_to(base_path)}\n"
+        + f" mosaics_path = {mosaics_path.relative_to(base_path)}\n"
+        + f" masks_path = {masks_path.relative_to(base_path)}\n"
+    )
+
+    print(path_str)

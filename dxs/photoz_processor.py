@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import time
 import yaml
 from argparse import ArgumentParser
@@ -22,11 +23,13 @@ from eazy.photoz import PhotoZ
 from eazy.param import EazyParam
 from eazy.utils import path_to_eazy_data
 
+from dxs import Stilts
+
 from dxs.utils.phot import vega_to_ab, ab_to_flux, apply_extinction
 
 from dxs import paths
 
-logger = logging.getLogger("photoz_processor")
+logger = logging.getLogger("photoz")
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
@@ -99,6 +102,12 @@ class PhotozProcessor:
 
         if convert_from_vega is None:
             convert_from_vega = []
+        for data_col in convert_from_vega:
+            if data_col not in full_catalog.columns:
+                continue
+            band = data_col.split("_")[0]
+            logger.info(f"convert {data_col} from VEGA with band={band}")
+            full_catalog[data_col] = vega_to_ab(full_catalog[data_col], band=band)
         
         d = {"dxs": self.aperture, **self.external_catalog_apertures}
         translate_dict = {}
@@ -116,9 +125,9 @@ class PhotozProcessor:
                     logger.info(f"missing {data_col}")
                     continue
                 if magnitudes:
-                    if data_col in convert_from_vega:
-                        logger.info(f"convert {data_col} to AB")
-                        full_catalog[data_col] = vega_to_ab(full_catalog[data_col], band=band)
+                    #if data_col in convert_from_vega:
+                    #    logger.info(f"convert {data_col} to AB")
+                    #    full_catalog[data_col] = vega_to_ab(full_catalog[data_col], band=band)
                     if survey_config["reddening_coeffs"].get(band, None) is not None:
                         full_catalog[data_col] = apply_extinction(
                             full_catalog[data_col], ebv, band=band
@@ -162,39 +171,94 @@ class PhotozProcessor:
 
         if self.Nobj is not None:
             logger.info("selecting first {self.Nobj} objects, AFTER query...")        
-        catalog.write(self.photoz_input_path, overwrite=True)
+        catalog[:1000].write(self.photoz_input_path, overwrite=True)
         
 
-    def prepare_eazy_parameters(self, paths_to_modify=None, **kwargs):
+    def prepare_eazy_parameters(
+        self, paths_to_modify=None, modify_templates_file=True, **kwargs
+    ):
         param = modified_eazy_parameters(
-            paths_to_modify = paths_to_modify,
+            paths_to_modify=paths_to_modify,
             catalog_file=self.photoz_input_path, 
             main_output_file=self.output_dir / self.basename,
             **kwargs
         )
+        if modify_templates_file:
+            original_templates_file = Path(param["TEMPLATES_FILE"])
+            modified_templates_file = self.output_dir / original_templates_file.name
+
+            mod_templates_file = get_modified_templates_file(original_templates_file)
+            with open(modified_templates_file, "w+") as f:
+                
+                f.writelines(mod_templates_file)
+            param["TEMPLATES_FILE"] = str(modified_templates_file)
+
+            original_param_fits = original_templates_file.with_suffix(".param.fits")
+            new_param_fits = self.output_dir / original_param_fits.name                                    
+            if original_param_fits.exists():
+                print(f"copying {original_param_fits}")
+                shutil.copy2(original_param_fits, new_param_fits)
+            else:
+                logger.warn("no param.fits!!")
+
         param.write(self.eazy_parameters_path)
         
-    def initialize_eazy(self, ):
+    def initialize_eazy(self, param_path=None):
+        param_path = param_path or self.eazy_parameters_path
         self.phz = PhotoZ(
-            param_file=str(self.eazy_parameters_path), 
+            param_file=str(param_path), 
             translate_file=str(self.translate_file_path), 
             n_proc=self.n_cpus,
         )
+        print("END EAZY INIT")
+        time.sleep(5.0)
 
-    def run(self):
+    def run(self, auto_save_fits=False):
         t1 = time.time()
-        self.phz.fit_parallel()
+        self.phz.fit_catalog(n_proc=self.n_cpus)
         t2 = time.time()
+        print("FINISHED CATALOG FIT")
         dt = t2 - t1
         rate = self.phz.NOBJ / dt 
         print(f"fit {self.phz.NOBJ} parallel in {dt:.2f} s (={rate:.2e}  obj / s)")
         t1 = time.time()
         zout, hdu = self.phz.standard_output(
-            prior=True, beta_prior=True, save_fits=True, n_proc=self.n_cpus,
+            prior=True, beta_prior=True, save_fits=auto_save_fits, n_proc=self.n_cpus, par_skip=100
         )
+        print("done STDOUT")
+        if not auto_save_fits:
+            eazy_data_path = Path(path_to_eazy_data())
+            for key, value in zout.meta.items():
+                if isinstance(value, str) and len(value) > 50:
+                    print(f"change {value}")
+                    zout.meta[key] = value[-50:]
+                    print("NEW", zout.meta[key])
+            self.zout_path = Path(self.phz.param.params['MAIN_OUTPUT_FILE'] + ".zout.fits")
+            if self.zout_path.exists():
+                os.remove(self.zout_path)
+                
+            zout.write(self.zout_path, format='fits')
         t2 = time.time()
         dt = t2 - t1
         print(f"write stdout in {t2-t1}")
+
+    def match_result(self, output_path=None):
+        if output_path is None:
+            stem = self.input_catalog_path.name.split(".")[0]
+            output_path = (
+                self.input_catalog_path.parent / 
+                f"{stem}_photoz_{self.aperture}.cat.fits"
+            )
+        
+        tab = Table.read(self.zout_path)
+        tab.remove_columns(["ra", "dec"])
+        temp_path = paths.temp_stilts_path / output_path.name
+        shutil.copy2(self.zout_path, temp_path)
+
+        stilts = Stilts.tmatch2_exact_fits(
+            self.input_catalog_path, temp_path, output_path, "id"
+        )
+        stilts.run()
 
     def make_plots(self, N=None):
         plot_dir = self.output_dir / "SED_plots"
@@ -209,7 +273,7 @@ class PhotozProcessor:
             fig_name = plot_dir / f"{self.catalog_stem}_{ii:06d}.png"
             fig.savefig(fig_name)
             plt.close()
-                
+
 
 def modified_eazy_parameters(
     paths_to_modify=None, **kwargs
@@ -227,9 +291,23 @@ def modified_eazy_parameters(
         param[key.upper()] = value
     for path in paths_to_modify:
         print(path, param[path.upper()])
-        param[path.upper()] = eazy_data_path / param[path.upper()]
+        param[path.upper()] = eazy_data_path / param[path.upper()]  
 
     return param
+
+def get_modified_templates_file(templates_file):
+    modified_file = []
+    with open(templates_file) as f:
+        for ii, line in enumerate(f):
+            lspl = line.split()
+            old_path = lspl[1]
+            new_path = str(Path(path_to_eazy_data()) / lspl[1])
+            lspl[1] = new_path
+            if ii == 0:
+                print(f"modify file paths, eg. \n   {old_path} --> \n   {new_path}")
+            modified_file.append(' '.join(lspl) + "\n")
+    return modified_file
+   
 
 
 if __name__ == "__main__":

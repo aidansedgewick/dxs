@@ -10,7 +10,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from regions import SkyRegion, PixCoord, PolygonSkyRegion, CompoundSkyRegion, write_ds9, read_ds9
-from spherical_geometry.polygon import SphericalPolygon
+#from spherical_geometry.polygon import SphericalPolygon
 
 from dxs.utils.image import build_mosaic_wcs
 
@@ -108,12 +108,12 @@ def make_tile_region(
         write_ds9(regions, output_path)
     return region
 
-def spherical_poly_wrapper(polygons):
+"""def spherical_poly_wrapper(polygons):
     compound = SphericalPolygon.multi_intersection(polygons)
     compound_part_points = [points for points in compound.points]
     if len(compound_part_points) == 0:
         return None
-    return compound
+    return compound"""
                 
 
 if __name__ == "__main__":

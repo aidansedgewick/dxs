@@ -1,4 +1,7 @@
 from argparse import ArgumentParser
+from pathlib import Path
+
+from eazy.utils import path_to_eazy_data
 
 from dxs import PhotozProcessor
 
@@ -9,7 +12,8 @@ field_choices = ["SA", "EN", "LH", "XM"]
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("field", choices=field_choices)
+    parser.add_argument("--field", choices=field_choices)
+    parser.add_argument("--input-catalog", default=None)
     parser.add_argument("--aper", default="aper_30")
     parser.add_argument("--optical", default="panstarrs")
     parser.add_argument("--optical-aper", default="aper_30")
@@ -20,11 +24,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
-    suffix = f"_{args.optical}_{args.mir}"
-    input_catalog = paths.get_catalog_path(args.field, 00, "", suffix=suffix)
-
-    output_dir = paths.get_catalog_dir(args.field, 00, "") / f"photoz{suffix}_{args.aper}"
+    input_catalog = args.input_catalog
+    if input_catalog is None:
+        suffix = f"_{args.optical}_{args.mir}"
+        input_catalog = paths.get_catalog_path(args.field, 00, "", suffix=suffix)
+        output_dir = paths.get_catalog_dir(args.field, 00, "") / f"photoz{suffix}_{args.aper}"
+    else:
+        input_catalog = Path(input_catalog)
+        stem = input_catalog.name.split(".")[0]
+        output_dir = input_catalog.parent / f"{stem}_photoz_{args.aper}"
 
     pzp = PhotozProcessor(
         input_catalog,
@@ -32,17 +40,21 @@ if __name__ == "__main__":
         output_dir=output_dir,
         n_cpus=args.n_cpus,
     )
+    
+    bands_to_convert = [f"{b}_mag_aper_30" for b in "JHK"] + [f"{b}_mag_auto" for b in "JHK"]
+        
+    for b in "JHK":
+        col = f"{b}_mag_{args.aper}" 
+        if col not in bands_to_convert:
+            bands_to_convert.append(col)
 
-    bands_to_convert = [f"J_mag_{args.aper}", f"K_mag_{args.aper}"]
-    if args.aper != "aper_30":
-        assert "J_mag_aper_30" not in bands_to_convert
-        bands_to_convert.extend(["J_mag_aper_30", "K_mag_aper_30"])
-
+    galaxy_cut = 1.0 + 0.938 - 1.900
+    # J_vega-K_vega > 1.0 >>> (J_AB-0.938) - (K_AB-1.9) > 1.0 >>> J_AB - K_AB > 1.0 + 0.938 - 1.9
     pzp.prepare_input_catalog(
         convert_from_vega=bands_to_convert,
         query=(
-            f"(J_mag_aper_30 - 0.938) - (K_mag_aper_30 - 1.900) > 1.0", 
-            f"K_mag_auto + 1.900 < {args.K_cut}",
+            f"(J_mag_aper_30) - (K_mag_aper_30) > {galaxy_cut}", 
+            f"K_mag_auto < {args.K_cut}",
         )        
     )
     pzp.prepare_eazy_parameters(
@@ -53,8 +65,12 @@ if __name__ == "__main__":
         prior_filter="265",
         prior_abzp=23.9,
         prior_file="templates/prior_K_extend.dat",
+        templates_file = (
+            Path(path_to_eazy_data()) / "templates/fsps_full/tweak_fsps_QSF_12_v3.param"
+        ),
     )
     pzp.initialize_eazy()
     pzp.run()
+    pzp.match_result()
 
     pzp.make_plots(N=3000)
