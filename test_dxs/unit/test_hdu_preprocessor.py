@@ -177,7 +177,7 @@ def test__bgr_subtract():
     #rms_output = np.sqrt(np.mean(rdat * rdat))
     #assert np.isclose(rms_output, 0.1, rtol=0.1) # the rms should be like the input stdev.
     
-def test__mask_sources():
+#def test__mask_sources():
     
     
 
