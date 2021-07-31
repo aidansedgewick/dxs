@@ -1,0 +1,21 @@
+"w20090615_00203_sf_st": {"tile": "9"}
+"w20100201_02113_sf_st": {"tile": "9"}
+"w20100205_01983_sf_st": {"tile": "9"}
+"w20100411_00256_sf_st": {"tile": "9"}
+"w20100412_00699_sf_st": {"tile": "9"}
+"w20100412_01021_sf_st": {"tile": "9"}
+"w20100412_01279_sf_st": {"tile": "9"}
+"w20100414_00693_sf_st": {"tile": "9"}
+"w20100507_00147_sf_st": {"tile": "9"}
+"w20100507_00276_sf_st": {"tile": "9"}
+"w20120427_00658_sf_st": {"tile": "9"}
+
+"w20061114_00154_sf_st": {
+    "tile": "-1", "rejected": true, "rejection_reason": "not in field - ~3 deg from XM"
+}
+"w20061210_00704_sf_st": {
+    "tile": "-1", "rejected": true, "rejection_reason": "misaligned to SA04 1_1 (??)"
+}
+"w20100517_00229_sf_st": {
+    "tile": "-1", "rejected": true, "rejection_reason": "misaligned to LH11 0_0 (??)"
+}

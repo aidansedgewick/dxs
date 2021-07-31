@@ -15,7 +15,7 @@ def test__crosstalk_processor_init():
 
     test_stacks = []
     test_table = Table()
-    test_crosstalk_catalog_path = paths.temp_test_path / "crosstalk_init.cat.fits"
+    test_crosstalk_catalog_path = paths.scratch_test_path / "crosstalk_init.cat.fits"
     cp = CrosstalkProcessor(
         test_stacks, 
         test_table, 
@@ -28,7 +28,7 @@ def test__get_crosstalk_pixels():
 
     test_stacks = []
     test_table = Table()
-    test_crosstalk_catalog_path = paths.temp_test_path / "crosstalk_init.cat.fits"
+    test_crosstalk_catalog_path = paths.scratch_test_path / "crosstalk_init.cat.fits"
     cp = CrosstalkProcessor(
         test_stacks, 
         test_table, 
@@ -53,7 +53,7 @@ def test__get_stars_in_frame_from_wcs():
     star_table_path = paths.input_data_path / "external/tmass/tmass_SA22_stars.csv"
     star_table = Table.read(star_table_path, format="ascii")
 
-    test_crosstalk_catalog_path = paths.temp_test_path / "crosstalk_init.cat.fits"
+    test_crosstalk_catalog_path = paths.scratch_test_path / "crosstalk_init.cat.fits"
     test_stacks = []
     cp = CrosstalkProcessor(
         test_stacks, 
@@ -94,7 +94,7 @@ def test__get_stars_in_stack():
     img2 = fits.ImageHDU(data=np.zeros(size), header=test_header2)
     test_stack = fits.HDUList([primary_hdu, img1, img2])
 
-    test_stack_path = paths.temp_test_path / "test_stack.fits"
+    test_stack_path = paths.scratch_test_path / "test_stack.fits"
     test_stack.writeto(test_stack_path, overwrite=True)
 
     star_ra_vals = ([
@@ -112,7 +112,7 @@ def test__get_stars_in_stack():
     )
 
     test_stacks = []
-    test_crosstalk_catalog_path = paths.temp_test_path / "crosstalk_init.cat.fits"
+    test_crosstalk_catalog_path = paths.scratch_test_path / "crosstalk_init.cat.fits"
     cp = CrosstalkProcessor(
         test_stacks,
         star_table,
@@ -189,14 +189,14 @@ def test__collate_crosstalks():
 
         data = np.zeros(size)
         hdu = fits.PrimaryHDU(data=data, header=h0)
-        hdu_path = paths.temp_test_path / f"collate_test_stack_{ii}.fits"
+        hdu_path = paths.scratch_test_path / f"collate_test_stack_{ii}.fits"
         hdu.writeto(hdu_path, overwrite=True)
         stack_paths.append(hdu_path)
 
     star_table = Table(
         {"ra": [90. - dth, 270. - dth], "dec": [1. - dth, 1. - dth], "k_m": [10., 10.]}
     )
-    temp_collated_path = paths.temp_test_path / "xtalk_collate.cat.fits"
+    temp_collated_path = paths.scratch_test_path / "xtalk_collate.cat.fits"
     cp = CrosstalkProcessor(
         stack_paths, star_table, crosstalk_catalog_path=temp_collated_path
     )

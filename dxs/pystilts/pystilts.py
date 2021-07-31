@@ -101,10 +101,10 @@ class Stilts:
         if file1_path == file2_path:
             raise StiltsError(f"tskymatch2: file1 == file2!?! {file1_path} {file2_path}")
         if file1_path == output_path and file1_path.exists():
-            new_paths = create_file_backups(file1_path, paths.temp_data_path)
+            new_paths = create_file_backups(file1_path, paths.scratch_data_path)
             file1_path = new_paths[0] # filebackups returns list.
         elif file2_path == output_path and file2_path.exists():
-            new_paths = create_file_backups(file2_path, paths.temp_data_path)
+            new_paths = create_file_backups(file2_path, paths.scratch_data_path)
             file2_path = new_paths[0]
 
         flags = flags or {}
@@ -131,10 +131,10 @@ class Stilts:
         if file1 == file2:
             raise StiltsError(f"tskymatch2: file1 == file2!?! {file1} {file2}")
         if file1 == output and file1.exists():
-            new_paths = create_file_backups(file1, paths.temp_data_path)
+            new_paths = create_file_backups(file1, paths.scratch_data_path)
             file1 = new_paths[0] # filebackups returns list.
         elif file2 == output and file2.exists():
-            new_paths = create_file_backups(file2, paths.temp_data_path)
+            new_paths = create_file_backups(file2, paths.scratch_data_path)
             file2 = new_paths[0]
 
         flags = flags or {}
@@ -155,10 +155,10 @@ class Stilts:
         if file1 == file2:
             raise StiltsError("exact_match: file1 == file2!?! {file1} {file2}")
         if file1 == output_path and file1.exists():
-            new_paths = create_file_backups(file1, paths.temp_data_path)
+            new_paths = create_file_backups(file1, paths.scratch_data_path)
             file1 = new_paths[0] # filebackups returns list.
         elif file2 == output_path and file2.exists():
-            new_paths = create_file_backups(file2, paths.temp_data_path)
+            new_paths = create_file_backups(file2, paths.scratch_data_path)
             file2 = new_paths[0]
     
         flags = flags or {}
@@ -194,7 +194,7 @@ class Stilts:
         flags=None, stilts_exe="stilts", **kwargs
     ):
         if table_path == output_path:
-            new_paths = create_file_backups(table_path, paths.temp_data_path)
+            new_paths = create_file_backups(table_path, paths.scratch_data_path)
             table_path = new_paths[0]
 
         flags = flags or {}

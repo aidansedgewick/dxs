@@ -8,12 +8,12 @@ base_path = file_path.parent.parent
 input_data_path = file_path.parent.parent / "input_data"
 stack_data_path = input_data_path / "stacks"
 
-# TEMP PATHS
-temp_data_path = file_path.parent.parent / "temp_data"
-temp_hdus_path = temp_data_path / "hdus"
-temp_swarp_path = temp_data_path / "swarp"
-temp_sextractor_path = temp_data_path / "sextractor"
-temp_stilts_path = temp_data_path / "stilts"
+# SCRATCH PATHS
+scratch_data_path = file_path.parent.parent / "scratch_data"
+scratch_hdus_path = scratch_data_path / "hdus"
+scratch_swarp_path = scratch_data_path / "swarp"
+scratch_sextractor_path = scratch_data_path / "sextractor"
+scratch_stilts_path = scratch_data_path / "stilts"
 
 # CONFIGS
 config_path = file_path.parent.parent / "configuration"
@@ -21,7 +21,7 @@ header_data_path = config_path / "dxs_header_data.csv"
 
 # TESTS
 tests_path = file_path.parent.parent / "test_dxs"
-temp_test_path = tests_path / "temp"
+scratch_test_path = tests_path / "scratch_tests"
 
 # (OUTPUT) DATA
 data_path = file_path.parent.parent / "data"
@@ -41,13 +41,13 @@ def create_all_paths():
     input_data_path.mkdir(exist_ok=True, parents=True)
     stack_data_path.mkdir(exist_ok=True, parents=True)
 
-    temp_data_path.mkdir(exist_ok=True, parents=True) 
-    temp_hdus_path.mkdir(exist_ok=True, parents=True)   
-    temp_swarp_path.mkdir(exist_ok=True, parents=True)
-    temp_sextractor_path.mkdir(exist_ok=True, parents=True)
-    temp_stilts_path.mkdir(exist_ok=True, parents=True)
+    scratch_data_path.mkdir(exist_ok=True, parents=True) 
+    scratch_hdus_path.mkdir(exist_ok=True, parents=True)   
+    scratch_swarp_path.mkdir(exist_ok=True, parents=True)
+    scratch_sextractor_path.mkdir(exist_ok=True, parents=True)
+    scratch_stilts_path.mkdir(exist_ok=True, parents=True)
 
-    temp_test_path.mkdir(exist_ok=True, parents=True)
+    scratch_test_path.mkdir(exist_ok=True, parents=True)
 
     data_path.mkdir(exist_ok=True, parents=True)
     mosaics_path.mkdir(exist_ok=True, parents=True)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
     
     parser = ArgumentParser()
-    parser.add_argument("-m", "--make-paths", default=False)    
+    parser.add_argument("-m", "--make-paths", default=False, action="store_true")    
     args = parser.parse_args()
     
     if args.make_paths:
@@ -106,19 +106,19 @@ if __name__ == "__main__":
 
     path_str = (
         f"PATHS\n==========================\n"
-        + f"base_path = {base_path}\n"
-        + f"(all other paths relative to base_path)\n"
+        + f"base_path = {base_path} (all other paths relative to here)\n"
+        #+ f"(all other paths relative to base_path)\n"
         + f"\ninput paths:\n"
         + f" input_data_path = {input_data_path.relative_to(base_path)}\n"
         + f" stack_data_path = {stack_data_path.relative_to(base_path)}\n"
         + f" config_path = {config_path.relative_to(base_path)}\n"
-        + f"\ntemp paths:\n"
-        + f" temp_data_path = {temp_data_path.relative_to(base_path)}\n"
-        + f" temp_hdus_path = {temp_hdus_path.relative_to(base_path)}\n"
-        + f" temp_swarp_path = {temp_swarp_path.relative_to(base_path)}\n"
-        + f" temp_sextractor_path = {temp_sextractor_path.relative_to(base_path)}\n"
-        + f" temp_stilts_path = {temp_stilts_path.relative_to(base_path)}\n"
-        + f" temp_test_path = {temp_test_path.relative_to(base_path)}\n"
+        + f"\nscratch paths:\n"
+        + f" scratch_data_path = {scratch_data_path.relative_to(base_path)}\n"
+        + f" scratch_hdus_path = {scratch_hdus_path.relative_to(base_path)}\n"
+        + f" scratch_swarp_path = {scratch_swarp_path.relative_to(base_path)}\n"
+        + f" scratch_sextractor_path = {scratch_sextractor_path.relative_to(base_path)}\n"
+        + f" scratch_stilts_path = {scratch_stilts_path.relative_to(base_path)}\n"
+        + f" scratch_test_path = {scratch_test_path.relative_to(base_path)}\n"
         + f"\ndata paths:\n"
         + f" data_path = {data_path.relative_to(base_path)}\n"
         + f" catalogs_path = {catalogs_path.relative_to(base_path)}\n"

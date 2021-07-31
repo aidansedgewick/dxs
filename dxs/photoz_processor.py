@@ -171,7 +171,7 @@ class PhotozProcessor:
 
         if self.Nobj is not None:
             logger.info("selecting first {self.Nobj} objects, AFTER query...")        
-        catalog[:1000].write(self.photoz_input_path, overwrite=True)
+        catalog.write(self.photoz_input_path, overwrite=True)
         
 
     def prepare_eazy_parameters(
@@ -213,19 +213,28 @@ class PhotozProcessor:
         print("END EAZY INIT")
         time.sleep(5.0)
 
-    def run(self, auto_save_fits=False):
+    def fit_catalog(self, **kwargs):
         t1 = time.time()
-        self.phz.fit_catalog(n_proc=self.n_cpus)
+        self.phz.fit_catalog(n_proc=self.n_cpus, timeout=7200, **kwargs)
         t2 = time.time()
-        print("FINISHED CATALOG FIT")
         dt = t2 - t1
-        rate = self.phz.NOBJ / dt 
-        print(f"fit {self.phz.NOBJ} parallel in {dt:.2f} s (={rate:.2e}  obj / s)")
+        rate = self.phz.NOBJ / dt
+        logger.info(f"finish catalog fit")
+        logger.info(f"fit {self.phz.NOBJ} obj in {dt:.2f} s  (={rate:.2e}  obj / s)")
+        print()
+
+    def standard_output(self, auto_save_fits=False, **kwargs):
+
         t1 = time.time()
         zout, hdu = self.phz.standard_output(
-            prior=True, beta_prior=True, save_fits=auto_save_fits, n_proc=self.n_cpus, par_skip=100
+            prior=True, 
+            beta_prior=True, 
+            save_fits=auto_save_fits, 
+            n_proc=self.n_cpus, #par_skip=100
+            par_timeout=14400,
+            **kwargs
         )
-        print("done STDOUT")
+        logger.info("done STDOUT")
         if not auto_save_fits:
             eazy_data_path = Path(path_to_eazy_data())
             for key, value in zout.meta.items():
@@ -240,7 +249,7 @@ class PhotozProcessor:
             zout.write(self.zout_path, format='fits')
         t2 = time.time()
         dt = t2 - t1
-        print(f"write stdout in {t2-t1}")
+        logger.info(f"write stdout in {t2-t1}")
 
     def match_result(self, output_path=None):
         if output_path is None:
@@ -253,7 +262,8 @@ class PhotozProcessor:
         tab = Table.read(self.zout_path)
         tab.remove_columns(["ra", "dec"])
         temp_path = paths.temp_stilts_path / output_path.name
-        shutil.copy2(self.zout_path, temp_path)
+        tab.write(temp_path, overwrite=True)
+        #shutil.copy2(self.zout_path, temp_path)
 
         stilts = Stilts.tmatch2_exact_fits(
             self.input_catalog_path, temp_path, output_path, "id"
@@ -299,6 +309,9 @@ def get_modified_templates_file(templates_file):
     modified_file = []
     with open(templates_file) as f:
         for ii, line in enumerate(f):
+            if line.startswith("#"):
+                modified_file.append(line)
+                continue
             lspl = line.split()
             old_path = lspl[1]
             new_path = str(Path(path_to_eazy_data()) / lspl[1])

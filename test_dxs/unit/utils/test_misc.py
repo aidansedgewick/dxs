@@ -6,6 +6,8 @@ import pytest
 
 import numpy as np
 
+from astropy.coordinates import SkyCoord
+
 from dxs.utils import misc
 from dxs import paths
 
@@ -14,6 +16,18 @@ def test__check_modules():
         misc.check_modules("non_existant_module")
     # check for modules we absolutely know are here.
     misc.check_modules("python3", "git")
+
+def test__haversine():
+    c1 = SkyCoord(ra=180., dec=0.0, unit="deg")
+    c2 = SkyCoord(ra=210., dec=0.0, unit="deg")
+    assert np.isclose(misc.haversine(c1, c2).value, 30. * np.pi / 180)
+
+def test__great_circle_arc():
+    gc1 = misc.GreatCircleArc(SkyCoord(ra=180.0, dec=0., unit="deg"), SkyCoord(ra=270., dec=45., unit="deg"))
+
+    wp1 = gc1.get_waypoints(np.linspace(0, 1, 10))
+    d = [misc.haversine(wp1[ii], wp1[ii+1]).value for ii in range(len(wp1)-1)]
+    assert np.allclose(d, gc1.d.value / 9.)
 
 def test__format_flags():
     test_config = {

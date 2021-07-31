@@ -33,12 +33,12 @@ def merge_catalogs(
 ):   
     output_path = Path(output_path)
     stem = output_path.stem
-    temp_concat_path = paths.temp_stilts_path / f"{stem}_concat.fits"
-    temp_overlap_path = paths.temp_stilts_path / f"{stem}_overlap.fits"
-    temp_single_path = paths.temp_stilts_path / f"{stem}_single.fits"
-    temp_output_path = paths.temp_stilts_path / f"{output_path.name}"
+    temp_concat_path = paths.scratch_stilts_path / f"{stem}_concat.fits"
+    temp_overlap_path = paths.scratch_stilts_path / f"{stem}_overlap.fits"
+    temp_single_path = paths.scratch_stilts_path / f"{stem}_single.fits"
+    temp_output_path = paths.scratch_stilts_path / f"{output_path.name}"
     # Backup all files
-    catalog_list = create_file_backups(catalog_list, paths.temp_stilts_path)
+    catalog_list = create_file_backups(catalog_list, paths.scratch_stilts_path)
     output_path = Path(output_path)
     for ii, catalog_path in enumerate(catalog_list):
         id_modifier = int(f"1{ii+1:02d}")*1_000_000

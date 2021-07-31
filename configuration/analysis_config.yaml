@@ -1,0 +1,66 @@
+counts:
+  K_bright: 16.0
+  K_faint: 23.0
+  Kbin_width: 0.5
+  area_density: 36000 # number of randoms per sq. deg. to estimate area.
+
+correlation_function:
+  # galaxies:
+  eros_245:
+    K_limits: [20.7, 21.2, 21.7, 22.2, 22.7]
+  eros_295:
+    K_limits: [20.7]
+  drgs:
+    K_limits: [19.7, 20.2, 20.7, 21.2, 21.7, 22.2, 22.7]
+  sf_gzKs:
+    K_limits: [21.5]
+
+luminosity_function:
+  M_bright: -26.0
+  M_faint: -19.0
+  absM_bin_width: 0.5
+
+  K_bright: 16.0
+  K_faint: 22.7 #2.7
+
+  galaxies:
+    z_bins_low:  [  0.20,   0.50,   0.60,   0.80,   1.00,   1.25,   1.50,   1.75]
+    z_bins_high: [  0.35,   0.60,   0.80,   1.00,   1.25,   1.50,   1.75,   2.00]
+    absM_bright: [-19.00, -18.75, -19.50, -20.00, -20.50, -21.00, -21.50, -21.75]
+    absM_faint:  [-30.00, -30.00, -30.00, -30.00, -30.00, -30.00, -30.00, -30.00]
+
+  eros_245:
+    z_bins_low:  [  0.50,   0.90,   1.30]
+    z_bins_high: [  0.90,   1.30,   1.70]
+    absM_bright: [-20.00, -21.00, -21.50]
+    absM_faint:  [-30.00, -30.00, -30.00]
+
+  eros_295:
+    z_bins_low:  [  0.50,   0.90,   1.30]
+    z_bins_high: [  0.90,   1.30,   1.70]
+    absM_bright: [-19.00, -20.25, -21.00]
+    absM_faint:  [-30.00, -30.00, -30.00]
+
+  sf_gzKs:
+    z_bins_low:  [  1.40]
+    z_bins_high: [  2.50]
+    absM_bright: [-22.00]
+    absM_faint:  [-30.00]
+
+  pe_gzKs:
+    z_bins_low:  [  1.40]
+    z_bins_high: [  2.50]
+    absM_bright: [-22.00]
+    absM_faint:  [-30.00]
+
+  drgs:
+    z_bins_low:  [  0.50,   0.90,   1.30]
+    z_bins_high: [  0.90,   1.30,   1.70]
+    absM_bright: [-19.00, -20.25, -21.00]
+    absM_faint:  [-30.00, -30.00, -30.00]
+
+uvj:
+  z_bins_low:  [  0.30,  0.70,   1.10,   1.50,   2.00]
+  z_bins_high: [  0.70,  1.10,   1.50,   2.00,   2.50]
+  #absM_bright: [-19.00, -18.75, -19.00, -19.50, -20.00, -20.50, -21.25, -21.75]
+  #absM_faint:  [-30.00, -30.00, -30.00, -30.00, -30.00, -30.00, -30.00, -30.00]

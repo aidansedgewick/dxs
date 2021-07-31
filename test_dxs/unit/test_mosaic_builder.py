@@ -24,14 +24,32 @@ def test_get_stack_data():
     assert len(stack_bad_tile) == 0
     stack_bad_filter = mosaic_builder.get_stack_data("EN", 4, "H")
     assert len(stack_bad_tile) == 0
-    SA04K_stack_data = mosaic_builder.get_stack_data("SA", 4, "K")
+    SA04K_stack_data = mosaic_builder.get_stack_data(
+        "SA", 4, "K", include_deprecated_stacks=True
+    )
     assert len(SA04K_stack_data) == 122
     assert set(SA04K_stack_data["pointing"]) == set(["0_0", "0_1", "1_0", "1_1"])
 
-def test_get_neighbor_stacks():
+def test__get_neighbor_tiles():
+    assert set(mosaic_builder.get_neighbor_tiles("SA", 1)) == set([2,3,4,5,6,7,8,9])
+    assert set(mosaic_builder.get_neighbor_tiles("SA", 3)) == set([1,2,4])
+    assert set(mosaic_builder.get_neighbor_tiles("SA", 11)) == set([5,6,7,10,12])
+  
+    assert set(mosaic_builder.get_neighbor_tiles("LH", 3)) == set([1,2,4,5,6,7,8,9])
+    assert set(mosaic_builder.get_neighbor_tiles("LH", 1)) == set([2,3,4,11])
+    assert set(mosaic_builder.get_neighbor_tiles("LH", 7)) == set([3,6,8])
+
+    assert set(mosaic_builder.get_neighbor_tiles("EN", 1)) == set([2,3,4,5,6,7,8])
+    assert set(mosaic_builder.get_neighbor_tiles("EN", 3)) == set([1,2,4,10,12])
+    assert set(mosaic_builder.get_neighbor_tiles("EN", 11)) == set([5,6])
+    
+    assert set(mosaic_builder.get_neighbor_tiles("XM", 3)) == set([1,2,4,5,6,7,8])
+    assert set(mosaic_builder.get_neighbor_tiles("XM", 1)) == set([2,3,4])
+
+def test__get_neighbor_stacks():
     pass
 
-def test_calc_mosaic_geometry():
+def test__calc_mosaic_geometry():
     size = (360, 360)
     pix_scale = 1. #arcsec
     centers = [
@@ -42,7 +60,7 @@ def test_calc_mosaic_geometry():
     for ii, center in enumerate(centers):
         data = np.random.uniform(0, 1, size)
         header = build_mosaic_header(center, size, pix_scale)
-        hdu_path = paths.temp_test_path / f"calc_geom_test_hdu_{ii}.fits"
+        hdu_path = paths.scratch_test_path / f"calc_geom_test_hdu_{ii}.fits"
         hdu = fits.PrimaryHDU(data=data, header=header)
         hdu.writeto(hdu_path, overwrite=True)
         hdu_list.append(hdu_path)        
@@ -59,14 +77,14 @@ def test_calc_mosaic_geometry():
     assert np.allclose(np.array(mosaic_size2), np.array(mosaic_size)*2 + 57, atol=1)
     assert np.allclose(mosaic_size2, np.array([1257., 1257.]), rtol=0.02)
 
-def test_add_keys():
+def test__add_keys():
     empty_header = build_mosaic_header(
         (330., 0.), (1000, 1000), pixel_scale=1. / 3600.
     )
     data = np.random.uniform(0, 1, (1000, 1000))
     print(empty_header)
     empty_fits = fits.PrimaryHDU(data=data, header=empty_header)
-    fits_path = paths.temp_test_path / "add_keys_test.fits"
+    fits_path = paths.scratch_test_path / "add_keys_test.fits"
     empty_fits.writeto(fits_path, overwrite=True)
     
     keys_to_add = {"test1": 100, "test2": ("some_data", "this is a comment")}    
@@ -77,13 +95,16 @@ def test_add_keys():
         assert f[0].header["TEST2"] == "some_data"
         assert f[0].header.comments["TEST2"] == "this is a comment"
 
-def test_mosaic_builder():
+def test__mosaic_builder():
     builder_for_bad_spec = mosaic_builder.MosaicBuilder.from_dxs_spec("SA", 13, "K")
     assert builder_for_bad_spec is None
 
     swarp_config = {"center": (180., 1.234), "image_size": (12345, 21000)}
     SA04K_builder = mosaic_builder.MosaicBuilder.from_dxs_spec(
-        "SA", 4, "K", swarp_config=swarp_config, include_neighbors=False
+        "SA", 4, "K", 
+        swarp_config=swarp_config, 
+        include_neighbors=False, 
+        include_deprecated_stacks=True
     )
     assert len(SA04K_builder.stack_list) == 122
     SA04K_builder.initialise_astromatic()
@@ -94,7 +115,7 @@ def test_mosaic_builder():
     assert SA04K_builder.cmd_kwargs["code"] == "SWarp"
 
     
-def test_magzpt():
+def test__magzpt():
     magzpt = mosaic_builder.MosaicBuilder.calc_magzpt(example_stack_data)
     assert np.isclose(magzpt, 22.5, atol=0.01)
     magzpt_no_exptime = mosaic_builder.MosaicBuilder.calc_magzpt(
@@ -107,9 +128,4 @@ def test_seeing():
     seeing = mosaic_builder.MosaicBuilder.calc_seeing(example_stack_data)
     assert np.isclose(seeing, 0.8, atol=0.01)
 
-def test_hdu_preparer():
-    pass
-
-def test_prepare_stack():
-    pass
 

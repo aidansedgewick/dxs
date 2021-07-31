@@ -48,7 +48,6 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         extreme_star_processor = BrightStarProcessor.from_file(
             paths.config_path / "very_bright_stars.csv", format="ascii"
         ) # A hand-written file to deal with MIRA in XM06.
-            
 
     tmass_mag = f"{band.lower()}_m"
 

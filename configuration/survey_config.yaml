@@ -2,6 +2,7 @@
 
 ccds: [1, 2, 3, 4] # which ccds in stacks contain the data.
 
+fields: [SA, LH, EN, XM]
 field_names: [SA22, Lockman, ElaisN1, XMM-LSS]
 field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
 code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
@@ -42,8 +43,9 @@ bright_stars:
   diffraction_spike_angles: [45., 87.5, 135., 177.5] # boxes at each of these angles in degrees.
   region_coefficients:
     # how big should the regions be given the brightness of each star?
-    # assume the all start at -BIG or the previous mag? -BIG = -20.
-    mag_ranges: [2., 5., 11., 13., 15.] # so this is -BIG, 2, 5, 11, 13, 15
+    # sizes in PIXELS. mag ranges as upper_bounds.
+    # (ie, provide [2, 5,...] for [-inf, 2, 5,...])
+    mag_ranges: [2., 5., 11., 13., 15.] # so this is -inf, 2, 5, 11, 13, 15
     box_widths: [40000., 1000., 600., 300., 100.] # in pix.
     box_heights: [500., 20., 20., 10., 10.] # in pix.
     circle_radii: [4000., 200., 100., 60., 30.] # in pix.
@@ -53,7 +55,8 @@ bright_stars:
   stacks:
     # stack stars in these ranges to look at how big 
     # the diffraction spike mask should be.
-    mag_ranges: [0., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.]
+    mag_ranges:   [5.,  7.,  9.,  11., 13., 15., 17.,]
+    cutout_sizes: [600, 600, 200, 200, 100, 100]
 
 merge:
   tile_merge_error: 0.5 # ie, finding repeated objects at the edge of images.

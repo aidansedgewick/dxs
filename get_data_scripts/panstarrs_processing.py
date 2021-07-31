@@ -1,4 +1,5 @@
 import logging
+import tqdm
 import yaml
 from argparse import ArgumentParser
 from collections import namedtuple
@@ -15,12 +16,14 @@ from astropy.io import fits
 from astropy.table import Table, join, Column, MaskedColumn
 from astropy.wcs import WCS
 
+from regions import read_ds9, DS9Parser, DS9RegionParser
 
 from easyquery import Query
 from reproject import reproject_interp
 from reproject import mosaicking
 
 from dxs import MosaicBuilder, calculate_mosaic_geometry
+from dxs.utils.image import mask_regions_in_mosaic
 from dxs.utils.phot import ab_to_vega
 
 from dxs import paths
@@ -217,9 +220,17 @@ def process_panstarrs_catalog(
     logger.info(f"catalog written to {print_path} in {(time()-t1)/60.:.2f} min")
 
 def process_panstarrs_mosaic_mask(
-    ps_field, output_path, band="i", extension=None, base_dir=None, pixel_scale=1.0, hdu=0
+    field, 
+    output_path, 
+    band="i", 
+    extension=None, 
+    base_dir=None, 
+    skip_regions=False, 
+    resolution=2.0, 
+    hdu=0,
 ):
-
+    ps_field = ps_config["from_dxs_field"][field]
+    """
     print(f"process {ps_field} {output_path}")
     if base_dir is None:
         base_dir = paths.input_data_path / f"external/panstarrs/images"
@@ -231,9 +242,11 @@ def process_panstarrs_mosaic_mask(
     for directory in dir_list:
         directory = Path(directory)
         mosaic_list.append( glob(str(directory / f"*{extension}"))[0] )
+    logger.info(f"mosaic from {len(mosaic_list)} images.")
+    logger.info(f"first read images")
 
     input_list = []
-    for mosaic_path in mosaic_list:
+    for mosaic_path in tqdm.tqdm(mosaic_list):
         with fits.open(mosaic_path) as mos:
             data_array = mos[hdu].data.copy()
             img_wcs = WCS(mos[hdu].header)
@@ -241,19 +254,36 @@ def process_panstarrs_mosaic_mask(
         t = (data_array, img_wcs)
         input_list.append(t)
         
+    logger.info("find output wcs")
     wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
-        input_list, resolution = args.resolution * u.arcsec
+        input_list, resolution = resolution * u.arcsec
     )
     logger.info("starting reprojection")
-    array_out, footprint = mosaicking.reproject_and_coadd(
+    mask_array, footprint = mosaicking.reproject_and_coadd(
         input_list, wcs_out, shape_out=shape_out,
         reproject_function=reproject_interp,
         combine_function="mean"
     )
     logger.info("finished reprojection")
     header = wcs_out.to_header()
-    output_hdu = fits.PrimaryHDU(data=array_out, header=header)
+
+    output_hdu = fits.PrimaryHDU(data=mask_array, header=header)
     output_hdu.writeto(output_path, overwrite=True)
+    """
+    
+
+    if not skip_regions:
+        region_path = paths.input_data_path / f"external/panstarrs/regions/{field}_{band}.reg"
+        
+        if region_path.exists():
+            logger.info(f"read region file {region_path}")
+            region_list = read_ds9(region_path)
+            mask_regions_in_mosaic(output_path, region_list) 
+                
+        else:
+            logger.info(f"no region file in {region_path} - skip region masking.")
+
+
 
     """with fits.open(output_path) as f:
         new_data = (f[0].data == 0)
@@ -302,6 +332,7 @@ if __name__ == "__main__":
     parser.add_argument("--mask-extension", default=".unconv.fits")
     parser.add_argument("--resolution", default=2.0, type=float)
     parser.add_argument("--mask-bands", default=["i"], choices=["g", "r", "i", "z", "y"], nargs="+")
+    parser.add_argument("--skip-regions", default=False, action="store_true")
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
 
@@ -327,7 +358,12 @@ if __name__ == "__main__":
                 mask_dir.mkdir(exist_ok=True, parents=True)
                 output_path = mask_dir / f"{field}_{band}{extension}.fits"
                 process_panstarrs_mosaic_mask(
-                    ps_field, output_path=output_path, band=band, extension=args.mask_extension
+                    field, 
+                    output_path=output_path, 
+                    band=band, 
+                    extension=args.mask_extension,
+                    resolution=args.resolution,
+                    skip_regions=args.skip_regions
                 )
 
 

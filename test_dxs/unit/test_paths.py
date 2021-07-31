@@ -4,13 +4,13 @@ def test__paths_are_generated():
     assert paths.input_data_path.is_dir()
     assert paths.stack_data_path.is_dir()
 
-    assert paths.temp_data_path.is_dir()
-    assert paths.temp_hdus_path.is_dir()
-    assert paths.temp_swarp_path.is_dir()
-    assert paths.temp_sextractor_path.is_dir()
-    assert paths.temp_stilts_path.is_dir()
+    assert paths.scratch_data_path.is_dir()
+    assert paths.scratch_hdus_path.is_dir()
+    assert paths.scratch_swarp_path.is_dir()
+    assert paths.scratch_sextractor_path.is_dir()
+    assert paths.scratch_stilts_path.is_dir()
 
-    assert paths.temp_test_path.is_dir()
+    assert paths.scratch_test_path.is_dir()
 
     assert paths.data_path.is_dir()
     assert paths.mosaics_path.is_dir()

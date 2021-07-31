@@ -10,6 +10,8 @@ from dxs import paths
 
 field_choices = ["SA", "EN", "LH", "XM"]
 
+eazy_data_path = Path(path_to_eazy_data())
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--field", choices=field_choices)
@@ -21,6 +23,7 @@ if __name__ == "__main__":
     parser.add_argument("--mir-aper", default="aper_30")
     parser.add_argument("--n-cpus", default=3, type=int)
     parser.add_argument("--K-cut", default=30.0, type=float)
+    parser.add_argument("--N-plots", default=3000, type=int)
 
     args = parser.parse_args()
 
@@ -53,24 +56,31 @@ if __name__ == "__main__":
     pzp.prepare_input_catalog(
         convert_from_vega=bands_to_convert,
         query=(
-            f"(J_mag_aper_30) - (K_mag_aper_30) > {galaxy_cut}", 
+            #f"(J_mag_aper_30) - (K_mag_aper_30) > {galaxy_cut}", 
             f"K_mag_auto < {args.K_cut}",
         )        
     )
+
+
+    #template_file = 
     pzp.prepare_eazy_parameters(
         paths_to_modify=[
             "prior_file", "templates_file", "wavelength_file", "temp_err_file",
         ],
+        
         z_max=6.0, 
+        z_step=0.005,
         prior_filter="265",
         prior_abzp=23.9,
         prior_file="templates/prior_K_extend.dat",
-        templates_file = (
-            Path(path_to_eazy_data()) / "templates/fsps_full/tweak_fsps_QSF_12_v3.param"
-        ),
+        apply_prior="y",
+        #templates_file=eazy_data_path / "templates/fsps_full/tweak_fsps_QSF_12_v3.param",
+        templates_file=eazy_data_path / "templates/eazy_v1.0.spectra.param",
     )
     pzp.initialize_eazy()
-    pzp.run()
+    pzp.fit_catalog()
+    pzp.standard_output(extra_rf_filters=[], absmag_filters=[])
     pzp.match_result()
 
-    pzp.make_plots(N=3000)
+    pzp.make_plots(N=args.N_plots)
+

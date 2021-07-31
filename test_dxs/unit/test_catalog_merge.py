@@ -12,7 +12,7 @@ def test__modify_id_value():
     id_vals = np.array([0,1,2,3,4,5,6,7])
     other_data = np.array([1.0, 2.1, 33.2, 1e5, -10.0, 77.7, 0.0, 4.])
     t = Table({"id": id_vals, "other_data": other_data})
-    table_path = paths.temp_test_path / "test_modify_id.cat.fits"
+    table_path = paths.scratch_test_path / "test_modify_id.cat.fits"
     t.write(table_path, overwrite=True)
 
     catalog_merge._modify_id_value(table_path, id_modifier=1000000)
@@ -45,13 +45,13 @@ def test__merge_catalogs():
     for cat, tile in zip([catalog1, catalog2, catalog3, catalog4], [1, 2, 3, 4]):
         cat["tile"] = np.full(len(cat), tile)
         cat[ cat["id"] % 4 == tile-1 ]["snr"] = 10.
-        catalog_path = paths.temp_test_path / f"catalog_{tile}.cat.fits"
+        catalog_path = paths.scratch_test_path / f"catalog_{tile}.cat.fits"
         cat.write(catalog_path, overwrite=True)
 
     assert all(catalog3["tile"] == 3)
-    catalog_list = [paths.temp_test_path / f"catalog_{tile}_merge.cat.fits" for tile in [1, 2, 3, 4]]
+    catalog_list = [paths.scratch_test_path / f"catalog_{tile}_merge.cat.fits" for tile in [1, 2, 3, 4]]
 
-    output_path = paths.temp_test_path / "merged_catalog.cat.fits"
+    output_path = paths.scratch_test_path / "merged_catalog.cat.fits"
     #catalog_merge.merge_catalogs(catalog_list, output_path, "id", "ra", "dec", "snr")
 
     # TODO URGENT FIX

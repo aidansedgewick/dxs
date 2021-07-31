@@ -1,0 +1,16 @@
+treecorr:
+    bin_type: "Log"
+    nbins: 36
+    # Nbins endpoint inclusive? ie, (0.3--3.3)/0.2 = 18, (0.3--3.3)/0.1 = 36
+    min_sep: 1.80427404 # 10**-3.3 deg 
+    max_sep: 7182.94433 # 10**0.3 =~1.99 deg
+    sep_units: "arcsec"
+    brute: True
+    verbose: 2
+    metric: "Arc" # ie, great circle distance.
+    var_method: "shot" #"jackknife"
+
+# not used by treecorr expicitly, but kept here for convenience
+# ie, script "pops" from dict.
+randoms_density: 36000
+patch_size: null

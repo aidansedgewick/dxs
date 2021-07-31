@@ -39,9 +39,9 @@ class CrosstalkProcessor:
         self.star_catalog = star_catalog
         self.star_catalog.add_column(np.arange(len(star_catalog)), name="parent_id")
         if crosstalk_catalog_path is None:
-            temp_crosstalk_dir = paths.temp_data_path / "crosstalks"
-            temp_crosstalk_dir.mkdir(exist_ok=True, parents=True)
-            crosstalk_catalog_path = temp_crosstalk_dir / f"crosstalks_{int(time.time())}.cat"
+            scratch_crosstalk_dir = paths.scratch_data_path / "crosstalks"
+            scratch_crosstalk_dir.mkdir(exist_ok=True, parents=True)
+            crosstalk_catalog_path = scratch_crosstalk_dir / f"crosstalks_{int(time.time())}.cat"
         self.crosstalk_catalog_path = Path(crosstalk_catalog_path)
         self.crosstalk_orders = np.concatenate( 
             [np.arange(-max_order, 0), np.arange(1, max_order+1)] # remember arange endpoints...
@@ -235,10 +235,10 @@ class CrosstalkProcessor:
 
     def extract_from_inverse_mosaic(self, mosaic_path, weight_path=None):
         mosaic_path = Path(mosaic_path)
-        temp_crosstalks_dir = paths.temp_data_path / "crosstalks"
-        temp_crosstalks_dir.mkdir(exist_ok=True, parents=True)
-        inv_mosaic_path = temp_crosstalks_dir / f"inverse_{mosaic_path.stem}.fits"
-        xtalk_catalog_path = temp_crosstalks_dir / f"{mosaic_path.stem}_detections.fits"
+        scratch_crosstalks_dir = paths.scratch_data_path / "crosstalks"
+        scratch_crosstalks_dir.mkdir(exist_ok=True, parents=True)
+        inv_mosaic_path = scratch_crosstalks_dir / f"inverse_{mosaic_path.stem}.fits"
+        xtalk_catalog_path = scratch_crosstalks_dir / f"{mosaic_path.stem}_detections.fits"
         scale_mosaic(mosaic_path, value=-1.0, save_path=inv_mosaic_path)
         if weight_path is None:
             weight_path = mosaic_path.with_suffix(".weight.fits")

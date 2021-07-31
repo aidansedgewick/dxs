@@ -223,7 +223,8 @@ if __name__ == "__main__":
     parser.add_argument("--skip-merge", action="store_true", default=False, required=False)
     parser.add_argument("--include-fp", action="store_true", default=False, required=False)
     parser.add_argument(
-        "--external", action="store", nargs="+", default=["panstarrs"], required=False
+        "--external", action="store", nargs="+", 
+        default=["panstarrs"], options=external_data, required=False
     )
     parser.add_argument("--require-all", action="store_true", default=False, required=False)
     parser.add_argument("--prefix", action="store", default=None, required=False)
