@@ -15,6 +15,7 @@ class ScriptMaker:
         self, python_script_path, base_dir,
         config=None,
         system_config_path=default_system_config_path,
+        job_name=None
     ):
         self.config = config or {}
         self.system_config = self._load_configuration(system_config_path)
@@ -23,6 +24,7 @@ class ScriptMaker:
         self.base_dir.mkdir(exist_ok=True, parents=True)
         self.stdout_dir = self.base_dir / "stdout"
         self.stdout_dir.mkdir(exist_ok=True, parents=True)
+        self.job_name = job_name or "mosaic"
         self.cpus_per_job = min(
             self.system_config.get("cpus_per_node", 999),
             self.config.get("cpus_per_job", 999)
@@ -38,7 +40,7 @@ class ScriptMaker:
             system_config = yaml.load(f, Loader=yaml.FullLoader)
         return system_config
 
-    def write_all_scripts(self, args_iterable, kwargs_iterable, job_name=None):
+    def write_all_scripts(self, args_iterable, kwargs_iterable):
         script_paths = []
         for ii, (args, pykwargs) in enumerate(zip(args_iterable, kwargs_iterable)):
             script_path = self.write_script(python_args=args, python_kwargs=pykwargs)
@@ -73,7 +75,7 @@ class ScriptMaker:
         print(f"submit all scripts with:\n    \033[035mbash {print_path}\033[0m")
 
     def write_script(
-        self, python_args=None, python_kwargs=None, script_number=None, job_name=None
+        self, python_args=None, python_kwargs=None, script_number=None,
     ):
         if script_number is None:
             script_number = next(ScriptMaker._script_number)
@@ -87,7 +89,7 @@ class ScriptMaker:
                 python_kwargs[k] = ""
         header = self.make_header(
             stdout_name=script_path.stem, 
-            job_name=job_name, 
+            job_name=self.job_name, 
             script_number=script_number
         )
         modules = self.make_script_modules()
@@ -205,5 +207,7 @@ class ScriptMaker:
         for path in script_paths:
             script += [f"{submission_command} {path}"]
         return script
+
+
 
     

@@ -1,4 +1,5 @@
 import logging
+import tqdm
 import yaml
 from argparse import ArgumentParser
 from collections import namedtuple
@@ -15,12 +16,14 @@ from astropy.io import fits
 from astropy.table import Table, join, Column, MaskedColumn
 from astropy.wcs import WCS
 
+from regions import read_ds9, DS9Parser, DS9RegionParser
 
 from easyquery import Query
 from reproject import reproject_interp
 from reproject import mosaicking
 
 from dxs import MosaicBuilder, calculate_mosaic_geometry
+from dxs.utils.image import mask_regions_in_mosaic
 from dxs.utils.phot import ab_to_vega
 
 from dxs import paths
@@ -94,7 +97,7 @@ def process_panstarrs_catalog(
     jcat = join(
         primary_catalog, aperture_catalog, keys="stackDetectID", join_type="left"
     )
-    logger.info(f"joined in {t1-time():.2f} sec")
+    logger.info(f"joined in {time()-t1:.2f} sec")
     drop_cols = ["primaryF_1", "primaryF_2", "objID_ap", "stackDetectID"]
     jcat.remove_columns(drop_cols)
 
@@ -106,7 +109,7 @@ def process_panstarrs_catalog(
         d = {
             "name": ap, "flux": f"{ap}Flux", "flux_err": f"{ap}FluxErr", 
             "mag": f"mag_{ap}", "mag_err": f"magerr_{ap}", "snr": f"snr_{ap}", 
-            "new_flux": f"flux_{ap}", "new_flux_err": f"flux_err_{ap}"
+            "new_flux": f"flux_{ap}", "new_flux_err": f"fluxerr_{ap}"
         }
         apertures.append(Aperture(**d))
     for N_aper in range(1, max_aper+1):
@@ -134,15 +137,16 @@ def process_panstarrs_catalog(
         mag_col = np.full(len(jcat), 99.0)
         mag_err_col = np.full(len(jcat), 99.0)
 
-        missing_err = np.sum(flux_err_col[flux_mask] == 0)
+        missing_err = np.sum(flux_err_col[ flux_mask ] == 0)
         if missing_err > 0:
             logger.warn(f"{ap} has {missing_err} missing flux_err values.")
 
-        snr_col[flux_mask] = flux_col[flux_mask] / flux_err_col[flux_mask]
-        mag_col[flux_mask] = jcat["zp"][flux_mask] - 2.5*np.log10( flux_col[flux_mask] )
-        mag_err_col[flux_mask] = np.sqrt(
-            jcat["zp_err"][flux_mask]**2 + ( err_factor * 1. / snr_col[flux_mask] )**2 
-        )
+        snr_col[ flux_mask ] = flux_col[ flux_mask ] / flux_err_col[ flux_mask ]
+        mag_col[ flux_mask ] = jcat["zp"][ flux_mask ] - 2.5 * np.log10( flux_col[ flux_mask ] )
+        mag_err_col[ flux_mask ] = err_factor * 1. / snr_col[ flux_mask ]
+        #np.sqrt(
+        #    jcat["zp_err"][flux_mask]**2 + ( err_factor * 1. / snr_col[flux_mask] )**2 
+        #)
         jcat.add_column(snr_col, name=ap.snr)
         jcat.add_column(mag_col, name=ap.mag)
         jcat.add_column(mag_err_col, name=ap.mag_err)
@@ -156,7 +160,7 @@ def process_panstarrs_catalog(
     for ap in apertures:
         if ap.name == "kron":
             continue
-        drop_cols = [ap.new_flux, ap.new_flux_err, ap.snr]
+        drop_cols = [ap.new_flux, ap.new_flux_err]
         jcat.remove_columns(drop_cols)
     jcat.remove_columns(["zp", "zp_err"])
 
@@ -216,42 +220,70 @@ def process_panstarrs_catalog(
     logger.info(f"catalog written to {print_path} in {(time()-t1)/60.:.2f} min")
 
 def process_panstarrs_mosaic_mask(
-    ps_field, output_path, extension=None, base_dir=None, pixel_scale=1.0
+    field, 
+    output_path, 
+    band="i", 
+    extension=None, 
+    base_dir=None, 
+    skip_regions=False, 
+    resolution=2.0, 
+    hdu=0,
 ):
+    ps_field = ps_config["from_dxs_field"][field]
+    """
+    print(f"process {ps_field} {output_path}")
     if base_dir is None:
         base_dir = paths.input_data_path / f"external/panstarrs/images"
     if extension is None:
         extension = ".unconv.fits"
-    glob_str = str(base_dir / f"{ps_field}/i/skycell**")
+    glob_str = str(base_dir / f"{ps_field}/{band}/skycell**")
     dir_list = glob(glob_str)
     mosaic_list = []
     for directory in dir_list:
         directory = Path(directory)
         mosaic_list.append( glob(str(directory / f"*{extension}"))[0] )
-    
+    logger.info(f"mosaic from {len(mosaic_list)} images.")
+    logger.info(f"first read images")
 
     input_list = []
-    for mosaic_path in mosaic_list:
+    for mosaic_path in tqdm.tqdm(mosaic_list):
         with fits.open(mosaic_path) as mos:
-            data_array = mos[1].data.copy()
-            img_wcs = WCS(mos[1].header)
-        data_array = (data_array == 0)
+            data_array = mos[hdu].data.copy()
+            img_wcs = WCS(mos[hdu].header)
+        #data_array = (data_array == 0)
         t = (data_array, img_wcs)
         input_list.append(t)
         
+    logger.info("find output wcs")
     wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
-        input_list, resolution = args.resolution * u.arcsec
+        input_list, resolution = resolution * u.arcsec
     )
     logger.info("starting reprojection")
-    array_out, footprint = mosaicking.reproject_and_coadd(
+    mask_array, footprint = mosaicking.reproject_and_coadd(
         input_list, wcs_out, shape_out=shape_out,
         reproject_function=reproject_interp,
-        combine_function="sum"
+        combine_function="mean"
     )
     logger.info("finished reprojection")
     header = wcs_out.to_header()
-    output_hdu = fits.PrimaryHDU(data=array_out, header=header)
+
+    output_hdu = fits.PrimaryHDU(data=mask_array, header=header)
     output_hdu.writeto(output_path, overwrite=True)
+    """
+    
+
+    if not skip_regions:
+        region_path = paths.input_data_path / f"external/panstarrs/regions/{field}_{band}.reg"
+        
+        if region_path.exists():
+            logger.info(f"read region file {region_path}")
+            region_list = read_ds9(region_path)
+            mask_regions_in_mosaic(output_path, region_list) 
+                
+        else:
+            logger.info(f"no region file in {region_path} - skip region masking.")
+
+
 
     """with fits.open(output_path) as f:
         new_data = (f[0].data == 0)
@@ -289,17 +321,22 @@ if __name__ == "__main__":
 
     catalog_dir = paths.input_data_path / "external/panstarrs/"
 
+    field_choices = ["EN", "SA", "LH", "XM"]
+
     parser = ArgumentParser()
-    parser.add_argument("--fields", default="SA,EN,LH,XM", required=False)
+    parser.add_argument(
+        "--fields", choices=field_choices, nargs="+", default=field_choices, required=False
+    )
     parser.add_argument("--skip-catalog", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
-    parser.add_argument("--mask-extension", default=".unconv.mask.fits")
+    parser.add_argument("--mask-extension", default=".unconv.fits")
     parser.add_argument("--resolution", default=2.0, type=float)
+    parser.add_argument("--mask-bands", default=["i"], choices=["g", "r", "i", "z", "y"], nargs="+")
+    parser.add_argument("--skip-regions", default=False, action="store_true")
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
-    fields = args.fields.split(",")
 
-    for ii, field in enumerate(fields):
+    for ii, field in enumerate(args.fields):
         ps_field = ps_config["from_dxs_field"][field]
         logger.info(f"{ii}: {ps_field} = {field}")
         primary_catalog_path = catalog_dir / f"stackdetectionfull_{ps_field}.fit"
@@ -312,10 +349,21 @@ if __name__ == "__main__":
             )
         if not args.skip_mask:
             mask_dir = paths.input_data_path / f"external/panstarrs/masks"
-            mask_dir.mkdir(exist_ok=True, parents=True)
-            output_path = mask_dir / f"{field}_mask.fits"
-            process_panstarrs_mosaic_mask(
-                ps_field, output_path=output_path, extension=args.mask_extension
-            )
+            extension_split = args.mask_extension.split(".")[2:-1]
+            if len(extension_split) == 0:
+                extension = ""
+            else:
+                extension = "_" + "_".join(extension_split)
+            for band in args.mask_bands:
+                mask_dir.mkdir(exist_ok=True, parents=True)
+                output_path = mask_dir / f"{field}_{band}{extension}.fits"
+                process_panstarrs_mosaic_mask(
+                    field, 
+                    output_path=output_path, 
+                    band=band, 
+                    extension=args.mask_extension,
+                    resolution=args.resolution,
+                    skip_regions=args.skip_regions
+                )
 
 

@@ -28,7 +28,6 @@ survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
-bright_star_config = survey_config["bright_stars"]
 pix_scale = survey_config["mosaics"]["pixel_scale"]
 
 class BrightStarProcessor:
@@ -36,12 +35,17 @@ class BrightStarProcessor:
     parameters are read from ./configuration/survey_config.yaml
     """
 
-    def __init__(self, star_table,):
+    def __init__(self, star_table: Table, config_path=None):
         self.star_table = star_table
         
+        if config_path is None:            
+            bright_star_config = survey_config["bright_stars"]
+        else:
+            with open(config_path, "r") as f:
+                bright_star_config = yaml.load(f, Loader=yaml.FullLoader)
         self.box_angles = bright_star_config["diffraction_spike_angles"] * u.degree
         coeffs = bright_star_config["region_coefficients"]
-        self.mag_ranges = np.array([0.] + coeffs["mag_ranges"])
+        self.mag_ranges = np.array([-20.] + coeffs["mag_ranges"])
         self.box_widths = np.array(coeffs["box_widths"]) * (pix_scale / 3600. * u.degree)
         self.box_heights = np.array(coeffs["box_heights"]) * (pix_scale / 3600. * u.degree)
         self.circle_radii = np.array(coeffs["circle_radii"]) * (pix_scale / 3600. * u.degree)
@@ -55,12 +59,12 @@ class BrightStarProcessor:
             )
 
     @classmethod
-    def from_file(cls, csv_path, queries=None, **kwargs):
+    def from_file(cls, csv_path, queries=None, config_path=None, **kwargs):
         logger.info(f"reading from {csv_path.name}")
         star_table = Table.read(csv_path, **kwargs)
         if queries is not None:
             star_table = Query(*queries).filter(star_table)
-        return cls(star_table)
+        return cls(star_table, config_path=config_path)
 
     def process_region_masks(self, mag_col, ra_col="ra", dec_col="dec", ncpus=None):
         """
@@ -70,7 +74,7 @@ class BrightStarProcessor:
         queries = (f"{mag_min} < {mag_col}", f"{mag_col} < {mag_max}")
         table = Query(*queries).filter(self.star_table)
         mag_indices = np.digitize(table[mag_col], bins=self.mag_ranges)
-        assert all(mag_indices < len(mag_indices)) # there are no stars outside the min/max
+        assert all(mag_indices < len(self.mag_ranges)) # there are no stars outside the min/max
         assert all(mag_indices > 0) # there are none less than the min_mag
         mag_indices = mag_indices - 1 # digitize assumes that [-inf, bins[0]] is the 0th bin.
         coords = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit="degree")

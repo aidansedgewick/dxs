@@ -14,15 +14,13 @@ import tqdm
 
 from astropy.coordinates import Angle, SkyCoord
 from astropy.io import fits
-from astropy.nddata.utils import Cutout2D
-from astropy.stats import SigmaClip
 from astropy.wcs import WCS, FITSFixedWarning
 
-import reproject as rpj
-from astromatic_wrapper.api import Astromatic
-from photutils.background import SExtractorBackground, Background2D
+from dxs.hdu_preprocessor import HDUPreprocessor
 
-#from dxs.utils.image import 
+from astromatic_wrapper.api import Astromatic
+
+from dxs.utils.image import build_mosaic_header
 from dxs.utils.misc import (
     check_modules, format_flags, get_git_info, AstropyFilter
 )
@@ -32,20 +30,22 @@ from dxs import paths
 logger = logging.getLogger("mosaic_builder")
 astropy_logger = logging.getLogger("astropy")
 astropy_logger.addFilter(AstropyFilter())
-#warnings.simplefilter(action="once", category=FITSFixedWarning)
 
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
-neighbors_path = paths.config_path / "dxs_positions.yaml"
-with open(neighbors_path) as f:
-    neighbors_config = yaml.load(f, Loader=yaml.FullLoader)
-    neighbors_config["arrangement_to_tile"] = {}
-    for field, arrangement in neighbors_config["arrangement"].items():
-        neighbors_config["arrangement_to_tile"][field] = {
-            tuple(v): k for k, v in arrangement.items()
-        }
+default_neighbors_config_path = paths.config_path / "dxs_arrangement.yaml"
+def load_neighbors_config(neighbors_config_path=default_neighbors_config_path):
+    with open(neighbors_config_path) as f:
+        neighbors_config = yaml.load(f, Loader=yaml.FullLoader)
+        neighbors_config["arrangement_to_tile"] = {}
+        for field, arrangement in neighbors_config["arrangement"].items():
+            neighbors_config["arrangement_to_tile"][field] = {
+                tuple(v): k for k, v in arrangement.items()
+            }
+    return neighbors_config
+neighbors_config = load_neighbors_config()
 
 def read_header_data(header_data_path=paths.header_data_path):
     if not header_data_path.exists():
@@ -92,7 +92,7 @@ class MosaicBuilder:
             self.stack_list = mosaic_stacks # 
             if neighbor_stacks is not None:
                 raise MosaicBuilderError(
-                    "to use BOTH, mosaic_stacks and neighbor_stacks must be pd.DataFrame (with \"filename\" column"
+                    "to use BOTH `mosaic_stacks` and `neighbor_stacks` must be pd.DataFrame (with \"filename\" column)"
                 )
             self.ccds_list = [None for _ in range(len(mosaic_stacks))]                
 
@@ -100,6 +100,7 @@ class MosaicBuilder:
         logger.info(f"output at {self.mosaic_path.name}")
         self.swarp_config = swarp_config or {}
         self.swarp_config_file = swarp_config_file or paths.config_path / "swarp/mosaic.swarp"
+
         self.hdu_prep_kwargs = hdu_prep_kwargs or {}    
 
         self.mosaic_dir = self.mosaic_path.parent
@@ -119,6 +120,8 @@ class MosaicBuilder:
     def from_dxs_spec(
         cls, field, tile, band, 
         include_neighbors=True,
+        convert_vega_to_AB=True,
+        include_deprecated_stacks=False,
         prefix=None,
         suffix=None,
         extension=None,
@@ -127,6 +130,33 @@ class MosaicBuilder:
         swarp_config_file=None, 
         hdu_prep_kwargs=None,
     ):
+        """provide a field, tile (as integer) and band.
+        eg.
+
+        >>> prep_kwargs = {}
+        >>> builder = mosaic_builder.from_dxs_spec("EN", 4, "K", hdu_prep_kwargs=prep_kwargs)
+        >>> print(builder.mosaic_path) # mosaic will be saved here.
+        >>> builder.build(n_cpus=4)      
+
+        Parameters
+        ----------
+        field
+        tile
+        band
+        prefix
+            prefix.suffix give mosaic name eg. [prefix]EN04K[suffix].fits
+        suffix
+        extension
+            defaults to ".fits" - eg. EN04K.fits    
+        add_flux_scale
+            whether to scale the flux of each input stack to a common zeropoint.
+        swarp_config
+            dict overwrites values in swarp_config_file. c
+            eg swarp_config={"detect_sigma": 5.0", "size": (1000,1000)}
+            floats, ints, tuples are formatted correctly internally.
+        swarp_config_file
+            path to a swarp config file. by default .../dxs/configuration/mosaic.swarp
+        """
         mosaic_dir = paths.get_mosaic_dir(field, tile, band)
         mosaic_stem = paths.get_mosaic_stem(field, tile, band, prefix=prefix, suffix=suffix)
         extension = f".{extension}" if extension is not None else ""
@@ -136,7 +166,9 @@ class MosaicBuilder:
         logger.info(f"mosaic for {field} {tile} {band}")
 
         # Get a list of all the stacks in this tile (ignoring band) for geometry.
-        geom_mosaic_stacks = get_stack_data(field, tile, band=None)
+        geom_mosaic_stacks = get_stack_data(
+            field, tile, band=None, include_deprecated_stacks=True
+        )
         if len(geom_mosaic_stacks) == 0:
             logger.info(f"No stacks in {field}, {tile}, in any band")
             return None
@@ -157,29 +189,43 @@ class MosaicBuilder:
         swarp_config["center_type"] = "MANUAL"
         swarp_config["pixelscale_type"] = "MANUAL"
         # which stacks should go into the swarp?
-        mosaic_stacks = get_stack_data(field, tile, band)
+        mosaic_stacks = get_stack_data(
+            field, tile, band, include_deprecated_stacks=include_deprecated_stacks
+        )
         if len(mosaic_stacks) == 0:
             logger.info(f"No stacks in {field} {tile} {band} to build.")
             return None
+        
+    
         if include_neighbors:
-            mosaic_stacks["ccds"] = [
-                survey_config["ccds"] for _ in range(len(mosaic_stacks))
-            ]
+            if "ccds" not in mosaic_stacks.columns:
+                mosaic_stacks["ccds"] = [
+                    survey_config["ccds"] for _ in range(len(mosaic_stacks))
+                ]
             neighbor_stacks = get_neighbor_stacks(field, tile, band)
-            logger.info(f"including neighbors {len(neighbor_stacks)}")
+            logger.info(f"{len(neighbor_stacks)} stacks (including neighbors)")
         else:
             neighbor_stacks = None
 
         #=========== sort some things for preparing ============#
-        normalise_exptime = hdu_prep_kwargs.get("normalise_exptime", False) # check default in HDUPreparer
-        if normalise_exptime:
-            magzpt_inc_exptime = False # ie, if counts/s img, no need to account!
-        else:
-            magzpt_inc_exptime = True
+        #normalise_exptime = hdu_prep_kwargs.get("normalise_exptime", False) # check default in HDUPreprocessor
+        #if normalise_exptime:
+        #    magzpt_inc_exptime = False # ie, if counts/s img, no need to account!
+        #else:
+        #    magzpt_inc_exptime = True
         hdu_prep_kwargs["reference_magzpt"] = cls.calc_magzpt(
-            mosaic_stacks, magzpt_inc_exptime=magzpt_inc_exptime
+            mosaic_stacks, magzpt_inc_exptime=True #magzpt_inc_exptime
         )
         hdu_prep_kwargs["add_flux_scale"] = add_flux_scale
+        if convert_vega_to_AB:
+            if not isinstance(band, str):
+                logger.warn("No AB conversion - don't know how to deal with {band}")
+            else:
+                AB_conversion = survey_config["ab_vega_offset"].get(band, None)
+                if AB_conversion is None:
+                    logger.warning("No AB offset for {band} - check survey_config.yaml...")
+                hdu_prep_kwargs["AB_conversion"] = AB_conversion
+                logger.info(f"Conversion to AB: add {AB_conversion:.4f} to magzpt")
         return cls(
             mosaic_stacks, 
             mosaic_path, 
@@ -194,7 +240,8 @@ class MosaicBuilder:
         cls, field, tile, band, 
         pixel_scale, 
         include_neighbors=True,
-        prefix=None, 
+        prefix=None,
+        suffix=None,
         swarp_config=None, 
         swarp_config_file=None, 
         hdu_prep_kwargs=None,
@@ -205,15 +252,14 @@ class MosaicBuilder:
         fill_value should be set to 1
         """
         swarp_config = swarp_config or {}
-        coverage_config = {
-            "pixel_scale": pixel_scale,
-        }
         swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
-        swarp_config.update(coverage_config)
         hdu_prep_kwargs = hdu_prep_kwargs or {}
         hdu_prep_kwargs["fill_value"] = 1.0
         return cls.from_dxs_spec(
-            field, tile, band, prefix=prefix, include_neighbors=True,
+            field, tile, band, 
+            prefix=prefix, 
+            suffix=suffix, 
+            include_neighbors=include_neighbors,
             extension="cov", 
             add_flux_scale=False,
             swarp_config=swarp_config, 
@@ -232,13 +278,13 @@ class MosaicBuilder:
         n_cpus
             defaults to whatever is passed at init (or None).
         kwargs
-            kwargs that are passed to HDUPreparer.prepare_stack() 
+            kwargs that are passed to HDUPreprocessor.prepare_stack() 
         """
         check_modules("swarp") # do we have swarp available?
         if len(kwargs) > 0:
             logger.warn(
                 "please pass all hdu_prep_kwargs at initialisation as "
-                "hdu_prep_kwargs=<dict of prep kwargs>"
+                "hdu_prep_kwargs=<dict of prep kwargs>. Deprecated soon..."
             )
             self.hdu_prep_kwargs.update(kwargs)
         if prepare_hdus:
@@ -262,14 +308,17 @@ class MosaicBuilder:
         stack_list
             a list of (Path-like) paths to stacks to prepare HDUs for.
         kwargs
-            key-word arguments accepted by HduPreparer(), and "prefix".
+            key-word arguments accepted by HDUPreprocessor(), and "prefix".
         """
         if stack_list is None:
             stack_list = self.stack_list
+
+        print("prepare stacks with:")
+        print(json.dumps(kwargs))
         if n_cpus is None:    
             hdu_list = []
             for ii, stack_path in enumerate(stack_list):
-                results = HDUPreparer.prepare_stack(
+                results = HDUPreprocessor.prepare_stack(
                     stack_path, ccds=self.ccds_list[ii], **kwargs
                 )
                 hdu_list.extend(results)
@@ -277,7 +326,7 @@ class MosaicBuilder:
             # can do many threads of stacks...
             kwarg_list = [dict(**kwargs, ccds=ccds) for ccds in self.ccds_list]            
             arg_list = [(sp, kw) for sp, kw in zip(stack_list, kwarg_list)]
-            # This is a bit ugly, but essentially we need to make a single object (tuple)
+            # This is a ugly, but essentially we need to make a single object (tuple)
             # that we can give to a single-arg function for pool.map(). 
             with Pool(n_cpus) as pool:
                 results = list(
@@ -292,8 +341,29 @@ class MosaicBuilder:
         return hdu_list
 
     def write_swarp_list(self, hdu_list):
+        """
+        SWARP does something very odd. it seems to IGNORE the first input file.
+        so we add a tiny file with not much data as the first file
+        """
+        center = self.swarp_config.get("swarp_config", None)
+        if center is None:
+            with fits.open(hdu_list[0]) as f:
+                h = f[0].header
+                center = (h["CRVAL1"], h["CRVAL2"])
+                logger.info(f"small, fake img center at {center}")
+        tiny_header = build_mosaic_header(
+            center=center, size=(2,2), pixel_scale=0.2
+        )
+        tiny_data = np.random.uniform(0, 1, (2,2))
+        tiny_hdu = fits.PrimaryHDU(data=tiny_data, header=tiny_header)
+        tiny_hdu_path = paths.scratch_hdus_path / f"{self.mosaic_path.stem}_tiny_data.fits"
+        tiny_hdu.writeto(tiny_hdu_path, overwrite=True)
+        
         with open(self.swarp_list_path, "w+") as f:
-            f.writelines([str(hdu_path)+"\n" for hdu_path in hdu_list])        
+            hdu_path_list = (
+                [str(tiny_hdu_path)+"\n"] + [str(hdu_path)+"\n" for hdu_path in hdu_list]
+            )
+            f.writelines(hdu_path_list)        
     
     def initialise_astromatic(self, n_cpus=None):
         config = self.build_swarp_config()
@@ -304,7 +374,7 @@ class MosaicBuilder:
         config = format_flags(config)
         self.swarp = Astromatic(
             "SWarp", 
-            str(paths.temp_swarp_path), # I think this is ignored by Astromatic() anyway?!
+            str(paths.scratch_swarp_path), # I think this is ignored by Astromatic() anyway?!
             config=config, 
             config_file=str(self.swarp_config_file),
             store_output=True,
@@ -320,7 +390,7 @@ class MosaicBuilder:
         config["imageout_name"] = self.mosaic_path
         weightout_name = self.mosaic_dir / f"{self.mosaic_path.stem}.weight.fits"
         config["weightout_name"] = weightout_name
-        config["resample_dir"] = paths.temp_swarp_path
+        config["resample_dir"] = paths.scratch_swarp_path
         config["pixel_scale"] = survey_config["mosaics"].get("pixel_scale", 0.2) #f"{pixel_scale:.6f}" 
         config["pixelscale_type"] = "manual"       
         config["xml_name"] = self.swarp_xml_path
@@ -372,257 +442,15 @@ class MosaicBuilder:
         logger.info(f"magzpt = {magzpt}; inc. exptime: {magzpt_inc_exptime}")
         return magzpt
 
-class HDUPreparer:
-    """
-    Class for preparing a single HDU ready for SWarp.
-
-    eg.
-
-    >>> hdup = HDUPreparer(hdu, "./hdu_out.fits")
-    >>> hdup.prepare_hdu()
-
-    Parameters
-    ----------
-    hdu
-        a single astropy hdu object
-    hdu_path
-        str or PathLike - where will this hdu be saved? after prep
-    fill_value
-        float- fill the entire data array with a value close to this (+/- small ~1e-4 random noise)
-        bc. swarp doesn't like array of the same value. useful for coverage maps( value = 1.0)
-        or exposure time maps.
-    resize
-        bool - if true, removes `edges` pixels from each hdu in prep. default False.
-    edges
-        float or int - removes this many pixels from each edge, if `resize=True`
-    mask_sources
-        bool - if True, ignore parts of `hdu.data` when estimating background. default False
-    mask_header
-        hdu header object. use header rather than directly passing `astropy.wcs` object  
-        as `wcs` seems to go weird in combination with multiprocessing Pool.
-    mask_map
-        array with shape equal to `hdu.shape`. Non-zeros values are sources to mask.
-        (ie, can use SExtractor segmentation check image as mask).
-    normalize_exptime
-        bool - divide data array by the value provided in `exptime`. Default False.
-        Recommend only use with `subtract_bgr=True`...!
-    exptime
-        float - removed soon... should read exptime from `hdu.header`
-    subtract_bgr
-        bool
-    bgr_size
-        int - box size to estimate bgr in. Used as `photutils.Background2d(box_size=(bgr_size, bgr_size))`
-    filter_size
-        int - Used as `photutils.Background2d(filter_size=filter_size)`
-    sigma
-        float - Used as for sigma clipping in bgr_estimation. see `photutils`.
-    add_flux_scale
-        bool - if True, add `flxscale` to output header, calculated as 
-        10**(-0.4*(magzpt-reference_magzpt)), if `reference_magzpt` is provided. 
-    reference_magzpt
-        used to calculate flxscale. add 2.5*log10(exptime) if `normalise_exptime` is True. 
-        default None. 
-    """
-
-
-
-    def __init__(
-        self, hdu, hdu_path,
-        fill_value=None,
-        resize=False, edges=25.0, 
-        mask_sources=False, mask_header=None, mask_map=None,
-        normalise_exptime=False, exptime=None, # check from_dxs_spec hdu_prep_kwargs...
-        subtract_bgr=False, bgr_size=None, filter_size=1, sigma=3.0,
-        add_flux_scale=True, reference_magzpt=None
-    ):
-        self.data = hdu.data
-        if fill_value is not None:
-            self.data = np.random.uniform(
-                0.9999*fill_value, 1.0001*fill_value, hdu.data.shape
-            )
-            # slight variations from fill_value - swarp doesn't like HDU full of constant.
-        self.header = hdu.header
-        self.hdu_path = Path(hdu_path)
-        self.resize = resize
-        self.edges = edges
-        self.mask_sources = mask_sources
-        if mask_header is not None:
-            self.mask_wcs = WCS(mask_header)
-        else:
-            self.mask_wcs = None
-        # construct wcs inside init func, else it goes weird with Pool?
-        self.mask_map = mask_map
-        self.normalise_exptime = normalise_exptime
-        self.magzpt = self.header.get("MAGZPT", None)
-        if self.magzpt is None:
-            logger.warn(f"MAGZPT for {self.hdu_path.stem} not found - set to reference {reference_magzpt}")
-            self.magzpt = reference_magzpt
-        if normalise_exptime is False:
-            self.magzpt = self.magzpt + 2.5*np.log10(exptime) # log10!!!!
-        self.exptime = exptime
-        self.subtract_bgr = subtract_bgr
-        self.bgr_size = bgr_size
-        self.sigma = sigma
-        self.add_flux_scale = add_flux_scale
-        self.reference_magzpt = reference_magzpt
-
-        self.hdu_wcs = WCS(hdu.header)
-        self.hdu_wcs.fix()
-        self.xlen = hdu.header["NAXIS1"]
-        self.ylen = hdu.header["NAXIS2"]
-
-        self.center = (self.ylen // 2, self.xlen // 2)
-        self.center_coords = SkyCoord.from_pixel(
-            xp=self.center[1], yp=self.center[0], wcs=self.hdu_wcs, origin=1
-        )
-
-    def modify_header(self):
-        if self.add_flux_scale:
-            if self.reference_magzpt is None:
-                raise ValueError(
-                    "Can't add flux scale if no reference_magzpt to scale to!\n"
-                    "Either provide reference_magzpt= or set add_flux_scale=False"
-                )
-            else:
-                mag_diff = self.magzpt - self.reference_magzpt
-                flux_scaling = 10**(-0.4*mag_diff)
-                self.header["FLXSCALE"] = flux_scaling
-                logger.info(f"flxscl {self.hdu_path.stem} {flux_scaling:.2f}")
-        self.header["EXP_TIME"] = self.exptime
-
-    def prepare_hdu(self):
-        if self.mask_wcs is not None:
-            hdu_footprint = SkyCoord(self.hdu_wcs.calc_footprint(), unit="degree")
-            contains = self.mask_wcs.footprint_contains(hdu_footprint)
-            if not any(contains):
-                logger.info(f"{self.hdu_path.stem} not in mask")
-        if self.mask_sources:
-            try:
-                source_mask = self.get_source_mask()
-            except Exception as e:
-                logger.warn(e)
-                return None
-        else:
-            source_mask = None
-        if self.subtract_bgr:
-            bgr = self.get_background(source_mask=source_mask)
-            self.data = self.data - bgr.background
-        if self.normalise_exptime:
-            if self.subtract_bgr is False:
-                warn_msg = (
-                    "are you sure it's a good idea to normalise exposure time "
-                    + "without subtracting the background...?!"
-                )
-                logger.warn(warn_msg)
-            self.data = self.data / self.exptime
-        if self.resize:
-            cutout_size = (int(self.ylen-2*self.edges), int(self.xlen-2*self.edges))
-            cutout = Cutout2D(
-                self.data, position=self.center, size=cutout_size, wcs=self.hdu_wcs
-            )
-            self.data = cutout.data
-            self.header.update(cutout.wcs.to_header())
-        self.modify_header()
-        hdu = fits.PrimaryHDU(data=self.data, header=self.header)
-        if self.hdu_path.exists():
-            logger.warn(f"{self.hdu_path.stem} is being overwritten!")
-        hdu.writeto(self.hdu_path, overwrite=True)
-        return True
-
-    def get_source_mask(self):
-        approx_size = (self.ylen + 50, self.xlen + 50)
-        # TODO: do better by taking the max, min of the stack footprint in mask wcs pix?
-        apx_map = Cutout2D(
-            self.mask_map, 
-            position=self.center_coords,
-            size=approx_size,
-            wcs=self.mask_wcs,
-            mode="partial", # definitely want PARTIAL. 
-            fill_value=0 # ensures that outside values will be not masked.
-        )
-        reprojected_map, reprojected_footprint = rpj.reproject_interp(
-            (apx_map.data, apx_map.wcs), 
-            output_projection=self.header, 
-            order="nearest-neighbor"
-        )
-        assert reprojected_map.shape == self.data.shape
-        mask = reprojected_map
-        mask = mask.astype(bool) # Background2D expects True for masked pixels.
-        return mask
-
-    def get_background(self, source_mask=None):
-        sigma_clip = SigmaClip(sigma=self.sigma)
-        estimator = SExtractorBackground(sigma_clip)
-        bgr_map = Background2D(
-            self.data, 
-            mask=source_mask, 
-            sigma_clip=sigma_clip, 
-            bkg_estimator=estimator,
-            box_size=(self.bgr_size, self.bgr_size),
-            filter_size=(1,1)
-        )
-        return bgr_map
-
-    @classmethod
-    def prepare_stack(
-        cls, stack_path, overwrite=False, hdu_prefix=None, ccds=None, **kwargs
-    ):
-        """
-        class method - prepare a whole stack (ie, multi-extension fits) of HDUs.
-        returns a list of paths to prepared HDUs.
-
-        Parameters
-        ----------
-        stack_path
-            path to [multi-]extension fits that will be prep'ed.
-        overwrite
-            bool: if False, and this HDU has already been prepared, skip it.
-        hdu_prefix
-            name of hdu will be <hdu_prefix><stack_path.stem>_<ccd>.fits
-        ccds
-            list: which ccds (ie, fits extensions) in the stack to prepare? defaults to
-            whatever is in survey_config ccds.
-        **kwargs
-            any kwargs which go into initialisation of HDUPreparer.
-        """
-
-        stack_path = Path(stack_path)
-        results = []
-        ccds = ccds or survey_config["ccds"]
-        with fits.open(stack_path) as f:
-            try:
-                spec = ",".join(f[0].header["OBJECT"].split()[2:])
-            except:
-                spec = ""
-            for ii, ccd in enumerate(ccds):
-                hdu_name = get_hdu_name(stack_path, ccd, prefix=hdu_prefix)
-                hdu_path = paths.temp_hdus_path / hdu_name # includes ".fits" already...
-                logger.info(f"prep {spec} {hdu_path.stem}")
-                if not overwrite and hdu_path.exists():
-                    results.append(hdu_path)
-                    continue
-                p = cls(f[ccd], hdu_path, exptime=f[0].header["EXP_TIME"], **kwargs)
-                result = p.prepare_hdu()
-                if result is not None:
-                    results.append(hdu_path)
-        return results
-
-
-##======== Aux. functions for HDUPreparer
+##======== Aux. functions for HDUPreprocessor
 
 def _hdu_prep_wrapper(arg):
     args, kwargs = arg
-    return HDUPreparer.prepare_stack(args, **kwargs)    
-
-def get_hdu_name(stack_path, ccd, weight=False, prefix=None):
-    weight = ".weight" if weight else ""
-    prefix = prefix or ""
-    return f"{prefix}{stack_path.stem}_{ccd:02d}{weight}.fits"
-
+    return HDUPreprocessor.prepare_stack(args, **kwargs)    
 
 ##======== Finding out which stacks are important for a mosaic.
 
-def get_stack_data(field, tile, band, pointing=None):
+def get_stack_data(field, tile, band, pointing=None, include_deprecated_stacks=False):
     """
     Data frame of info for stacks in a given field/tile/band [optionally pointing].
     Must provide, field, tile, band as args - although tile and band can be None, or a list.
@@ -643,9 +471,26 @@ def get_stack_data(field, tile, band, pointing=None):
             pointing = [pointing]
         queries.append(f"(pointing in @pointing)")    
     query = "&".join(q for q in queries)
-    return header_data.query(query)
+    stacks = header_data.query(query)
+    ccds = survey_config["ccds"]
+    if not include_deprecated_stacks:
+        deprecated_query = "deprec_mf==0"
+        stacks = stacks.query(deprecated_query)
+        ccd_lists = []
+        for ii, row in stacks.iterrows():
+            ccds_ii = [ccd for ccd in ccds if row[f"deprec_{ccd}"] == 0]
+            ccd_lists.append(ccds_ii)
+        ccds_series = pd.Series(ccd_lists, index=stacks.index, dtype=object)
+        assert sum(stacks["deprec_mf"]) == 0
+    else:
+        ccds_series = pd.Series(
+            [ccds for _ in range(len(stacks))], index=stacks.index, dtype=object
+        )
+    assert ccds_series.index.equals(stacks.index)
+    stacks.insert(len(stacks.columns), "ccds", ccds_series)
+    return stacks
 
-def get_neighbor_stacks(field, tile, band):
+def get_neighbor_stacks(field, tile, band, include_deprecated_stacks=False):
     """
     Which stacks are on the border of the mosaic we're SWarping? 
     We should add these in to make extracting the catalog nicer.
@@ -654,9 +499,27 @@ def get_neighbor_stacks(field, tile, band):
     df_list = []
     for neighbor_tile, cardinal in neighbors.items():
         hdus_for_cardinal = neighbors_config["border_hdus"][cardinal]
-        for pointing, ccds in hdus_for_cardinal.items():
-            stacks = get_stack_data(field, neighbor_tile, band, pointing=pointing)
-            stacks["ccds"] = [ccds for _ in range(len(stacks))]
+        for pointing, relevant_ccds in hdus_for_cardinal.items():
+            stacks = get_stack_data(
+                field, neighbor_tile, band, 
+                pointing=pointing, 
+                include_deprecated_stacks=include_deprecated_stacks
+            )
+            if "ccds" in stacks.columns:
+                stacks.drop("ccds", inplace=True, axis=1) # axis=1 for column drop.
+            if not include_deprecated_stacks:
+                assert sum(stacks["deprec_mf"] == 0)
+                ccd_lists = []
+                for ii, row in stacks.iterrows():
+                    ccds_ii = [ccd for ccd in relevant_ccds if row[f"deprec_{ccd}"] == 0]
+                    ccd_lists.append(ccds_ii)
+                ccds_series = pd.Series(ccd_lists, index=stacks.index, dtype=object)
+            else:
+                ccds_series = pd.Series(
+                    [relevant_ccds for _ in range(len(stacks))], index=stacks.index, dtype=object
+                )
+            assert stacks.index.equals(ccds_series.index)
+            stacks.insert(len(stacks.columns), "ccds", ccds_series)
             df_list.append(stacks)
     neighbor_stacks = pd.concat(df_list)
     return neighbor_stacks
@@ -719,7 +582,7 @@ def calculate_mosaic_geometry(
     ccds = ccds or [0]
     ra_values = []
     dec_values = []
-    for ii, stack_path in enumerate(stack_list):
+    for stack_path in tqdm.tqdm(stack_list):
         with fits.open(stack_path) as f:
             for ccd in ccds:
                 hdu_wcs = WCS(f[ccd].header)
@@ -730,11 +593,13 @@ def calculate_mosaic_geometry(
     dec_limits = (np.min(dec_values), np.max(dec_values))
 
     # center is easy.
-    center = (np.mean(ra_limits), np.mean(dec_limits))
+    center = SkyCoord(ra=np.mean(ra_limits), dec=np.mean(dec_limits), unit="deg")
     # image size takes a bit more thought because of spherical things.
-    cos_dec = np.cos(center[1] * np.pi / 180.)
+    cos_dec = np.cos(center.dec) # an astropy Angle...
+    print(center.dec)
     pixel_scale = pixel_scale or survey_config["mosaics"]["pixel_scale"]
     plate_factor = 3600. / pixel_scale
+    print(abs(ra_limits[1] - ra_limits[0]) * plate_factor, cos_dec)
     x_size = abs(ra_limits[1] - ra_limits[0]) * plate_factor * cos_dec
     y_size = abs(dec_limits[1] - dec_limits[0]) * plate_factor
     mosaic_size = (int(x_size), int(y_size))
@@ -746,40 +611,14 @@ def calculate_mosaic_geometry(
     if mosaic_size[0] > max_size[0] or mosaic_size[1] > max_size[1]:
         raise MosaicBuilderError(
             f"Mosaic too large: {mosaic_size[0]},{mosaic_size[1]}"
-            f" larger than {max_size[0],max_size[1]}"
+            f" larger than {max_size[0],max_size[1]}q"
             f" \n check configuration/survey_config.yaml"
         )
     logger.info(f"geom - size {mosaic_size[0]},{mosaic_size[1]}")
-    logger.info(f"geom - center {center[0]:.3f}, {center[1]:.3f}")
+    logger.info(f"geom - center {center.ra:.3f}, {center.dec:.3f}")
     return center, mosaic_size
 
-def build_mosaic_header(center, size, pixel_scale, proj="TAN"):
-    """
-    NOT for use in FITS files. Useful for cropping input stacks down to size.
-    """
-    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj)
-    h = w.to_header()
-    #h.insert(0, "SIMPLE", "T")
-    #h.insert(1, "BITPIX", -32)
-    #h.insert(2, "NAXIS", 2)
-    #h.insert(3, "NAXIS1", size[0])
-    #h.insert(4, "NAXIS2", size[1])
-    #print(h["SIMPLE"])
-    return h   
 
-def build_mosaic_wcs(center, size, pixel_scale, proj="TAN"):
-    """
-    """
-    w = WCS(naxis=2)
-    w.wcs.crpix = [size[0]/2, size[1]/2]
-    w.wcs.cdelt = [pixel_scale / 3600., pixel_scale / 3600.]
-    w.wcs.crval = list(center)
-    w.wcs.ctype = [
-        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
-    ]
-    w.fix()
-    return w
-    
 
 
 ###============= misc? ================###

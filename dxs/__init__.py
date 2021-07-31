@@ -9,12 +9,13 @@ from .catalog_builder import (
 )
 from .catalog_merge import merge_catalogs
 from .crosstalk_processor import CrosstalkProcessor
+from .hdu_preprocessor import HDUPreprocessor
 from .mosaic_builder import (
     MosaicBuilder, 
-    HDUPreparer, 
     calculate_mosaic_geometry
 )
 from .pystilts import Stilts
+from .photoz_processor import PhotozProcessor
 from .quick_plotter import QPlot, QuickPlotter
 
 from dxs import paths

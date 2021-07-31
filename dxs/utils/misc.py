@@ -5,6 +5,11 @@ import subprocess
 from pathlib import Path
 from typing import List
 
+import numpy as np
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+
 from dxs import paths
 
 logger = logging.getLogger("utils.misc")
@@ -15,6 +20,39 @@ class ModuleMissingError(Exception):
 class AstropyFilter(logging.Filter):
     def filter(self, message):
         return not "FITSFixedWarning" in message.getMessage()
+
+def haversine(c1, c2):
+    dlat = c1.dec - c2.dec
+    dlon = c1.ra - c2.ra
+    d1 = np.sin(dlat / 2.)
+    d2 = np.sin(dlon / 2.)
+
+    arg = d1 * d1 + np.cos(c1.dec) * np.cos(c2.dec) * d2 * d2
+
+    return 2. * np.arcsin( np.sqrt(arg) )
+
+class GreatCircleArc:
+    # https://math.stackexchange.com/questions/383711/parametric-equation-for-great-circle
+    def __init__(self, c1, c2):
+        self.c1 = c1
+        self.c2 = c2
+        self.d = haversine(c1, c2)
+        #np.arccos( 
+        #    np.sin(c1.dec) * np.sin(c2.dec) + np.cos(c1.dec) * np.cos(c2.dec) * np.cos(c1.ra - c2.ra)
+        #)
+        
+    def get_waypoints(self, f):
+        A = np.sin((1. - f) * self.d) / np.sin(self.d)
+        B = np.sin(f * self.d) / np.sin(self.d)
+
+        x = A * np.cos(self.c1.dec) * np.cos(self.c1.ra) + B * np.cos(self.c2.dec) * np.cos(self.c2.ra)
+        y = A * np.cos(self.c1.dec) * np.sin(self.c1.ra) + B * np.cos(self.c2.dec) * np.sin(self.c2.ra)
+        z = A * np.sin(self.c1.dec)  + B * np.sin(self.c2.dec)
+
+        w_dec = np.arctan2(z, np.sqrt(x*x + y*y))
+        w_ra = np.arctan2(y, x)
+
+        return SkyCoord(w_ra, w_dec)
 
 module_suggestions = {
     "swarp": "try   module load swarp",
@@ -38,7 +76,9 @@ def check_modules(*modules):
             suggestion = module_suggestions.get(module, "no suggestions available")
             suggestions.append(f"Missing '{module}': {suggestion}")
         suggestion_string = "\n".join(x for x in suggestions)
-        raise ModuleMissingError(f"Missing modules {missing_modules}.\n{suggestion_string}")
+        raise ModuleMissingError(
+            f"\033[31mMissing modules\033[0m {missing_modules}.\n{suggestion_string}"
+        )
 
 def format_flags(config, capitalise=True, float_precision=6):
     """
@@ -65,7 +105,9 @@ def format_flags(config, capitalise=True, float_precision=6):
         elif isinstance(value, float):
             formatted_config[key] = f"{value:.{float_precision}f}"
         elif isinstance(value, int):
-            formatted_config[key] = str(value)        
+            formatted_config[key] = str(value)
+        elif isinstance(value, SkyCoord):
+            formatted_config[key] = f"{value.ra.value:.{float_precision}f},{value.dec.value:.{float_precision}f}"
         elif isinstance(value, tuple):
             if all(isinstance(x, int) for x in value):
                 formatted_config[key] = ','.join(f"{x}" for x in value)
@@ -94,7 +136,9 @@ def create_file_backups(file_list: List[Path], temp_dir: Path):
     return new_paths
 
 def get_git_info():
-
+    """
+    find git branch name and commit ID
+    """
     dxs_git = Path(__file__).parent.parent.parent / ".git"
     branch_cmd = f"git --git-dir {dxs_git} rev-parse --abbrev-ref HEAD".split()
     try:

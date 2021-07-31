@@ -1,7 +1,9 @@
 import logging
 import os
+import tqdm
 import yaml
 from pathlib import Path
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -27,6 +29,13 @@ with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 ###============= bits related to survey area/randoms. =============###
+
+def calc_spherical_rectangle_area(ra_limits, dec_limits):
+    dra = ra_limits[1] - ra_limits[0] # could * by pi / 180 here, but would have to undo in last line...
+    ddec = np.sin(dec_limits[1] * np.pi / 180.) - np.sin(dec_limits[0] * np.pi / 180.)
+    area_box = dra * ddec * 180. / np.pi # if radians in first line, would * (180 / pi)**2
+    return area_box    
+
 
 def uniform_sphere(
     ra_limits, dec_limits, size: int = 1, density: float = None,
@@ -59,7 +68,7 @@ def uniform_sphere(
     RA = ra_limits[0] + (ra_limits[1] - ra_limits[0]) * np.random.random(size)
     return np.column_stack([RA, DEC])
 
-def _single_image_coverage(
+def single_image_coverage(
     image_path, ra, dec, minimum_coverage=0.0, absolute_value=True, hdu=0
 ):
     with fits.open(image_path) as img:
@@ -121,7 +130,7 @@ def objects_in_coverage(
     if not isinstance(hdu, list):
         hdu = [hdu] * len(image_list)
     for ii, image_path in enumerate(image_list):
-        mask = _single_image_coverage(
+        mask = single_image_coverage(
             image_path, ra, dec, 
             minimum_coverage=minimum_coverage[ii], 
             absolute_value=absolute_value[ii],
@@ -131,7 +140,7 @@ def objects_in_coverage(
     return full_mask
 
 def calc_survey_area(
-    image_list, ra_limits=None, dec_limits=None, density=1e4
+    image_list, ra_limits=None, dec_limits=None, density=1e4, return_randoms=False
 ):
     """
     Monte-carlo to find survey area from list of fits files.
@@ -173,43 +182,124 @@ def calc_survey_area(
     survey_mask = objects_in_coverage(image_list, randoms[:,0], randoms[:,1])
     factor = len(randoms[ survey_mask ]) / len(randoms)
     survey_area = factor * area_box
+    if return_randoms:
+        return survey_area, randoms[ survey_mask ]
     return survey_area
 
-def calc_spherical_rectangle_area(ra_limits, dec_limits):
-    dra = ra_limits[1] - ra_limits[0]
-    ddec = np.sin(dec_limits[1] * np.pi / 180.) - np.sin(dec_limits[0] * np.pi / 180.)
-    area_box = dra * ddec * 180. / np.pi
-    return area_box    
+###==================== mosaics
+
+def build_mosaic_header(
+    center: SkyCoord, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
+):
+    """
+    basically a convenience for 
+    >>> w = build_mosaic_wcs(<args>)
+    >>> header = wcs.to_header()
+    """
+    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj, **kwargs)
+    h = w.to_header()
+    #h.insert(0, "SIMPLE", "T")
+    #h.insert(1, "BITPIX", -32)
+    #h.insert(2, "NAXIS", 2)
+    #h.insert(3, "NAXIS1", size[0])
+    #h.insert(4, "NAXIS2", size[1])
+    #print(h["SIMPLE"])
+    return h   
+
+def build_mosaic_wcs(
+    center, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
+):
+    """
+    size as (XPIX, YPIX) - because WCS of rules...
+    pixel_scale in ARCSEC.
+    """
+    """
+    w = WCS(naxis=2)
+    w.wcs.crpix = [size[0]/2, size[1]/2]
+    w.wcs.cdelt = [-pixel_scale / 3600., pixel_scale / 3600.]
+    if isinstance(center, SkyCoord):
+        w.wcs.crval = [center.ra.value, center.dec.value]
+    else:
+        w.wcs.crval = [center[0], center[1]]
+    w.wcs.ctype = [
+        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
+    ]
+    w.naxis1 = size[0]
+    w.naxis2 = size[1]"""
+    
+    cr1 = center.ra.value if isinstance(center, SkyCoord) else center[0]
+    cr2 = center.dec.value if isinstance(center, SkyCoord) else center[1]
+
+    wcs_dict = {
+        "CTYPE1": "RA" + "-" * (6-len(proj)) + proj,
+        "CUNIT1": "deg",
+        "CDELT1": -pixel_scale / 3600.,
+        "CRPIX1": size[0] / 2,
+        "CRVAL1": cr1,
+        "NAXIS1": size[0],
+        "CTYPE2": "DEC" + "-" * (5-len(proj)) + proj,
+        "CUNIT2": "deg",
+        "CDELT2": pixel_scale / 3600.,
+        "CRPIX2": size[1] / 2,
+        "CRVAL2": cr2,
+        "NAXIS2": size[1],
+        **kwargs,
+    }
+    w = WCS(wcs_dict)
+    w.fix()
+    return w
+
+    
 
 ###================== coverage mosaics ==================###
 
 def make_good_coverage_map(
     coverage_map_path, 
+    minimum_coverage,
     output_path=None,
-    minimum_num_pixels=None, absolute_minimum=3, frac=1.0,
-    weight_map_path=None, weight_minimum=0.8, # ??? a complete guess.
-    dilation_structure=None, dilation_iterations=150,
+    #minimum_num_pixels=None, absolute_minimum=2, frac=1.0,
+    weight_map_path=None, minimum_weight=0.8, # ??? a complete guess.
+    dilation_structure=None, dilation_iterations=50,
     hdu=0
 ):
+    """
+    modify an image 3 steps: [sq. brackets show defaults]
+        1:
+            set any pixels less than minimum_coverage=[2] to zero.
+        2:
+            set any pixels to zero if corresponding weight_map pixel 
+            are less than minimimum_weight=[0.8] (if weight_map_path) is provided.
+        3.
+            dilate the zero regions with scipy's binary dilation
+                -- but NOT the outside 2 pixels. we leave these in case of swarp error, etc.
+            kwargs for this are dilation_structure=[None], dilation_iterations=[50].
+            
+    """
+
     coverage_map_path = Path(coverage_map_path)
     logger.info(f"modify {coverage_map_path.name}")
     with fits.open(coverage_map_path) as f:
-        data = f[hdu].data.astype(int)
+        data = f[hdu].data #.astype(int)
+        data = np.around(data, decimals=0)
         fwcs = WCS(f[hdu].header)
-        if minimum_num_pixels is None:
-            minimum_num_pixels = estimate_minimum_num_pixels(fwcs)
-        minimum_coverage = get_minimum_coverage_value(
-            data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
-        )
+        #if minimum_coverage is None:
+        #    if minimum_num_pixels is None:
+        #        minimum_num_pixels = estimate_minimum_num_pixels(fwcs)
+        #    minimum_coverage = get_minimum_coverage_value(
+        #        data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
+        #    )
+            
         data[data < minimum_coverage] = 0.
         if weight_map_path is not None:
             with fits.open(weight_map_path) as weight:
                 wdat = weight[0].data
-                data[ wdat < weight_minimum ] = 0.
+                if wdat.shape != data.shape:
+                    raise ValueError(f"weight shape ({wdat.shape}) not the same as input shape ({data.shape})")
+                data[ wdat < minimum_weight ] = 0.
         if dilation_iterations > 0:
             data = dilate_zero_regions(
-                data, dilation_structure=dilation_structure, dilation_iterations=dilation_iterations
-            )
+                data, structure=dilation_structure, iterations=dilation_iterations
+            )    
         good_coverage = fits.PrimaryHDU(data=data, header=f[hdu].header)
         if output_path is None:
             output_path = coverage_map_path.with_suffix(".good_cov.fits")
@@ -241,11 +331,11 @@ def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, fra
     logger.info(f"select minimum coverage as >{minimum_coverage}")
     return minimum_coverage
 
-def dilate_zero_regions(data, dilation_structure=None, dilation_iterations=150):
+def dilate_zero_regions(data, structure=None, iterations=50):
     mask = (data[2:-2, 2:-2] == 0)
     old_zeros = mask.sum()    
     mask = binary_dilation(
-        mask, structure=dilation_structure, iterations=dilation_iterations
+        mask, structure=structure, iterations=iterations
     )
     new_zeros = mask.sum()
     data[2:-2, 2:-2][ mask ] = 0.
@@ -259,31 +349,39 @@ def mask_regions_in_mosaic(
     region_list,
     expand=1000,
     output_path=None,
+    skip_checks=False,
 ):
     logger.info("start masking regions")
+    if len(region_list) == 0:
+        logger.info("No regions to mask.")
+        return None
     with fits.open(mosaic_path) as f:
         data = f[0].data.copy()
         header = f[0].header
         wcs = WCS(header)
         ylen, xlen = data.shape
-    expanded_wcs = Cutout2D(
-        data, position=(xlen//2, ylen//2), size=(xlen+expand, ylen+expand), wcs=wcs,
-        mode="partial", fill_value=1
-    ).wcs
-    
-    footprint = wcs.calc_footprint()    
-    footprint_region = PolygonSkyRegion(SkyCoord(footprint, unit="degree")).to_pixel(wcs)
+    if not skip_checks:
+        expanded_wcs = Cutout2D(
+            data, position=(xlen//2, ylen//2), size=(xlen+expand, ylen+expand), wcs=wcs,
+            mode="partial", fill_value=1
+        ).wcs
+        
+        footprint = wcs.calc_footprint()    
+        footprint_region = PolygonSkyRegion(SkyCoord(footprint, unit="degree")).to_pixel(wcs)
 
-    logger.info(f"find relevant regions from {len(region_list)}")
-    # ugly ugly blergh - but faster than concat...
-    ra_vals = np.array([region.center.ra.degree for region in region_list])
-    dec_vals = np.array([region.center.dec.degree for region in region_list])
-    sky_coord = SkyCoord(ra=ra_vals, dec=dec_vals, unit="degree")
-    contained_by = sky_coord.contained_by(expanded_wcs)
-    region_list = [region for region, contained in zip(region_list, contained_by) if contained]
+        logger.info(f"find relevant regions from {len(region_list)}")
+        # ugly ugly blergh - but faster than concat...
+        ra_vals = np.array([region.center.ra.degree for region in region_list])
+        dec_vals = np.array([region.center.dec.degree for region in region_list])
+        sky_coord = SkyCoord(ra=ra_vals, dec=dec_vals, unit="degree")
+        contained_by = sky_coord.contained_by(expanded_wcs)
+        region_list = [region for region, contained in zip(region_list, contained_by) if contained]
+    else:
+        logger.info("skip checking for relevant regions")
+
 
     logger.info(f"masking {len(region_list)} regions")
-    for ii, sky_region in enumerate(region_list):
+    for sky_region in tqdm.tqdm(region_list):
         pix_region = sky_region.to_pixel(wcs)
         bbox = pix_region.bounding_box
         if bbox.ixmax < 0 or bbox.ixmin > xlen or bbox.iymin > ylen or bbox.iymax < 0:

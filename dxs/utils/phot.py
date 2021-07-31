@@ -1,14 +1,19 @@
+import logging
 import yaml
 
 from easyquery import Query
 
 from dxs import paths
 
+logger = logging.getLogger("utils_phot")
+
 survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 dM_lookup = survey_config["ab_vega_offset"]
+f0_lookup = survey_config["zeropoint_flux"]
+rv_lookup = survey_config["reddening_coeffs"]
 
 def get_dM(band):
     """dM is defined st. m_AB = m_Vega + offset"""
@@ -16,6 +21,9 @@ def get_dM(band):
 
 def get_f0(band):
     return f0_lookup[band]
+
+def get_rv(band):
+    return rv_lookup.get(band, None)
 
 def ab_to_vega(mag_ab, dM=None, band=None):
     """dM is defined st. m_AB = m_Vega + offset"""
@@ -40,8 +48,19 @@ def vega_to_flux(mag, f0=None, band=None):
         raise ValueError("f0 cannot be None - provide dM [float] or band [str]")
     return f0*10**(-mag/2.5)
 
-def ab_to_flux(mag, f0):
-    raise NotImplementedError
+def ab_to_flux(mag, band=None):
+    if band is not None:
+        logger.info(f"ignore 'band={band}': fv0=3631 for AB")
+    return 3631. * 10**(-mag / 2.5)
+    #raise NotImplementedError
+
+def apply_extinction(mag, ebv, band=None):
+    if band is None:
+        raise ValueError("Must pass band, eg. band='i'")
+    rv = get_rv(band)
+    if rv is None:
+        raise ValueError("no rv value in survey_config")
+    return mag - rv * ebv # make magnitude BRIGHTER.
 
 """
 def select_starforming(

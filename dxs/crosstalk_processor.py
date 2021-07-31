@@ -39,9 +39,9 @@ class CrosstalkProcessor:
         self.star_catalog = star_catalog
         self.star_catalog.add_column(np.arange(len(star_catalog)), name="parent_id")
         if crosstalk_catalog_path is None:
-            temp_crosstalk_dir = paths.temp_data_path / "crosstalks"
-            temp_crosstalk_dir.mkdir(exist_ok=True, parents=True)
-            crosstalk_catalog_path = temp_crosstalk_dir / f"crosstalks_{int(time.time())}.cat"
+            scratch_crosstalk_dir = paths.scratch_data_path / "crosstalks"
+            scratch_crosstalk_dir.mkdir(exist_ok=True, parents=True)
+            crosstalk_catalog_path = scratch_crosstalk_dir / f"crosstalks_{int(time.time())}.cat"
         self.crosstalk_catalog_path = Path(crosstalk_catalog_path)
         self.crosstalk_orders = np.concatenate( 
             [np.arange(-max_order, 0), np.arange(1, max_order+1)] # remember arange endpoints...
@@ -66,19 +66,25 @@ class CrosstalkProcessor:
         )
 
     def collate_crosstalks(
-        self, mag_column, mag_limit=15.0, ra="ra", dec="dec", save_path=None, n_cpus=None
+        self, mag_column, mag_limit=15.0, ra="ra", dec="dec", 
+        save_path=None, n_cpus=None, ccds=None
     ):
         crosstalk_table_list = []
         logger.info(f"collate crosstalks from {len(self.stack_list)} stacks")
         if n_cpus is None:
             for ii, stack_path in tqdm.tqdm(enumerate(self.stack_list)):
                 stack_crosstalks = self.get_crosstalks_in_stack(
-                    stack_path, mag_column=mag_column, mag_limit=mag_limit, ra="ra", dec="dec"
+                    stack_path, mag_column=mag_column, mag_limit=mag_limit, 
+                    ra="ra", dec="dec", ccds=ccds,
                 )
                 crosstalk_table_list.append(stack_crosstalks)
         else:
             kwargs = {
-                "mag_column": mag_column, "mag_limit": mag_limit, "ra": ra, "dec": dec,
+                "mag_column": mag_column, 
+                "mag_limit": mag_limit, 
+                "ra": ra, 
+                "dec": dec,
+                "ccds": ccds,
             }
             arg_list = [(stack_path, kwargs) for stack_path in self.stack_list]
             with Pool(n_cpus) as pool:
@@ -110,12 +116,14 @@ class CrosstalkProcessor:
         return self.get_crosstalks_in_stack(args, **kwargs)    
             
     def get_crosstalks_in_stack(
-        self, stack_path, mag_column=None, mag_limit=15.0, ra="ra", dec="dec"
+        self, stack_path, mag_column=None, mag_limit=15.0, ra="ra", dec="dec", ccds=None
     ):
+        if ccds is None:
+            ccds = survey_config["ccds"]
         crosstalk_table_list = []
         with fits.open(stack_path) as f:
             pointing = f[0].header["OBJECT"].split()[3]
-            for ii, ccd in enumerate(survey_config["ccds"]):
+            for ii, ccd in enumerate(ccds):
                 header = f[ccd].header
                 fwcs = wcs.WCS(header)
                 xlen = header["NAXIS1"]
@@ -227,10 +235,10 @@ class CrosstalkProcessor:
 
     def extract_from_inverse_mosaic(self, mosaic_path, weight_path=None):
         mosaic_path = Path(mosaic_path)
-        temp_crosstalks_dir = paths.temp_data_path / "crosstalks"
-        temp_crosstalks_dir.mkdir(exist_ok=True, parents=True)
-        inv_mosaic_path = temp_crosstalks_dir / f"inverse_{mosaic_path.stem}.fits"
-        xtalk_catalog_path = temp_crosstalks_dir / f"{mosaic_path.stem}_detections.fits"
+        scratch_crosstalks_dir = paths.scratch_data_path / "crosstalks"
+        scratch_crosstalks_dir.mkdir(exist_ok=True, parents=True)
+        inv_mosaic_path = scratch_crosstalks_dir / f"inverse_{mosaic_path.stem}.fits"
+        xtalk_catalog_path = scratch_crosstalks_dir / f"{mosaic_path.stem}_detections.fits"
         scale_mosaic(mosaic_path, value=-1.0, save_path=inv_mosaic_path)
         if weight_path is None:
             weight_path = mosaic_path.with_suffix(".weight.fits")
@@ -261,7 +269,8 @@ class CrosstalkProcessor:
 def calc_crosstalk_magnitude_coeffs(cat, band):
     """
     """
-
+    raise NotImplementedError
+    """
     fig,axes = plt.subplots(2,4, figsize=(10,6))
     axes = axes.flatten()
 
@@ -282,7 +291,7 @@ def calc_crosstalk_magnitude_coeffs(cat, band):
         for yoff in [6,7,8,9,10,11,12]:
             axes[ii].plot((0,20), (yoff, 20+yoff), color="k", ls="--", alpha=0.2)
         axes[ii].set_xlim(6,13)
-        axes[ii].set_ylim(14,22)
+        axes[ii].set_ylim(14,22)"""
 
     return fig
 

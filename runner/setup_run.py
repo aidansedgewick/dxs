@@ -1,3 +1,4 @@
+import datetime
 import yaml
 from argparse import ArgumentParser
 from itertools import product
@@ -44,15 +45,20 @@ if __name__ == "__main__":
     run_config_path = Path(args.config)
     run_config = read_run_config(run_config_path)
     run_name = run_config.get("run_name", None)
+    datestr = datetime.datetime.today().strftime("%y%m%d")
     if run_name is None:
-        run_name = run_config_path.stem
+        run_name = f"{run_config_path.stem}_{datestr}"
         print(f"set run_name to {run_name}")
+    run_name = run_name.replace("$date", datestr)
 
     base_dir = paths.runner_path / f"runs/{run_name}"
     base_dir.mkdir(exist_ok=True, parents=True)
     
     python_script_path = Path(run_config["python_script_path"]).absolute()
-    script_maker = ScriptMaker(python_script_path, base_dir=base_dir)
+    if not python_script_path.exists():
+        print(f"\033[31;1mWARN:\033[0m {python_script_path} not found.")
+    job_name = run_config.get("job_name", None)
+    script_maker = ScriptMaker(python_script_path, base_dir=base_dir, job_name=job_name)
 
     arg_list = []
     for k, v in run_config.get("args",{}).items():

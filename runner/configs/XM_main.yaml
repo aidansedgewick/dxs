@@ -1,0 +1,12 @@
+
+base_dir: "/cosma5/data/durham/dc-sedg2/dxs/"
+python_script_path: "@base_dir/dxs/pipelines/main_pipeline.py" # required!
+run_name: "XM_main_$date"# required! meaningful name...
+job_name: "xm"
+
+args:
+    fields: XM
+    tiles: 1-8
+    
+kwargs:
+    n_cpus: 16

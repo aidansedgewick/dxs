@@ -1,7 +1,8 @@
 
 base_dir: "/cosma5/data/durham/dc-sedg2/dxs/"
 python_script_path: "@base_dir/dxs/pipelines/main_pipeline.py" # required!
-run_name: "EN_main_210323"# required! meaningful name...
+run_name: "EN_main_$date"# required! meaningful name...
+job_name: "en"
 
 args:
     fields: EN

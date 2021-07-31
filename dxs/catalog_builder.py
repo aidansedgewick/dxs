@@ -95,8 +95,16 @@ class CatalogExtractor:
 
     @classmethod
     def from_dxs_spec(
-        cls, field, tile, detection_band, measurement_band=None, prefix=None, catalog_stem=None,
-        sextractor_config=None, sextractor_config_file=None, sextractor_parameter_file=None,
+        cls, 
+        field, 
+        tile, 
+        detection_band, 
+        measurement_band=None, 
+        prefix=None, 
+        catalog_stem=None,
+        sextractor_config=None, 
+        sextractor_config_file=None, 
+        sextractor_parameter_file=None,
     ):
         """
         Build a catalog directly from field name, tile number, band. (eg EN 4 K)
