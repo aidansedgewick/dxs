@@ -13,7 +13,7 @@ pandas
 photutils
 pytest
 regions
-eproject
+reproject
 scipy
 shutil
 tqdm
