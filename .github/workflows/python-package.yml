@@ -40,6 +40,7 @@ jobs:
         sudo apt-get install stilts
     - name: Install dxs suite
       run: |
+        python3 configuration/configure_dustmaps.py
         python3 -m pip install -e .
     #- name: Lint with flake8
     #  run: |

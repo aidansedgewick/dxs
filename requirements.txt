@@ -16,4 +16,3 @@ regions
 reproject
 scipy
 tqdm
-treecorr
