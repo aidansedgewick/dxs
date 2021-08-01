@@ -12,7 +12,7 @@ numpy
 pandas
 photutils
 pytest
-astropy-regions
+regions
 eproject
 scipy
 shutil
