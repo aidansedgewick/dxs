@@ -15,6 +15,5 @@ pytest
 regions
 reproject
 scipy
-shutil
 tqdm
 trecorr
