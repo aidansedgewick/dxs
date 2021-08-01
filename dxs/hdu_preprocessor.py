@@ -74,8 +74,11 @@ class HDUPreprocessor:
         bool - if True, add `flxscale` to output header, calculated as 
         10**(-0.4*(magzpt-reference_magzpt)), if `reference_magzpt` is provided. 
     reference_magzpt
-        used to calculate flxscale. add 2.5*log10(exptime) if `normalise_exptime` is True. 
-        default None. 
+        used to calculate flxscale.  
+        default None.
+    overwrite_magzpt
+        bool - if True, replace the MAGZPT entry in the header, with the version with
+         +2.5log10(exptime) and +AB_conversion (if provided). default False
     """
 
     def __init__(
@@ -95,12 +98,13 @@ class HDUPreprocessor:
         exptime: float = None, 
         add_flux_scale: bool = False, 
         reference_magzpt: float = None, 
-        AB_conversion: float = 0.0
+        AB_conversion: float = 0.0,
+        overwrite_magzpt: bool = False,
     ):
         self.data = hdu.data
         self.header = hdu.header
 
-        self.hdu_output_path = hdu_output_path
+        self.hdu_output_path = Path(hdu_output_path)
 
         self.hdu_wcs = WCS(hdu.header)
         self.hdu_wcs.fix()
@@ -141,8 +145,8 @@ class HDUPreprocessor:
                 raise ValueError("bgr_size should be int or tuple(int, int)")
             if isinstance(bgr_size, int):
                 bgr_size = (bgr_size, bgr_size)
-            if isinstance(filter_size, int):
-                filter_size = (filter_size, filter_size)
+        if isinstance(filter_size, int):
+            filter_size = (filter_size, filter_size)
         self.subtract_bgr = subtract_bgr
         self.bgr_size = bgr_size
         self.filter_size = filter_size
@@ -184,7 +188,8 @@ class HDUPreprocessor:
 
         self.add_flux_scale = add_flux_scale
         self.magzpt = magzpt
-        self.reference_magzpt = reference_magzpt         
+        self.reference_magzpt = reference_magzpt
+        self.overwrite_magzpt = overwrite_magzpt       
       
     def modify_header(self):
         if self.add_flux_scale:
@@ -192,6 +197,8 @@ class HDUPreprocessor:
             flux_scaling = 10**(-0.4*mag_diff)
             self.header["FLXSCALE"] = flux_scaling
             logger.info(f"flxscl {self.hdu_output_path.stem} {flux_scaling:.2f}")
+        if self.overwrite_magzpt:
+            self.header["MAGZPT"] = self.magzpt
         if self.exptime is not None:
             self.header["EXP_TIME"] = self.exptime
 
@@ -261,22 +268,37 @@ class HDUPreprocessor:
         mask = mask.astype(bool) # Background2D expects True for masked pixels.
         return mask
 
-    def get_background(self, source_mask=None):
+    def get_background(self, source_mask: np.ndarray = None):
+        """
+        Returns a photutils Background2D object.
+        >>> hdu_proc = HDUPreprocessor(hdu, output_path)
+        >>> bgr = hdu_proc.get_background()
+        >>> bgr_map = bgr.background.
+    
+        Arguments
+        ---------
+        source_mask
+            a (boolean) 2D numpy array, where True elements are sources are to 
+            be ignored during background estimation. If provided, must be the same
+            shape as the hdu data.
+            Defaults to None (ie, no pixels ignorred)
+        
+        """
         sigma_clip = SigmaClip(sigma=self.sigma)
         estimator = SExtractorBackground(sigma_clip)
-        bgr_map = Background2D(
+        bgr = Background2D(
             self.data, 
             mask=source_mask, 
             sigma_clip=sigma_clip, 
             bkg_estimator=estimator,
             box_size=self.bgr_size, #(self.bgr_size, self.bgr_size),
-            filter_size=(1,1)
+            filter_size=self.filter_size
         )
-        return bgr_map
+        return bgr # This is a photutils.Background2D
 
     @classmethod
     def prepare_stack(
-        cls, stack_path, overwrite=False, hdu_prefix=None, ccds=None, **kwargs
+        cls, stack_path, overwrite=False, hdu_prefix=None, ccds=None, output_dir=None, **kwargs
     ):
         """
         class method - prepare a whole stack (ie, multi-extension fits) of HDUs.
@@ -300,6 +322,7 @@ class HDUPreprocessor:
         stack_path = Path(stack_path)
         results = []
         ccds = ccds or survey_config["ccds"]
+        output_dir = Path(output_dir) or paths.scratch_hdus_path
         with fits.open(stack_path) as f:
             try:
                 objsplit = f[0].header["OBJECT"].split()
@@ -309,14 +332,14 @@ class HDUPreprocessor:
             for ii, ccd in enumerate(ccds):
                 stack_str = stack_path.stem + spec
                 hdu_name = get_hdu_name(stack_str, ccd, prefix=hdu_prefix)
-                hdu_output_path = paths.scratch_hdus_path / hdu_name # includes ".fits" already...
+                hdu_output_path = output_dir / hdu_name # includes ".fits" already...
                 logger.info(f"prp {hdu_output_path.stem}")
                 if not overwrite and hdu_output_path.exists():
                     results.append(hdu_output_path)
                     continue
                 exptime = f[0].header["EXP_TIME"]
                 if exptime is None:
-                    raise ValueError(f"{stack_path.name} EXP-TIME is NONE")
+                    raise ValueError(f"{stack_path.name} EXP_TIME is NONE")
                 p = cls(f[ccd], hdu_output_path, exptime=exptime, **kwargs)
                 result = p.prepare_hdu()
                 if result is not None:

@@ -16,7 +16,6 @@ from astropy.modeling import models
 from astropy.table import Table
 from astropy.wcs import WCS
 
-import 
 
 from photutils.datasets import make_gaussian_sources_image
 from regions import read_ds9

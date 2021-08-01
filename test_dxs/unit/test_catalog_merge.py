@@ -1,60 +1,178 @@
 import numpy as np
+import pytest
 
+from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from astropy.table import Table
 
 from easyquery import Query
 
 from dxs import catalog_merge
 
+from dxs.utils.image import (
+    build_mosaic_wcs, uniform_sphere, calc_survey_area, calc_spherical_rectangle_area
+)
+
 from dxs import paths
 
-def test__modify_id_value():
-    id_vals = np.array([0,1,2,3,4,5,6,7])
-    other_data = np.array([1.0, 2.1, 33.2, 1e5, -10.0, 77.7, 0.0, 4.])
-    t = Table({"id": id_vals, "other_data": other_data})
-    table_path = paths.scratch_test_path / "test_modify_id.cat.fits"
-    t.write(table_path, overwrite=True)
 
-    catalog_merge._modify_id_value(table_path, id_modifier=1000000)
-    modified = Table.read(table_path)
-    assert all(modified["id"] == id_vals + 1000000)
-    assert all(modified["other_data"] == other_data)
+def test__contained_in_multiple_wcs():
+    """
+    This is a poor test.
+    # TODO: make this better somehow?
+    # ideally would select the "expected" randoms in multiple WCS by 
+    looking at dec > some_value, but I can't figure out how to deal with wcs_max_dec
+    is a function of ra.
+    """
+
+    size = int(1.1 * 3600)
+    
+    c1 = SkyCoord(ra=180., dec=0.5, unit="deg")
+    c2 = SkyCoord(ra=180., dec=-0.5, unit="deg") 
+    s1 = ( size, int(size * np.cos(c1.dec)) )
+    s2 = ( size, int(size * np.cos(c2.dec)) )
+
+    wcs1 = build_mosaic_wcs(c1, s1[::-1], pixel_scale=1.0)
+    wcs2 = build_mosaic_wcs(c2, s2[::-1], pixel_scale=1.0)
+
+    r_arr = uniform_sphere((179., 181.), (-1.5, 1.5), density=1e5)
+    randoms = SkyCoord(ra=r_arr[:,0], dec=r_arr[:,1], unit="deg")
+
+    in_wcs1 = wcs1.footprint_contains(randoms)
+    in_wcs2 = wcs2.footprint_contains(randoms)
+
+    with pytest.raises(ValueError):
+        failing_mask = catalog_merge.contained_in_multiple_wcs(randoms, [wcs1, wcs2], at_least_one=True)
+        # ie, some randoms are outside the wcses.
+
+    good_randoms = randoms[ in_wcs1 | in_wcs2 ]
+    mask = wcs1.footprint_contains(good_randoms) & wcs2.footprint_contains(good_randoms)
+    assert sum(mask) > 0 # there are randoms in both wcses.
+
+    result = catalog_merge.contained_in_multiple_wcs(good_randoms, [wcs1, wcs2], at_least_one=True)
+    np.testing.assert_array_equal(mask, result)
+
+    ## compare AREAS...???
+
+    data1 = np.ones(s1)
+    hdu1 = fits.PrimaryHDU(data=data1, header=wcs1.to_header())
+    hdu1_path = paths.scratch_test_path / "catmerge_multi_wcs1.fits"
+    hdu1.writeto(hdu1_path, overwrite=True)
+
+    data2 = np.ones(s2)
+    hdu2 = fits.PrimaryHDU(data=data2, header=wcs2.to_header())
+    hdu2_path = paths.scratch_test_path / "catmerge_multi_wcs2.fits"
+    hdu2.writeto(hdu2_path, overwrite=True)
+    
+    area_from_hdus = calc_survey_area([hdu1_path, hdu2_path], density=1e5)
+
+    rect_area = calc_spherical_rectangle_area((179., 181.), (-1.5, 1.5))
+    overlap_area = rect_area * sum(result) / len(randoms) # ALL randoms, not just good.
+    assert np.isclose(overlap_area, area_from_hdus, rtol=0.01) # fairly lenient...
+
+    
+def test__select_group_argmax():
+
+    tab = Table({
+        "group_id": [1,  1,  1,  1,  2,  2,  3,  3,  4 ],
+        "test_val": [1., 2., 3., 4., 5., 6., 7., 8., 9.],
+        "snr_val":  [1., 2., 9., 1., 2., 8., 3., 3., 4.],
+        ##          |        ^     |     ^ | ^     | ^ |
+    })
+    
+    result = catalog_merge.select_group_argmax(tab, "group_id", "snr_val")
+    
+    assert len(result) == 4
+
+    assert np.isclose(result[ result["group_id"] == 1]["test_val"], 3.)
+    assert np.isclose(result[ result["group_id"] == 1]["snr_val"], 9.)
+
+    assert np.isclose(result[ result["group_id"] == 2]["test_val"], 6.)
+    assert np.isclose(result[ result["group_id"] == 2]["snr_val"], 8.)
+
+    assert np.isclose(result[ result["group_id"] == 3]["test_val"], 7.) 
+    assert np.isclose(result[ result["group_id"] == 3]["snr_val"], 3.)
+
+    assert np.isclose(result[ result["group_id"] == 4]["test_val"], 9.)
+    assert np.isclose(result[ result["group_id"] == 4]["snr_val"], 4.)
+
 
 def test__merge_catalogs():
+    c1 = SkyCoord(ra=214.5, dec=44.5, unit="deg")
+    c2 = SkyCoord(ra=215.5, dec=44.5, unit="deg")
+    c3 = SkyCoord(ra=215.5, dec=45.5, unit="deg")
+    c4 = SkyCoord(ra=214.5, dec=45.5, unit="deg")
 
-    # make an array of points, split it with overlap, and see what merges.
-    ra_points = np.linspace(-1.0, 1.0, 100) # spacing here should be larger than match error.
-    dec_points = np.linspace(-1.0, 1.0, 100) # spacing here should be larger than match error.
-    
-    ra_vals, dec_vals = np.meshgrid(ra_points, dec_points)
-    ra_vals = ra_vals.flatten()
-    dec_vals = dec_vals.flatten()
+    size = int(1.1 * 3600)
+    pixel_scale = 1.0
 
-    id_vals = np.arange(len(ra_vals))
-    snr_vals = np.full(len(ra_vals), 1.) + 1e-2 * np.random.uniform(0, 1, len(ra_vals))
+    s1 = (size, int(size * np.cos(c1.dec)) ) 
+    s2 = (size, int(size * np.cos(c2.dec)) )
+    s3 = (size, int(size * np.cos(c3.dec)) )
+    s4 = (size, int(size * np.cos(c4.dec)) )
 
-    main_catalog = Table({"id": id_vals, "ra": ra_vals, "dec": dec_vals, "snr": snr_vals})
+    wcs1 = build_mosaic_wcs(c1, s1[::-1], pixel_scale)
+    wcs2 = build_mosaic_wcs(c2, s2[::-1], pixel_scale)
+    wcs3 = build_mosaic_wcs(c3, s3[::-1], pixel_scale)
+    wcs4 = build_mosaic_wcs(c4, s4[::-1], pixel_scale)
 
-    # split catalog: 
+    r_arr = uniform_sphere((212., 218.), (42., 48.), density=1e3)   
+    randoms = SkyCoord(ra=r_arr[:,0], dec=r_arr[:,1], unit="deg")
+    mag_vals = np.random.uniform(16, 24, len(r_arr))
 
-    catalog1 = Query("ra > -0.1", "dec > -0.1").filter(main_catalog)
-    catalog2 = Query("ra > -0.1", "dec < 0.1").filter(main_catalog)
-    catalog3 = Query("ra < 0.1", "dec > -0.1").filter(main_catalog)
-    catalog4 = Query("ra < 0.1", "dec < 0.1").filter(main_catalog)
+    in_wcs1 = wcs1.footprint_contains(randoms)
+    in_wcs2 = wcs2.footprint_contains(randoms)
+    in_wcs3 = wcs3.footprint_contains(randoms)
+    in_wcs4 = wcs4.footprint_contains(randoms)
 
-    for cat, tile in zip([catalog1, catalog2, catalog3, catalog4], [1, 2, 3, 4]):
-        cat["tile"] = np.full(len(cat), tile)
-        cat[ cat["id"] % 4 == tile-1 ]["snr"] = 10.
-        catalog_path = paths.scratch_test_path / f"catalog_{tile}.cat.fits"
-        cat.write(catalog_path, overwrite=True)
+    catalogs = []
+    for ii, mask in enumerate([in_wcs1, in_wcs2, in_wcs3, in_wcs4], 1):
+        cat = Table({
+            "id": np.arange(sum(mask)), 
+            "ra": r_arr[mask, 0], 
+            "dec": r_arr[mask, 1], 
+            "mag": mag_vals[mask],
+            "snr": np.random.uniform(1, 2, sum(mask)),
+            "tile": np.full(sum(mask), ii)
+        })
+        mod4_mask = cat["id"] % 4 == ii
+        cat[ mod4_mask ]["snr"] = cat[ mod4_mask ]["snr"] + 10.
+        catalogs.append(cat)
 
-    assert all(catalog3["tile"] == 3)
-    catalog_list = [paths.scratch_test_path / f"catalog_{tile}_merge.cat.fits" for tile in [1, 2, 3, 4]]
+    cat1, cat2, cat3, cat4 = catalogs
 
-    output_path = paths.scratch_test_path / "merged_catalog.cat.fits"
-    #catalog_merge.merge_catalogs(catalog_list, output_path, "id", "ra", "dec", "snr")
+    in_any_wcs = ( in_wcs1 | in_wcs2 | in_wcs3 | in_wcs4 )
+    expected_output_len = sum(in_any_wcs) 
 
-    # TODO URGENT FIX
+    # weak test...
+    assert sum([len(x) for x in [cat1, cat2, cat3, cat4]]) > expected_output_len
+
+    input_data_list = [
+        (cat1, wcs1), (cat2, wcs2), (cat3, wcs3), (cat4, wcs4)
+    ]
+    output_path = paths.scratch_test_path / "merge_test.cat.fits"
+    catalog_merge.merge_catalogs(
+        input_data_list, output_path, "id", "ra", "dec", "snr", 
+        value_check_col="mag",
+        match_error=0.5,
+    )
+
+    merged = Table.read(output_path)
+
+    assert len(merged) == expected_output_len
+
+    grid = np.column_stack([in_wcs1, in_wcs2, in_wcs3, in_wcs4])
+    expected_overlap = sum(np.sum(grid, axis=1) > 1)
+    in_overlap = sum(merged["GroupSize"] > 0)
+    assert expected_overlap == in_overlap
+
+    center_square_mask = ( in_wcs1 & in_wcs2 & in_wcs3 & in_wcs4 )
+    in_center_square = sum(center_square_mask)
+    assert len(merged[ merged["GroupSize"] == 4 ]) == in_center_square
+
+
+
+
 
 
 

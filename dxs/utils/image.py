@@ -28,6 +28,71 @@ survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
+
+###==================== mosaics ======================###
+
+def build_mosaic_header(
+    center: SkyCoord, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
+):
+    """
+    basically a convenience for 
+    >>> w = build_mosaic_wcs(<args>)
+    >>> header = wcs.to_header()
+    """
+    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj, **kwargs)
+    h = w.to_header()
+    #h.insert(0, "SIMPLE", "T")
+    #h.insert(1, "BITPIX", -32)
+    #h.insert(2, "NAXIS", 2)
+    #h.insert(3, "NAXIS1", size[0])
+    #h.insert(4, "NAXIS2", size[1])
+    #print(h["SIMPLE"])
+    return h   
+
+def build_mosaic_wcs(
+    center, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
+):
+    """
+    size as (XPIX, YPIX) - because WCS of rules...
+    pixel_scale in ARCSEC.
+    """
+    """
+    w = WCS(naxis=2)
+    w.wcs.crpix = [size[0]/2, size[1]/2]
+    w.wcs.cdelt = [-pixel_scale / 3600., pixel_scale / 3600.]
+    if isinstance(center, SkyCoord):
+        w.wcs.crval = [center.ra.value, center.dec.value]
+    else:
+        w.wcs.crval = [center[0], center[1]]
+    w.wcs.ctype = [
+        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
+    ]
+    w.naxis1 = size[0]
+    w.naxis2 = size[1]"""
+    
+    cr1 = center.ra.value if isinstance(center, SkyCoord) else center[0]
+    cr2 = center.dec.value if isinstance(center, SkyCoord) else center[1]
+
+    wcs_dict = {
+        "CTYPE1": "RA" + "-" * (6-len(proj)) + proj,
+        "CUNIT1": "deg",
+        "CDELT1": -pixel_scale / 3600.,
+        "CRPIX1": size[0] / 2,
+        "CRVAL1": cr1,
+        "NAXIS1": size[0],
+        "CTYPE2": "DEC" + "-" * (5-len(proj)) + proj,
+        "CUNIT2": "deg",
+        "CDELT2": pixel_scale / 3600.,
+        "CRPIX2": size[1] / 2,
+        "CRVAL2": cr2,
+        "NAXIS2": size[1],
+        **kwargs,
+    }
+    w = WCS(wcs_dict)
+    w.fix()
+    return w
+
+
 ###============= bits related to survey area/randoms. =============###
 
 def calc_spherical_rectangle_area(ra_limits, dec_limits):
@@ -185,71 +250,7 @@ def calc_survey_area(
     if return_randoms:
         return survey_area, randoms[ survey_mask ]
     return survey_area
-
-###==================== mosaics
-
-def build_mosaic_header(
-    center: SkyCoord, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
-):
-    """
-    basically a convenience for 
-    >>> w = build_mosaic_wcs(<args>)
-    >>> header = wcs.to_header()
-    """
-    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj, **kwargs)
-    h = w.to_header()
-    #h.insert(0, "SIMPLE", "T")
-    #h.insert(1, "BITPIX", -32)
-    #h.insert(2, "NAXIS", 2)
-    #h.insert(3, "NAXIS1", size[0])
-    #h.insert(4, "NAXIS2", size[1])
-    #print(h["SIMPLE"])
-    return h   
-
-def build_mosaic_wcs(
-    center, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
-):
-    """
-    size as (XPIX, YPIX) - because WCS of rules...
-    pixel_scale in ARCSEC.
-    """
-    """
-    w = WCS(naxis=2)
-    w.wcs.crpix = [size[0]/2, size[1]/2]
-    w.wcs.cdelt = [-pixel_scale / 3600., pixel_scale / 3600.]
-    if isinstance(center, SkyCoord):
-        w.wcs.crval = [center.ra.value, center.dec.value]
-    else:
-        w.wcs.crval = [center[0], center[1]]
-    w.wcs.ctype = [
-        "RA" + "-" * (6-len(proj)) + proj, "DEC" + "-" * (5-len(proj)) + proj
-    ]
-    w.naxis1 = size[0]
-    w.naxis2 = size[1]"""
-    
-    cr1 = center.ra.value if isinstance(center, SkyCoord) else center[0]
-    cr2 = center.dec.value if isinstance(center, SkyCoord) else center[1]
-
-    wcs_dict = {
-        "CTYPE1": "RA" + "-" * (6-len(proj)) + proj,
-        "CUNIT1": "deg",
-        "CDELT1": -pixel_scale / 3600.,
-        "CRPIX1": size[0] / 2,
-        "CRVAL1": cr1,
-        "NAXIS1": size[0],
-        "CTYPE2": "DEC" + "-" * (5-len(proj)) + proj,
-        "CUNIT2": "deg",
-        "CDELT2": pixel_scale / 3600.,
-        "CRPIX2": size[1] / 2,
-        "CRVAL2": cr2,
-        "NAXIS2": size[1],
-        **kwargs,
-    }
-    w = WCS(wcs_dict)
-    w.fix()
-    return w
-
-    
+   
 
 ###================== coverage mosaics ==================###
 
@@ -257,15 +258,16 @@ def make_good_coverage_map(
     coverage_map_path, 
     minimum_coverage,
     output_path=None,
-    #minimum_num_pixels=None, absolute_minimum=2, frac=1.0,
-    weight_map_path=None, minimum_weight=0.8, # ??? a complete guess.
-    dilation_structure=None, dilation_iterations=50,
+    weight_map_path=None, 
+    minimum_weight=0.8, # ??? a complete guess.
+    dilation_structure=None, 
+    dilation_iterations=50,
     hdu=0
 ):
     """
     modify an image 3 steps: [sq. brackets show defaults]
         1:
-            set any pixels less than minimum_coverage=[2] to zero.
+            set any pixels less than minimum_coverage (required argument).
         2:
             set any pixels to zero if corresponding weight_map pixel 
             are less than minimimum_weight=[0.8] (if weight_map_path) is provided.
@@ -282,13 +284,6 @@ def make_good_coverage_map(
         data = f[hdu].data #.astype(int)
         data = np.around(data, decimals=0)
         fwcs = WCS(f[hdu].header)
-        #if minimum_coverage is None:
-        #    if minimum_num_pixels is None:
-        #        minimum_num_pixels = estimate_minimum_num_pixels(fwcs)
-        #    minimum_coverage = get_minimum_coverage_value(
-        #        data, minimum_num_pixels, absolute_minimum=absolute_minimum, frac=frac
-        #    )
-            
         data[data < minimum_coverage] = 0.
         if weight_map_path is not None:
             with fits.open(weight_map_path) as weight:
@@ -304,32 +299,6 @@ def make_good_coverage_map(
         if output_path is None:
             output_path = coverage_map_path.with_suffix(".good_cov.fits")
         good_coverage.writeto(output_path, overwrite=True)
-
-def estimate_minimum_num_pixels(wcs):
-    sidelength = survey_config.get("wfcam", {}).get("ccd_sidelength", None)
-    if sidelength is None:
-        raise ValueError(
-            "provide wfcam: sidelength in survey config or "
-            "provide minimum_num_pixels as kwarg in "
-            "make_good_coverage_map()"
-        )
-    pixelscale = proj_plane_pixel_scales(wcs)
-    Nx_pixels = (0.8 * sidelength / pixelscale[0])
-    Ny_pixels = (0.8 * sidelength / pixelscale[1])
-    N_pixels = int(Nx_pixels * Ny_pixels)
-    sqrt = int(np.sqrt(N_pixels))
-    logger.info(f"min pix/mosaicked hdu ~{sqrt} pix. sq.")
-    return N_pixels
-
-def get_minimum_coverage_value(data, minimum_num_pixels, absolute_minimum=3, frac=1.0):
-    # bincount is faster for integer data.
-    coverage_hist = np.bincount(data.flatten())[1:] # Ignore the zero count!
-    coverage_vals = np.arange(1, len(coverage_hist)+1)
-    min_coverage = coverage_vals[ coverage_hist > minimum_num_pixels ][0]
-    min_coverage = np.ceil(frac*min_coverage)
-    minimum_coverage = int(np.max([absolute_minimum, min_coverage, 1]))
-    logger.info(f"select minimum coverage as >{minimum_coverage}")
-    return minimum_coverage
 
 def dilate_zero_regions(data, structure=None, iterations=50):
     mask = (data[2:-2, 2:-2] == 0)
@@ -480,28 +449,7 @@ def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
             data = np.around(data, decimals=round_val)
         header = mosaic[hdu].header
     output_hdu = fits.PrimaryHDU(data, header)
-    output_hdu.writeto(save_path, overwrite=True)
-
-def make_normalised_weight_map(weight_path, coverage_path, output_path):
-
-    with fits.open(weight_path) as weight:
-        #shape = weight[0].data.shape
-        data = weight[0].data #.flatten()
-        with fits.open(coverage_path) as coverage:
-            cov = coverage[0].data.astype(int) #.flatten()
-            cov_vals = np.unique(cov)
-            for cval in cov_vals:
-                print(cval)
-                if cval < 1:
-                    continue
-                mask = (cov == cval)
-                cdat = data[ mask ].flatten()
-                med = np.median(cdat)
-                data[ mask ] = data[ mask ] / med
-        #data = data.reshape(shape)
-        new_hdu = fits.PrimaryHDU(data=data, header=weight[0].header)
-    new_hdu.writeto(output_path, overwrite=True)
-    
+    output_hdu.writeto(save_path, overwrite=True)   
 
 ### other
 

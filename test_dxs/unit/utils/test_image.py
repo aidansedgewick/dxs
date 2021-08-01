@@ -13,6 +13,21 @@ from dxs.utils import image
 
 from dxs import paths
 
+
+def test__build_mosaic_wcs():
+    wcs1 = image.build_mosaic_wcs(
+        SkyCoord(ra=180., dec=0.0, unit="deg"), size=(1800, 900), pixel_scale = 1.0
+    )
+
+    assert wcs1.calc_footprint().shape == (4, 2)
+
+    xpix, ypix = SkyCoord(ra=180.25, dec=0.0, unit="deg").to_pixel(wcs1, 1)
+
+    h = wcs1.to_header()
+
+    # This is a quick guess without considering TAN distortion...
+    assert np.allclose([xpix, ypix], [0, 450], atol = 0.01)
+
 def test__calc_spherical_rectangle_area():
     whole_sphere = image.calc_spherical_rectangle_area((0., 360.), (-90., 90.))
     sphere_ster = 4 * np.pi * (180. / np.pi) ** 2
@@ -62,22 +77,6 @@ def test__uniform_sphere():
     hist_2, _ = np.histogram(np.sin(random_coords_2[:, 1] * np.pi / 180.), bins=bins_2)
     num_per_bin_2 = num_randoms_2 / n_bins_2
     assert np.allclose(hist_2, num_per_bin_2, rtol=0.02)
-
-def test__build_mosaic_wcs():
-    wcs1 = image.build_mosaic_wcs(
-        SkyCoord(ra=180., dec=0.0, unit="deg"), size=(1800, 900), pixel_scale = 1.0
-    )
-
-    assert wcs1.calc_footprint().shape == (4, 2)
-
-    xpix, ypix = SkyCoord(ra=180.25, dec=0.0, unit="deg").to_pixel(wcs1, 1)
-
-    h = wcs1.to_header()
-
-    # This is a quick guess without considering TAN distortion...
-    assert np.allclose([xpix, ypix], [0, 450], atol = 0.01)
-
-## URGENT REPLACE
 
 def test__single_image_coverage():
     image_size = (1800, 1800)
@@ -135,7 +134,7 @@ def test__single_image_coverage():
     coverage_path = paths.scratch_test_path / "test_single_coverage.fits"
     hdu.writeto(coverage_path, overwrite=True)
 
-    randoms = image.uniform_sphere((214., 216.), (29., 31.), density=1e3)
+    randoms = image.uniform_sphere((214., 216.), (29., 31.), density=1e4)
     ra_mask = (min_ra < randoms[:,0]) & (randoms[:,0] < max_ra)
     dec_mask = (min_dec < randoms[:,1]) & (randoms[:,1] < max_dec)
     

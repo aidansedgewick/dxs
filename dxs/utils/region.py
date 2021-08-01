@@ -84,7 +84,7 @@ def make_tile_region(
     if isinstance(stack_list, Path):
         stack_list = [stack_list]
 
-    cdds = ccds or [1,2,3,4]
+    ccds = ccds or [1,2,3,4]
 
     regions = []
     for stack in stack_list:
@@ -107,14 +107,6 @@ def make_tile_region(
     if output_path is not None:
         write_ds9(regions, output_path)
     return region
-
-"""def spherical_poly_wrapper(polygons):
-    compound = SphericalPolygon.multi_intersection(polygons)
-    compound_part_points = [points for points in compound.points]
-    if len(compound_part_points) == 0:
-        return None
-    return compound"""
-                
 
 if __name__ == "__main__":
     print("no main block")

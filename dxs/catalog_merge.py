@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import shutil
 import yaml
 from pathlib import Path
@@ -10,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from astropy.table import Table, Column, vstack
+from astropy.table import Table, Column, MaskedColumn, vstack
 from astropy.wcs import WCS
 
 from astromatic_wrapper.api import Astromatic
@@ -21,90 +22,115 @@ from dxs.crosstalk_processor import CrosstalkProcessor
 from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
 from dxs.utils.table import fix_column_names, table_to_numpynd
-from dxs.utils.region import in_only_one_tile, in_only_one_region, guess_wcs_from_region
+#from dxs.utils.region import in_only_one_tile, in_only_one_region, guess_wcs_from_region
 
 from dxs import paths
 
 logger = logging.getLogger("catalog_merge")
 
 def merge_catalogs(
-    catalog_list, region_list, output_path, id_col, ra_col, dec_col, snr_col,
-    error=0.5, coverage_col=None, value_check_column=None, rtol=1e-5, atol=1e-8
+    data_list, output_path, id_col, ra_col, dec_col, snr_col,
+    match_error=0.5, 
+    coverage_col=None, 
+    value_check_col=None, 
+    rtol=1e-5, 
+    atol=1e-8
 ):   
+    """
+    Merge catalogs.
+
+    Arguments
+    ---------
+    data_list
+        list of tuples (astropy_table, wcs) or (catalog_path, wcs)
+    output_path 
+        where to save the output table.
+    id col
+        We modify the ID of each table so that object IDs are not mangled.
+    ra_col, dec_col
+    snr_col
+        select the object in overlapping regions with the highest SNR.
+        
+    """
     output_path = Path(output_path)
-    stem = output_path.stem
-    temp_concat_path = paths.scratch_stilts_path / f"{stem}_concat.fits"
-    temp_overlap_path = paths.scratch_stilts_path / f"{stem}_overlap.fits"
-    temp_single_path = paths.scratch_stilts_path / f"{stem}_single.fits"
-    temp_output_path = paths.scratch_stilts_path / f"{output_path.name}"
-    # Backup all files
-    catalog_list = create_file_backups(catalog_list, paths.scratch_stilts_path)
-    output_path = Path(output_path)
-    for ii, catalog_path in enumerate(catalog_list):
-        id_modifier = int(f"1{ii+1:02d}")*1_000_000
-        _modify_id_value(catalog_path, id_modifier, id_col=id_col)
+    stem = output_path.name.split(".")[0]
+
     # Concatenate them...
-    logger.info(f"concatenate all {len(catalog_list)} catalogs")
     concat_list = []
-    for catalog_path, region in zip(catalog_list, region_list):
-        if isinstance(region, Path) or isinstance(region, str):
-            logger.info(f"read {region.name}")
-            region = read_ds9(region)
-            print(region)
-        rwcs = guess_wcs_from_region(region)
-        tab = Table.read(catalog_path)
+    wcs_list = []
+    for ii, (tab, assoc_wcs) in enumerate(data_list):
+        if isinstance(tab, str) or isinstance(tab, Path):
+            tab = Table.read(catalog_path)
+
+        # modify id value.
+        id_modifier = int(f"1{ii+1:02d}")*1_000_000
+        tab[id_col] = tab[id_col] + id_modifier
+
         if coverage_col is not None:
             tab = tab[ tab[coverage_col] > 0 ]
-
-        coord = SkyCoord(ra=tab[ra_col], dec=tab[dec_col], unit="degree")
-        in_region_mask = region.contains(coord, rwcs)
+        coord = SkyCoord(ra=tab[ra_col], dec=tab[dec_col], unit="degree")       
+        in_region_mask = assoc_wcs.footprint_contains(coord)
+        assert sum(in_region_mask) == len(in_region_mask)
         tab = tab[ in_region_mask ]
         concat_list.append(tab)
-    concat = vstack(concat_list)
-    concat.write(temp_concat_path, overwrite=True)
-    #stilts = Stilts.tcat_fits(catalog_list, output_path=temp_concat_path)
-    #stilts.run()
+        wcs_list.append(assoc_wcs)
+    concat = vstack(concat_list) # astropy Table vstack.
+
     # Now select the objects which are in the overlapping regions.
+    coords = SkyCoord(ra=concat[ra_col], dec=concat[dec_col], unit="deg")
+    overlap_mask = contained_in_multiple_wcs(coords, wcs_list)
+    single = concat[ ~overlap_mask ]
+    overlap = concat[ overlap_mask ]
     
-    single, overlap = separate_single_overlap(
-        temp_concat_path, ra_col=ra_col, dec_col=dec_col, region_list=region_list
-    )
-    single.write(temp_single_path, overwrite=True)
-    overlap.write(temp_overlap_path, overwrite=True)
+    # write this out temporarily...
+    input_overlap_path = paths.scratch_stilts_path / f"{stem}_overlap.cat.fits"
+    if input_overlap_path.exists():
+        os.remove(input_overlap_path)
+    assert not input_overlap_path.exists()
+    overlap.write(input_overlap_path, overwrite=True)
+
     # Do internal match to select objects which appear in more than one frame.
     logger.info("internal match on objects in overlapping regions")
+    output_overlap_path = paths.scratch_stilts_path / f"{stem}_overlap_grouped.cat.fits"
+    if output_overlap_path.exists():
+        os.remove(output_overlap_path)
+    assert not output_overlap_path.exists()
+    
     stilts = Stilts.tmatch1_sky_fits(
-        temp_overlap_path, output_path=temp_overlap_path, 
-        ra=ra_col, dec=dec_col, error=error
+        input_overlap_path, output_path=output_overlap_path, 
+        ra=ra_col, dec=dec_col, error=match_error
     )
+    print(stilts.cmd)
     stilts.run()
-    overlap = Table.read(temp_overlap_path)
+    overlap = Table.read(output_overlap_path)
+
     # separate into unique objects in overlap region vs. grouped objects in overlap region.
     overlap_unique, overlap_groups = separate_unique_grouped(overlap, "GroupID")
     grouped_best = select_group_argmax(
-        overlap_groups, "GroupID", snr_col, value_check_column=value_check_column,
+        overlap_groups, "GroupID", snr_col, value_check_column=value_check_col,
         atol=atol
     )
-    single = Table.read(temp_single_path)    
+    #single = Table.read(temp_single_path)    
     output = vstack([single, grouped_best, overlap_unique])
+    output["GroupID"] = output["GroupID"].filled(-99)
+    output["GroupSize"] = output["GroupSize"].filled(-99)
+    print(output["GroupID"])
     #output.remove_columns(["GroupSize", "GroupID"])
-    output.write(temp_output_path, overwrite=True)
-    shutil.copy2(temp_output_path, output_path)
+
+    output.write(output_path, overwrite=True)
     logger.info(f"done merging - output {output_path}!")
 
-def _modify_id_value(catalog_path, id_modifier, id_col="id",):
-    catalog = Table.read(catalog_path)
-    catalog[id_col] = id_modifier + catalog[id_col]
-    catalog.write(catalog_path, overwrite=True)
-
-def separate_single_overlap(table_path, ra_col, dec_col, region_list):
-    logger.info(f"separate obj in/not in overlapping regions")
-    concat = Table.read(table_path)
-    coords = SkyCoord(ra=concat[ra_col], dec=concat[dec_col], unit="degree")
-    single_tile_mask = in_only_one_region(coords, region_list)
-    single = concat[ single_tile_mask ]
-    overlap = concat[ ~single_tile_mask ]
-    return single, overlap
+def contained_in_multiple_wcs(coords, wcs_list, at_least_one=True):
+    grid = np.zeros( (len(coords), len(wcs_list)) )
+    for ii, wcs in enumerate(wcs_list):
+        grid[:, ii] = wcs.footprint_contains(coords)
+    contained_by_N = grid.sum(axis=1)
+    if at_least_one:
+        N_zeros = sum(contained_by_N < 1)
+        if N_zeros > 0:
+            raise ValueError(f"{N_zeros} coords not contained by ANY wcs in wcs_list")
+    mask = contained_by_N > 1
+    return mask
 
 def select_group_argmax(
     table, group_id, argmax_col, value_check_column=None, rtol=1e-5, atol=1e-8
@@ -153,7 +179,9 @@ def select_group_argmax(
 def separate_unique_grouped(table, group_id, fill_value=-99):
     if any(table["GroupID"] < 0):
         raise ValueError("All non-nan entries in group_id={group_id} should be >=0")
-    table["GroupID"] = table[group_id].filled(fill_value) #stilts internal match gives NaN for unique object GroupID
+    if isinstance(table["GroupID"], MaskedColumn):
+        #stilts internal match gives NaN for unique object GroupID
+        table["GroupID"] = table[group_id].filled(fill_value) 
     table_groups = table[ table[group_id] >=0 ]
     table_unique = table[ table[group_id] == fill_value ]
     logger.info(f"merge: {len(table_unique)} unique obj in in overlap")
