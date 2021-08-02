@@ -29,6 +29,7 @@ jobs:
         python3 -m pip install flake8 pytest
         python3 -m pip install numpy
         python3 -m pip install -r requirements.txt
+        python3 -m pip install pytest-cov
     - name: Install astromatic-wrapper
       run: |
         git clone https://github.com/aidansedgewick/astromatic_wrapper.git
@@ -51,12 +52,18 @@ jobs:
     - name: Test with pytest
       run: |
         cd test_dxs/
-        pytest
-    - uses: codecov/codecov-action@v2
+        pytest --cov=./dxs --cov-report=xml
+
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v2
       with:
-      token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
-      files: ./coverage.xml #,./coverage2.xml # optional
-      # flags: unittests # optional
-      # name: codecov-umbrella # optional
-      fail_ci_if_error: false # optional (default = false)
-      verbose: true # optional (default = false)
+        token: ${{ secrets.CODECOV_TOKEN }}
+        directory: ./coverage/reports/
+        env_vars: OS,PYTHON
+        fail_ci_if_error: false
+        files: ./coverage1.xml,./coverage2.xml
+        flags: unittests
+        name: codecov-umbrella
+        #path_to_write_report: ./coverage/codecov_report.txt
+        verbose: true
