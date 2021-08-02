@@ -1,4 +1,4 @@
-[![codecov](https://codecov.io/gh/aidansedgewick/dxs/branch/main/graph/badge.svg?token=51C78KDGU7)]
+[![codecov](https://codecov.io/gh/aidansedgewick/dxs/branch/main/graph/badge.svg?token=51C78KDGU7)](https://app.codecov.io/gh/aidansedgewick/dxs/)
 
 # dxs
 
