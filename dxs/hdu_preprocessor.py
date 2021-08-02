@@ -322,7 +322,9 @@ class HDUPreprocessor:
         stack_path = Path(stack_path)
         results = []
         ccds = ccds or survey_config["ccds"]
-        output_dir = Path(output_dir) or paths.scratch_hdus_path
+        if output_dir is None:
+            output_dir = paths.scratch_hdus_path
+        output_dir = Path(output_dir)
         with fits.open(stack_path) as f:
             try:
                 objsplit = f[0].header["OBJECT"].split()

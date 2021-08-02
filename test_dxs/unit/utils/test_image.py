@@ -16,17 +16,21 @@ from dxs import paths
 
 def test__build_mosaic_wcs():
     wcs1 = image.build_mosaic_wcs(
-        SkyCoord(ra=180., dec=0.0, unit="deg"), size=(1800, 900), pixel_scale = 1.0
+        SkyCoord(ra=313.2, dec=42.0, unit="deg"), size=(1800, 900), pixel_scale = 1.0
     )
 
     assert wcs1.calc_footprint().shape == (4, 2)
 
-    xpix, ypix = SkyCoord(ra=180.25, dec=0.0, unit="deg").to_pixel(wcs1, 1)
+    assert wcs1.pixel_shape == (1800, 900)
 
     h = wcs1.to_header()
-
-    # This is a quick guess without considering TAN distortion...
-    assert np.allclose([xpix, ypix], [0, 450], atol = 0.01)
+    assert np.isclose(h["CRVAL1"], 313.2)
+    assert np.isclose(h["CRVAL2"], 42.0)
+    assert np.isclose(h["CRPIX1"], 900)
+    assert np.isclose(h["CRPIX2"], 450)
+    
+    # unsure how to properly test this...
+    
 
 def test__calc_spherical_rectangle_area():
     whole_sphere = image.calc_spherical_rectangle_area((0., 360.), (-90., 90.))
@@ -250,6 +254,7 @@ def test__calc_survey_area():
     
     assert np.isclose(cov_area, est_area, rtol=0.005)
 
+
 def test__make_good_coverage_map():
     image_center = SkyCoord(ra=90., dec=45., unit="deg")
     image_size = (1000, 1000)
@@ -396,8 +401,6 @@ def test__mask_regions_in_mosaic():
     rectangle_portion = rdat[c3tpy-10:c3tpy+10, c3tpx-10:c3tpx+10]
     assert np.sum(rectangle_portion) < 1e-6
 
-
-    
 
 
 

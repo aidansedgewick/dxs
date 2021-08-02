@@ -1,6 +1,7 @@
 import logging
 import yaml
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 
@@ -149,6 +150,50 @@ def remove_objects_in_bad_coverage(
     nc_len = len(new_catalog)
     logger.info(f"remove {c_len-nc_len} objects in bad coverage")
     new_catalog.write(catalog_path, overwrite=True)    
+
+def add_map_value_to_catalog(
+    catalog_path, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0
+):
+    catalog = Table.read(catalog_path)
+    with fits.open(mosaic_path) as mosaic:
+        logger.info(f"open {mosaic_path}")
+        mosaic_data = mosaic[hdu].data
+        header = mosaic[hdu].header
+    use_coords = all([ra, dec])
+    use_pixels = all([xpix, ypix])
+    err_msg = "Must provide xpix, ypix column names OR ra, dec column names -- not both."
+    if use_coords and use_pixels:
+        raise ValueError(err_msg)
+    if use_coords:
+        mosaic_wcs = WCS(header)
+        image_positions = table_to_numpynd( catalog[[ra, dec]] )  # TODO: use SkyCoord?
+        pixels = mosaic_wcs.wcs_world2pix(image_positions, 0)
+        x_values = pixels[:,0].astype(int)
+        y_values = pixels[:,1].astype(int)
+    elif xpix is not None and ypix is not None:
+        x_values = catalog[xpix].astype(int)
+        y_values = catalog[ypix].astype(int)
+    else:
+        raise ValueError(err_msg)
+    map_values = mosaic_data[ y_values, x_values ]
+    col = Column(map_values, column_name)
+    catalog.add_column(col)
+    catalog.write(catalog_path, overwrite=True)
+    info = f"added map data {column_name} from {mosaic_path.stem}"
+    return info
+
+def add_column_to_catalog(catalog_path, column_data: Dict):
+    """
+    Opens FITS file, adds some data.
+    
+    Returns a string with some info.
+    """
+
+    catalog = Table.read(catalog_path)
+    for column_name, column_values in column_data.items():
+        catalog.add_column(column_values, name=column_name)
+    catalog.write(catalog_path, overwrite=True)
+    return f"add {len(column_data)} columns: " + " ".join(c for c in column_data.keys())
 
 
 

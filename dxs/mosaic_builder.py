@@ -20,7 +20,7 @@ from dxs.hdu_preprocessor import HDUPreprocessor
 
 from astromatic_wrapper.api import Astromatic
 
-from dxs.utils.image import build_mosaic_header
+from dxs.utils.image import build_mosaic_wcs
 from dxs.utils.misc import (
     check_modules, format_flags, get_git_info, AstropyFilter
 )
@@ -68,7 +68,9 @@ class MosaicBuilder:
         neighbor_stacks=None,
         swarp_config=None, 
         swarp_config_file=None,
-        hdu_prep_kwargs=None
+        hdu_prep_kwargs=None,
+        stack_data_dir=None,
+        ext=".fit",
     ):
         if isinstance(mosaic_stacks, pd.DataFrame):
             self.mosaic_stacks = mosaic_stacks
@@ -77,10 +79,16 @@ class MosaicBuilder:
                 relevant_stacks = pd.concat([mosaic_stacks, neighbor_stacks])
             else:
                 relevant_stacks = mosaic_stacks
-            logger.info("stacks to use: \n")
-            print(relevant_stacks.groupby(["field", "tile", "pointing"]).size())          
+            try:
+                logger.info("stacks to use: \n")
+                print(relevant_stacks.groupby(["field", "tile", "pointing"]).size()) 
+            except:
+                pass
+        
+            # make a list of stacks from the dataframe...
+            stack_data_dir = stack_data_dir or paths.stack_data_path    
             self.stack_list = [
-                paths.stack_data_path / f"{x}.fit" for x in relevant_stacks["filename"]
+                stack_data_dir  / f"{x}{ext}" for x in relevant_stacks["filename"]
             ]
             if "ccds" in relevant_stacks.columns:
                 self.ccds_list = [x for x in relevant_stacks["ccds"]] # Unnecessary?
@@ -267,7 +275,7 @@ class MosaicBuilder:
             hdu_prep_kwargs=hdu_prep_kwargs,
         )
 
-    def build(self, prepare_hdus=True, n_cpus=None, **kwargs):
+    def build(self, prepare_hdus=True, n_cpus=None, **build_hdu_prep_kwargs):
         """
         Parameters
         ----------
@@ -281,12 +289,12 @@ class MosaicBuilder:
             kwargs that are passed to HDUPreprocessor.prepare_stack() 
         """
         check_modules("swarp") # do we have swarp available?
-        if len(kwargs) > 0:
+        if len(build_hdu_prep_kwargs) > 0:
             logger.warn(
                 "please pass all hdu_prep_kwargs at initialisation as "
                 "hdu_prep_kwargs=<dict of prep kwargs>. Deprecated soon..."
             )
-            self.hdu_prep_kwargs.update(kwargs)
+            self.hdu_prep_kwargs.update(build_hdu_prep_kwargs)
         if prepare_hdus:
             hdu_list = self.prepare_all_hdus(
                 self.stack_list, n_cpus=n_cpus, **self.hdu_prep_kwargs
@@ -342,28 +350,34 @@ class MosaicBuilder:
 
     def write_swarp_list(self, hdu_list):
         """
-        SWARP does something very odd. it seems to IGNORE the first input file.
-        so we add a tiny file with not much data as the first file
+        SWARP does something very odd. 
+        it seems to IGNORE the first input file.
+        so we add a tiny file with not much data as the first file (2x2 pixels).
         """
         center = self.swarp_config.get("swarp_config", None)
         if center is None:
             with fits.open(hdu_list[0]) as f:
                 h = f[0].header
-                center = (h["CRVAL1"], h["CRVAL2"])
+                center = SkyCoord(ra=h["CRVAL1"], dec=h["CRVAL2"], unit="deg")
                 logger.info(f"small, fake img center at {center}")
-        tiny_header = build_mosaic_header(
-            center=center, size=(2,2), pixel_scale=0.2
-        )
-        tiny_data = np.random.uniform(0, 1, (2,2))
-        tiny_hdu = fits.PrimaryHDU(data=tiny_data, header=tiny_header)
-        tiny_hdu_path = paths.scratch_hdus_path / f"{self.mosaic_path.stem}_tiny_data.fits"
-        tiny_hdu.writeto(tiny_hdu_path, overwrite=True)
         
+        tiny_hdu_path = self.build_tiny_hdu(center)
         with open(self.swarp_list_path, "w+") as f:
             hdu_path_list = (
                 [str(tiny_hdu_path)+"\n"] + [str(hdu_path)+"\n" for hdu_path in hdu_list]
             )
-            f.writelines(hdu_path_list)        
+            f.writelines(hdu_path_list)
+
+    def build_tiny_hdu(self, center):  
+        tiny_wcs = build_mosaic_wcs(
+            center=center, size=(2,2), pixel_scale=0.2
+        )
+        tiny_header = tiny_wcs.to_header()
+        tiny_data = np.random.uniform(0, 1, (2,2))
+        tiny_hdu = fits.PrimaryHDU(data=tiny_data, header=tiny_header)
+        tiny_hdu_path = paths.scratch_hdus_path / f"{self.mosaic_path.stem}_tiny_data.fits"
+        tiny_hdu.writeto(tiny_hdu_path, overwrite=True) 
+        return tiny_hdu_path
     
     def initialise_astromatic(self, n_cpus=None):
         config = self.build_swarp_config()
@@ -498,6 +512,7 @@ def get_neighbor_stacks(field, tile, band, include_deprecated_stacks=False):
     neighbors = get_neighbor_tiles(field, tile)
     df_list = []
     for neighbor_tile, cardinal in neighbors.items():
+        print(f"{neighbor_tile} is in {cardinal}")
         hdus_for_cardinal = neighbors_config["border_hdus"][cardinal]
         for pointing, relevant_ccds in hdus_for_cardinal.items():
             stacks = get_stack_data(
@@ -508,7 +523,7 @@ def get_neighbor_stacks(field, tile, band, include_deprecated_stacks=False):
             if "ccds" in stacks.columns:
                 stacks.drop("ccds", inplace=True, axis=1) # axis=1 for column drop.
             if not include_deprecated_stacks:
-                assert sum(stacks["deprec_mf"] == 0)
+                assert sum(stacks["deprec_mf"]) == 0
                 ccd_lists = []
                 for ii, row in stacks.iterrows():
                     ccds_ii = [ccd for ccd in relevant_ccds if row[f"deprec_{ccd}"] == 0]

@@ -19,7 +19,9 @@ from easyquery import Query
 #from dxs.mosaic_builder import get_mosaic_dir, get_mosaic_stem
 from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
-from dxs.utils.table import fix_column_names, table_to_numpynd
+from dxs.utils.table import (
+    fix_column_names, add_map_value_to_catalog, add_column_to_catalog
+)
 
 from dxs import paths
 
@@ -55,7 +57,6 @@ class CatalogExtractor:
         sextractor_config_file=None, 
         sextractor_parameter_file=None,
     ):
-        check_modules("sex")
         self.detection_mosaic_path = Path(detection_mosaic_path)
         d_stem = self.detection_mosaic_path.stem
         detection_mosaic_dir = self.detection_mosaic_path.parent
@@ -66,14 +67,19 @@ class CatalogExtractor:
             self.measurement_mosaic_path = None
             m_stem = ''
         if catalog_path is None:
-            catalog_path = Path.cwd() / f"{d_stem}{m_stem}.cat.fits"
+            catalog_dir = paths.catalogs_path / f"{d_stem}"
+            catalog_path = catalog_dir / f"{d_stem}{m_stem}.cat.fits"
+        else:
+            catalog_path = Path(catalog_path)
+            catalog_dir = catalog_path.parent
+        catalog_dir.mkdir(exist_ok=True, parents=True)
         self.catalog_path = Path(catalog_path)
         self.use_weight = use_weight
         if weight_path is None:
             weight_path = self.detection_mosaic_path.with_suffix(".weight.fits")
         self.weight_path = weight_path
 
-        self.aux_dir = catalog_path.parent / "aux"
+        self.aux_dir = catalog_dir / "aux"
         self.aux_dir.mkdir(exist_ok=True, parents=True)
         
         # keep the parameter files.
@@ -153,10 +159,9 @@ class CatalogExtractor:
         )
 
     def extract(self):
+        check_modules("sex")
         logger.info(f"extract catalog to {self.catalog_path}")
         config = self.build_sextractor_config()
-        config.update(self.sextractor_config) # overwrite the inbuilt stuff with the input.
-        config = format_flags(config) # this capitalises stuff too.
         self.sextractor = Astromatic(
             "SExtractor", 
             str(paths.temp_sextractor_path), # I think Astromatic() ignores anyway?!
@@ -192,74 +197,47 @@ class CatalogExtractor:
             with fits.open(self.measurement_mosaic_path) as mosaic:
                 header = mosaic[0].header
                 config["mag_zeropoint"] = header["MAGZPT"]
+
+        config.update(self.sextractor_config) # overwrite the inbuilt stuff with the input.
+        config = format_flags(config) # this capitalises stuff too.
         return config
 
-    def add_snr(
-        self, flux, flux_err=None, catalog_path=None, snr_name="snr", 
-        flux_format=None, flux_err_format=None, snr_format=None, nan_value=0.0
-    ):
-        # TODO: this is unpleasant - fix!
-        """
-        fix
-        """
-
-        if catalog_path is None:
-            catalog_path = self.catalog_path
-        if not isinstance(flux, list):
-            flux = [flux]
-        if not isinstance(flux_err, list):
-            if flux_err is not None:
-                flux_err = [flux_err]
-            else:
-                flux_err = [None for _ in flux]
-        if len(flux_err) != len(flux):
-            lf, lfe = len(flux), len(flux_err)
-            raise ValueError(
-                f"Provide same number of flux columns ({lf}) as flux_err columns ({lfe})"
-            )
-        if not isinstance(snr_name, list):
-            snr_name = [f"{fl}_{snr_name}" for fl in flux]
-        if len(snr_name) != len(flux):
-            lf, lsnr = len(flux), len(snr_name)
-            raise ValueError(
-                f"Provide same number of flux columns ({lf}) as flux_err columns ({lsnr})"
-            )            
-        catalog = Table.read(catalog_path)
-        for fl, fl_err, snr in zip(flux, flux_err, snr_name):
-            if flux_format is not None:
-                flux_col = flux_format.format(**{"flux": fl, "flux_err": fl_err})
-            else:
-                flux_col = fl
-            if flux_err_format is not None:
-                flux_err_col = flux_err_format.format(**{"flux": fl, "flux_err": fl_err})
-            else:
-                flux_err_col = fl_err
-            if snr_format is not None:
-                snr_col = snr_format.format(
-                    **{"flux": fl, "flux_err": fl_err, "snr_name": snr_name}
-                )
-            else:
-                snr_col = snr
-            catalog[snr_col] = catalog[flux_col] / catalog[flux_err_col]
-            nan_mask = np.isnan(catalog[snr_col])
-            n_nans = nan_mask.sum()
-            if n_nans > 0:
-                logger.warn(f"add_snr - {flux_col} give {n_nans} nan values")
-            catalog[snr_col][ nan_mask ] = nan_value
-        catalog.write(catalog_path, overwrite=True)
+    def add_snr(self, flux_columns, err_columns, snr_columns, nan_value=0.0):
+        if not isinstance(flux_columns, list):
+            flux_columns = [flux_columns]
+        if not isinstance(err_columns, list):
+            err_columns = [err_columns]
+        if not isinstance(snr_columns, list):
+            snr_columns = [snr_columns]
+        if len(flux_columns) != len(err_columns):
+            raise ValueError("provide as many flux_columns as err_columns")
+        if len(flux_columns) != len(snr_columns):
+            raise ValueError("provide as many flux_columns as snr_columns")
+    
+        catalog = Table.read(self.catalog_path)
+        for fl, err, snr in zip(flux_columns, err_columns, snr_columns):
+            if snr in catalog.columns:
+                raise ValueError(f"{snr} already exists.")
+            catalog[snr] = catalog[fl] / catalog[err]
+            
+            nan_mask = np.isnan(catalog[snr])
+            if sum(nan_mask) > 0:
+                logger.warning(f"{sum(nan_mask)} NaN values. set to {nan_value}")
+                catalog[snr][nan_mask] = nan_value
+        catalog.write(self.catalog_path, overwrite=True)
 
     def add_map_value(
         self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0,
     ):
         logger.info("adding map value")
-        info = _add_map_value(
+        info = add_map_value_to_catalog(
             self.catalog_path, mosaic_path, column_name, 
             ra=ra, dec=dec, xpix=xpix, ypix=ypix, hdu=hdu,        
         )
         logger.info(info)
 
     def add_column(self, column_data: Dict):
-        info = _add_column(self.catalog_path, column_data)
+        info = add_column_to_catalog(self.catalog_path, column_data)
         logger.info(info)
 
 class CatalogMatcher:
@@ -351,7 +329,7 @@ class CatalogMatcher:
         self.summary_info.append(info)
 
     def add_column(self, column_data: Dict):
-        _add_column(self.output_path, column_data)
+        add_column_to_catalog(self.output_path, column_data)
 
     def fix_column_names(self, **kwargs):
         fix_column_names(self.output_path, **kwargs)
@@ -469,43 +447,7 @@ class CatalogPairMatcher(CatalogMatcher):
         self.ra = output_ra
         self.dec = output_dec
 
-def _add_map_value(
-    catalog_path, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0
-):
-    catalog = Table.read(catalog_path)
-    with fits.open(mosaic_path) as mosaic:
-        logger.info(f"open {mosaic_path}")
-        mosaic_data = mosaic[hdu].data
-        header = mosaic[hdu].header
-    use_coords = all([ra, dec])
-    use_pixels = all([xpix, ypix])
-    err_msg = "Must provide xpix, ypix column names OR ra, dec column names -- not both."
-    if use_coords and use_pixels:
-        raise ValueError(err_msg)
-    if use_coords:
-        mosaic_wcs = WCS(header)
-        image_positions = table_to_numpynd( catalog[[ra, dec]] )  # TODO: use SkyCoord?
-        pixels = mosaic_wcs.wcs_world2pix(image_positions, 0)
-        x_values = pixels[:,0].astype(int)
-        y_values = pixels[:,1].astype(int)
-    elif xpix is not None and ypix is not None:
-        x_values = catalog[xpix].astype(int)
-        y_values = catalog[ypix].astype(int)
-    else:
-        raise ValueError(err_msg)
-    map_values = mosaic_data[ y_values, x_values ]
-    col = Column(map_values, column_name)
-    catalog.add_column(col)
-    catalog.write(catalog_path, overwrite=True)
-    info = f"added map data {column_name} from {mosaic_path.stem}"
-    return info
 
-def _add_column(catalog_path, column_data: Dict):
-    catalog = Table.read(catalog_path)
-    for column_name, column_values in column_data.items():
-        catalog.add_column(column_values, name=column_name)
-    catalog.write(catalog_path, overwrite=True)
-    return f"add {len(column_data)} columns: " + " ".join(c for c in column_data.keys())
 
 
 
