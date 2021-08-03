@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -401,7 +403,71 @@ def test__mask_regions_in_mosaic():
     rectangle_portion = rdat[c3tpy-10:c3tpy+10, c3tpx-10:c3tpx+10]
     assert np.sum(rectangle_portion) < 1e-6
 
+def test__mosaic_difference():
+    center = SkyCoord(ra=215., dec=-60., unit="deg")
+    image_size=(30, 80)
+    wcs = image.build_mosaic_wcs(center, image_size[::-1], 1.0)
+    header = wcs.to_header()
+
+    data1 = np.zeros(image_size) + np.linspace(100, 110, 80)
+    data2 = np.full(image_size, 10.)
+
+    mosaic1_path = paths.scratch_test_path / "image_mosdiff1.fits"
+    mosaic2_path = paths.scratch_test_path / "image_mosdiff2.fits"
+
+    if mosaic1_path.exists():
+        os.remove(mosaic1_path)
+    assert not mosaic1_path.exists()
+
+    if mosaic2_path.exists():
+        os.remove(mosaic2_path)
+    assert not mosaic2_path.exists()
+
+    hdu1 = fits.PrimaryHDU(data=data1, header=header)
+    hdu2 = fits.PrimaryHDU(data=data2, header=header)
+
+    hdu1.writeto(mosaic1_path)
+    hdu2.writeto(mosaic2_path)
+
+    expected_outpath1 = paths.scratch_swarp_path / f"diff_image_mosdiff1_image_mosdiff2.fits"
+
+    image.mosaic_compare(mosaic1_path, mosaic2_path, func="diff")
+    assert expected_outpath1.exists()
+    with fits.open(expected_outpath1) as f:
+        dat = f[0].data
+
+        assert np.allclose(
+            dat, np.zeros((30, 80)) + np.linspace(90., 100., 80)
+        )
+
+    expected_outpath2 = paths.scratch_swarp_path / f"quot_image_mosdiff1_image_mosdiff2.fits"
+    image.mosaic_compare(mosaic1_path, mosaic2_path, func="quot")
+    assert expected_outpath2.exists()
+    with fits.open(expected_outpath2) as f:
+        dat = f[0].data
+        assert np.allclose(
+            dat, np.zeros((30, 80)) + np.linspace(10., 11., 80)
+        )
+
+    os.remove(expected_outpath1)
+    assert not expected_outpath1.exists()
+
+    os.remove(expected_outpath2)
+    assert not expected_outpath2.exists()
+    
 
 
+def test__build_ds9_cmd():
+    test_path1 = "./test_path1.fits"
+    test_path2 = "./test_path2.fits"
+    cmd = image.build_ds9_command(test_path1, test_path2, relative=False)
+
+    exp_cmd = ("ds9 -single -zscale -cmap bb -wcs skyformat degrees -multiframe -lock frame wcs "
+        + "./test_path1.fits ./test_path2.fits"
+    )
+    assert cmd == exp_cmd
+
+    
 
 
+  

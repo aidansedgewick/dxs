@@ -263,6 +263,40 @@ class MosaicBuilder:
         swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
         hdu_prep_kwargs = hdu_prep_kwargs or {}
         hdu_prep_kwargs["fill_value"] = 1.0
+        
+        return cls.from_dxs_spec(
+            field, tile, band, 
+            prefix=prefix, 
+            suffix=suffix, 
+            include_neighbors=include_neighbors,
+            extension="cov", 
+            add_flux_scale=False,
+            swarp_config=swarp_config, 
+            swarp_config_file=swarp_config_file,
+            hdu_prep_kwargs=hdu_prep_kwargs,
+        )
+
+    @classmethod
+    def exptime_from_dxs_spec(
+        cls, field, tile, band, 
+        pixel_scale, 
+        include_neighbors=True,
+        prefix=None,
+        suffix=None,
+        swarp_config=None, 
+        swarp_config_file=None, 
+        hdu_prep_kwargs=None,
+    ):
+        """
+        similar to from_dxs_spec but uses coverage.swarp config, 
+        option to include pixel scale
+        fill_value should be set to exptime
+        """
+        swarp_config = swarp_config or {}
+        swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
+        hdu_prep_kwargs = hdu_prep_kwargs or {}
+        hdu_prep_kwargs["fill_value"] = "exptime"
+        
         return cls.from_dxs_spec(
             field, tile, band, 
             prefix=prefix, 
@@ -322,7 +356,11 @@ class MosaicBuilder:
             stack_list = self.stack_list
 
         print("prepare stacks with:")
-        print(json.dumps(kwargs))
+        for k, v in kwargs.items():
+            try:                
+                print(f"    {k}: {v}")
+            except:
+                print(f"    {k}: [CAN'T PRINT]")
         if n_cpus is None:    
             hdu_list = []
             for ii, stack_path in enumerate(stack_list):

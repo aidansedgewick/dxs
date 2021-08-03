@@ -77,7 +77,7 @@ def merge_pipeline(
             f"{band}_id", f"{band}_ra", f"{band}_dec", f"{snr}_col"
         )
         merge_kwargs = {
-            "merge_error": merge_config["merge_error"]r, 
+            "merge_error": merge_config["merge_error"], 
             "coverage_col": f"{band}_coverage",
             "value_check_col": f"{band}_mag_auto",
         }

@@ -4,6 +4,7 @@ import os
 import sys
 import yaml
 from argparse import ArgumentParser
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,10 +32,14 @@ with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 logger = logging.getLogger("mosaic_pipeline")
-def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, masked=False):
-    if not any([initial, coverage, masked]):
-        initial, coverage, masked = True, True, True
-    mosaic_types = {"initial": initial, "coverage": coverage, "masked": masked}
+def mosaic_pipeline(
+    field, tile, band, n_cpus=1, initial=False, coverage=False, exptime=False, masked=False
+):
+    if not any([initial, coverage, exptime, masked]):
+        initial, coverage, exptime, masked = True, True, True, True
+    mosaic_types = {
+        "initial": initial, "coverage": coverage, "exptime": exptime, "masked": masked
+    }
     spec = (field, tile, band)
 
     field_name = survey_config["code_to_field"].get(field, None)
@@ -75,9 +80,13 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
                 header = f[0].header # check we can open the file!
             with open(builder.swarp_list_path) as f:
                 hdu_list = f.read().splitlines()
-            remove_temp_data(hdu_list)
+                for hdu_path_str in hdu_list:
+                    hdu_path = Path(hdu_path_str)
+                    assert hdu_path.exists()
+                    os.remove(hdu_path)
+                    assert not hdu_path.exists()
         except Exception as e:
-            logger.warn(f"during delete temp: {e}")
+            logger.warning(f"during delete temp: {e}")
             pass
 
     if coverage:
@@ -94,15 +103,20 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
             swarp_config=coverage_swarp_config, 
             hdu_prep_kwargs=coverage_prep_kwargs,
         )
-        minimum_coverage = cov_builder.mosaic_stacks.groupby(["pointing"]).size().min()
+        try:
+            df = cov_builder.mosaic_stacks.copy()
+            df = df[ df["ccds"].str.len() == 4 ] # only the ones where we have 4 ccds?
+            minimum_coverage = df.groupby(["pointing"]).size.min()
+        except Exception as e:
+            logger.warning(f"error in min coverage:\n{e}")
+            minimum_coverage = cov_builder.mosaic_stacks.groupby(["pointing"]).size().min()
         print(cov_builder.mosaic_stacks.groupby(["pointing"]).size())
-        print(f"minimum_coverage is {minimum_coverage}")
+        print(f"minimum_coverage is {minimum_coverage} ")
         cov_builder.build(n_cpus=n_cpus)
         cov_builder.add_extra_keys()
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
         make_good_coverage_map(
-            cov_builder.mosaic_path, output_path=good_cov_path,
-            minimum_coverage=minimum_coverage       
+            cov_builder.mosaic_path, output_path=good_cov_path, minimum_coverage=minimum_coverage       
         )
         if bright_star_processor is not None:
             region_masks = bright_star_processor.process_region_masks(mag_col=tmass_mag)
@@ -122,10 +136,54 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
                 header = f[0].header # check we can open the file!
             with open(cov_builder.swarp_list_path) as f:
                 hdu_list = f.read().splitlines()
-            remove_temp_data(hdu_list)
+                for hdu_path_str in hdu_list:
+                    hdu_path = Path(hdu_path_str)
+                    assert hdu_path.exists()
+                    os.remove(hdu_path)
+                    assert not hdu_path.exists()
         except Exception as e:
             logger.warn(f"during delete temp: {e}")
             pass
+
+    if exptime:
+        print_header("make exptime map")
+        exptime_swarp_config = {
+            "center": builder.swarp_config["center"], # don't calculate twice!
+            "image_size": builder.swarp_config["image_size"], # don't calculate twice!
+        }
+        exptime_prep_kwargs = {"hdu_prefix": f"{stem}_e"}
+        pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
+        exptime_builder = MosaicBuilder.exptime_from_dxs_spec(
+            *spec, 
+            pixel_scale=pixel_scale * 10., 
+            swarp_config=exptime_swarp_config, 
+            hdu_prep_kwargs=exptime_prep_kwargs,
+        )
+        exptime_builder.build(n_cpus=n_cpus)
+        exptime_builder.add_extra_keys()
+
+        try:
+            weight_path = exptime_builder.mosaic_path.with_suffix(".weight.fits")
+            logger.info(f"Removing {weight_path}")
+            os.remove(weight_path)
+        except:
+            logger.warn(f"Can't remove {weight_path}")
+        ### A little bit of clean up.
+        try:
+            with fits.open(exptime_builder.mosaic_path) as f:
+                header = f[0].header # check we can open the file!
+            with open(exptime_builder.swarp_list_path) as f:
+                hdu_list = f.read().splitlines()
+                for hdu_path_str in hdu_list:
+                    hdu_path = Path(hdu_path_str)
+                    assert hdu_path.exists()
+                    os.remove(hdu_path)
+                    assert not hdu_path.exists()
+        except Exception as e:
+            logger.warn(f"during delete temp: {e}")
+            pass
+
+
                 
     if masked:
         ### get segementation image to use as mask.
@@ -134,9 +192,7 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         mosaic_dir = paths.get_mosaic_dir(*spec)
         catalog_dir = paths.get_mosaic_dir(*spec) # so we can store the mask with the mosaic.
         seg_catalog_name = catalog_dir / f"{seg_name}_segmenation.cat.fits"
-        seg_config = {
-            "checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits"
-        }
+        seg_config = {"checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits"}
         extractor = CatalogExtractor(
             builder.mosaic_path,
             catalog_path=seg_catalog_name,
@@ -161,8 +217,7 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
             "hdu_prefix": paths.get_mosaic_stem(*spec, prefix="m"),
             #resize=True, edges=25.0,
             "mask_sources": True, "mask_header": mask_header, "mask_map": mask_map,
-            "normalise_exptime": True,
-            "subtract_bgr": True, "bgr_size": 32,
+            "subtract_bgr": True, "bgr_size": 64,
             "overwrite": False,
         }
         masked_builder = MosaicBuilder.from_dxs_spec(
@@ -178,9 +233,12 @@ def mosaic_pipeline(field, tile, band, n_cpus=1, initial=False, coverage=False, 
         try:
             with fits.open(masked_builder.mosaic_path) as f:
                 header = f[0].header # check we can open the file!
-            with open(masked_builder.swarp_list_path) as f:
-                hdu_list = f.read().splitlines()
-            remove_temp_data(hdu_list)
+            #with open(masked_builder.swarp_list_path) as f:
+            #    hdu_list = f.read().splitlines()
+            #    for hdu_path in hdu_list:
+            #        assert hdu_path.exists()
+            #        os.remove(hdu_path)
+            #        assert not hdu_path.exists()
         except Exception as e:
             logger.warn(f"during delete temp: {e}")
             pass
@@ -195,13 +253,14 @@ if __name__ == "__main__":
     parser.add_argument("--n_cpus", type=int)
     parser.add_argument("--initial", action="store_true", default=False)
     parser.add_argument("--coverage", action="store_true", default=False)
+    parser.add_argument("--exptime", action="store_true", default=False)
     parser.add_argument("--masked", action="store_true", default=False)
 
     args = parser.parse_args()
 
     mosaic_pipeline(
         args.field, args.tile, args.band, n_cpus=args.n_cpus, 
-        initial=args.initial, coverage=args.coverage, masked=args.masked
+        initial=args.initial, coverage=args.coverage, exptime=args.exptime, masked=args.masked
     )
     print("Done!")
 

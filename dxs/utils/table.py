@@ -6,7 +6,7 @@ from typing import Dict
 import numpy as np
 
 from astropy.io import fits
-from astropy.table import Table
+from astropy.table import Table, Column
 
 from easyquery import Query
 
@@ -138,9 +138,7 @@ def explode_column(
         table.remove_column(column_name)
         
 def remove_objects_in_bad_coverage(
-    catalog_path,
-    coverage_column=None,
-    minimum_coverage=1,
+    catalog_path, coverage_column, minimum_coverage,
 ):
     catalog = Table.read(catalog_path)
     c_len = len(catalog)

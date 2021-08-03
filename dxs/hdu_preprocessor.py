@@ -24,6 +24,10 @@ from photutils.background import SExtractorBackground, Background2D
 
 from dxs import paths
 
+survey_config_path = paths.config_path / "survey_config.yaml"
+with open(survey_config_path, "r") as f:
+    survey_config = yaml.load(f, Loader=yaml.FullLoader)
+
 logger = logging.getLogger("hdu_prep")
 
 class HDUPreprocessorError(Exception):
@@ -32,6 +36,7 @@ class HDUPreprocessorError(Exception):
 class HDUPreprocessor:
     """
     Class for preparing a single HDU ready for SWarp.
+    There is also a class method, prepare_stack() which works for a multi-extension fits.
 
     eg.
 
@@ -321,6 +326,9 @@ class HDUPreprocessor:
 
         stack_path = Path(stack_path)
         results = []
+        if isinstance(ccds, list) and len(ccds) == 0:
+            logger.info(f"No useful ccds in {stack_path.name}!")
+            return results # an empty list.
         ccds = ccds or survey_config["ccds"]
         if output_dir is None:
             output_dir = paths.scratch_hdus_path
@@ -335,7 +343,7 @@ class HDUPreprocessor:
                 stack_str = stack_path.stem + spec
                 hdu_name = get_hdu_name(stack_str, ccd, prefix=hdu_prefix)
                 hdu_output_path = output_dir / hdu_name # includes ".fits" already...
-                logger.info(f"prp {hdu_output_path.stem}")
+                logger.info(f"{hdu_output_path.stem}")
                 if not overwrite and hdu_output_path.exists():
                     results.append(hdu_output_path)
                     continue

@@ -135,7 +135,7 @@ def stack_bright_stars(
 
     stacked_image_path = Path(stacked_image_path)
 
-    cutouts_dir = paths.temp_data_path / "cutouts"
+    cutouts_dir = paths.scratch_data_path / "cutouts"
     cutouts_dir.mkdir(exist_ok=True, parents=True)
 
     coords = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit="degree")

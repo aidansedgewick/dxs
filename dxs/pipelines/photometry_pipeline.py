@@ -19,11 +19,10 @@ from dxs import (
     CatalogMatcher, 
     CatalogPairMatcher, 
     CrosstalkProcessor,
-    QuickPlotter
 )
 from dxs.utils.misc import check_modules, print_header
-from dxs.utils.table import fix_column_names, explode_columns_in_fits, remove_objects_in_bad_coverage
-from dxs.utils.image import calc_survey_area, make_normalised_weight_map
+from dxs.utils.table import fix_column_names, explode_columns_in_fits #, remove_objects_in_bad_coverage
+from dxs.utils.image import calc_survey_area
 from dxs import paths
 
 logger = logging.getLogger("photometry_pipeline")
@@ -32,17 +31,19 @@ survey_config_path = paths.config_path / "survey_config.yaml"
 with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
+
+###============ get some info about column names ==============###
+
 default_lookup_path = paths.config_path / "sextractor/column_name_lookup.yaml"
 
 aperture_suffixes = survey_config["catalogs"].get("apertures", None)
 flux_radii_suffixes = survey_config["catalogs"].get("flux_radii", None)
 
 snr_fluxes = ["AUTO"] #, "ISO", "APER"]
-snr_flux_formats = {
-    "flux_format": "FLUX_{flux}", 
-    "flux_err_format": "FLUXERR_{flux}",
-    "snr_format": "SNR_{flux}",
-}
+flux_cols = ["FLUX_{flux}" for flux in snr_fluxes]
+fluxerr_cols = ["FLUXERR_{flux}" for flux in snr_fluxes]
+snr_cols = ["SNR_{flux}" for flux in snr_fluxes]
+
 crosstalk_columns = (
     [f"crosstalk_{x}" for x in ["ra", "dec", "direction", "order", "flag"]]
     + [f"parent_{x}" for x in ["id", "ra", "dec", "mag"]]
@@ -98,32 +99,27 @@ def photometry_pipeline(
     print(f"Match crosstalk stars in {star_catalog_path.name}")
 
     ##============================Extract catalog from J-image.
-    
-    Jcat_stem = paths.get_catalog_stem(field, tile, "J", prefix=prefix, suffix="_init")
-    J_ex = CatalogExtractor.from_dxs_spec(
-        field, tile, "J", catalog_stem=Jcat_stem, prefix=prefix
-    )
-    J_coverage_map_path = paths.get_mosaic_path(field, tile, "J").with_suffix(".cov.good_cov.fits")
-    J_weight_map_path = paths.get_mosaic_path(field, tile, "J").with_suffix(".weight.fits")
-    #J_norm_weight_map = J_ex.detection_mosaic_path.with_suffix(".norm_weight.fits")
+    Jspec = (field, tile, "J")
+    Jcat_stem = paths.get_catalog_stem(*Jspec, prefix=prefix, suffix="_init")
+    J_ex = CatalogExtractor.from_dxs_spec(*Jspec, catalog_stem=Jcat_stem, prefix=prefix)
+    J_coverage_map_path = paths.get_mosaic_path(*Jspec).with_suffix(".cov.good_cov.fits")
+    J_weight_map_path = paths.get_mosaic_path(*Jspec).with_suffix(".weight.fits")
+
     if extract:
         print_header("J photom")
         J_ex.extract()
-        J_ex.add_snr(snr_fluxes, **snr_flux_formats)     
+        J_ex.add_snr(flux_cols, fluxerr_cols, snr_cols)
         fix_sextractor_column_names(J_ex.catalog_path, band="J")
         J_ex.add_map_value(J_coverage_map_path, "J_coverage", ra="J_ra", dec="J_dec")
         logger.info(f"initial J cat at {J_ex.catalog_path}")
-        #make_normalised_weight_map(
-        #    J_weight_map_path, J_coverage_map_path, J_norm_weight_map
-        #)
-        #J_ex.add_map_value(J_norm_weight_map, "J_norm_weight", ra="J_ra", dec="J_dec")
         J_ex.add_column({"J_tile": tile})
+
     ## Match its crosstalks
-    J_xproc = CrosstalkProcessor.from_dxs_spec(field, tile, "J", star_catalog.copy())
+    J_xproc = CrosstalkProcessor.from_dxs_spec(*Jspec, star_catalog.copy())
     assert "j_m" in J_xproc.star_catalog.colnames
     if collate_crosstalks:
         J_xproc.collate_crosstalks(mag_column="j_m", mag_limit=15.0, n_cpus=n_cpus)
-    Jout_stem = paths.get_catalog_stem(field, tile, "J", prefix=prefix)
+    Jout_stem = paths.get_catalog_stem(*Jspec, prefix=prefix)
     J_output_path = J_ex.catalog_path.parent / f"{Jout_stem}.cat.fits"
     if match_crosstalks:
         print_header("J crosstalks")
@@ -149,7 +145,7 @@ def photometry_pipeline(
         fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="_Jfp")
         logger.info(f"K forced from J apers at {JKfp_ex.catalog_path}")
     # stick them together.
-    Jfp_output_dir = paths.get_catalog_dir(field, tile, "J")
+    Jfp_output_dir = paths.get_catalog_dir(*Jspec)
     Jfp_combined_stem = paths.get_catalog_stem(field, tile, "JK", prefix=prefix)
     Jfp_output_path =  Jfp_output_dir / f"{Jfp_combined_stem}.cat.fits"
     Jfp_matcher = CatalogMatcher(
@@ -166,25 +162,23 @@ def photometry_pipeline(
 
 
     ##=========================Extract catalog from K-image.
-    Kcat_stem = paths.get_catalog_stem(field, tile, "K", prefix=prefix, suffix="_init") 
+    Kspec = (field, tile, "K")
+    Kcat_stem = paths.get_catalog_stem(*Kspec, prefix=prefix, suffix="_init") 
     K_ex = CatalogExtractor.from_dxs_spec(
-        field, tile, "K", catalog_stem=Kcat_stem, prefix=prefix
+        *Kspec, catalog_stem=Kcat_stem, prefix=prefix
     )
-    K_coverage_map_path = paths.get_mosaic_path(field, tile, "K").with_suffix(".cov.good_cov.fits")
-    K_weight_map_path = paths.get_mosaic_path(field, tile, "K").with_suffix(".weight.fits")
-    #K_norm_weight_map = K_ex.detection_mosaic_path.with_suffix(".norm_weight.fits")
+    K_coverage_map_path = paths.get_mosaic_path(*Kspec).with_suffix(".cov.good_cov.fits")
+    K_weight_map_path = paths.get_mosaic_path(*Kspec).with_suffix(".weight.fits")
+
     if extract:
         print_header("K photom")
         K_ex.extract()
-        K_ex.add_snr(snr_fluxes, **snr_flux_formats)      
+        K_ex.add_snr(flux_cols, fluxerr_cols, snr_cols)
         fix_sextractor_column_names(K_ex.catalog_path, band="K")
         K_ex.add_map_value(K_coverage_map_path, "K_coverage", ra="K_ra", dec="K_dec")
-        #make_normalised_weight_map(
-        #    K_weight_map_path, K_coverage_map_path, K_norm_weight_map
-        #)
-        #K_ex.add_map_value(K_norm_weight_map, "K_norm_weight", ra="K_ra", dec="K_dec")
         K_ex.add_column({"K_tile": tile})
         logger.info(f"initial K cat at {K_ex.catalog_path}")
+
     ## Match its crosstalks
     K_xproc = CrosstalkProcessor.from_dxs_spec(field, tile, "K", star_catalog.copy())
     assert "k_m" in K_xproc.star_catalog.colnames
@@ -207,16 +201,14 @@ def photometry_pipeline(
         logger.info(f"xtalk-matched K cat at {K_output_path}")
 
     ## Now do K-forced photometry from J image.
-    KJfp_ex = CatalogExtractor.from_dxs_spec(
-        field, tile, "K", measurement_band="J", prefix=prefix
-    )
+    KJfp_ex = CatalogExtractor.from_dxs_spec(*Kspec, measurement_band="J", prefix=prefix)
     if extract:
         print_header("J forced from K apers")
         KJfp_ex.extract()
         fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="_Kfp")
         logger.info(f"J forced from K apers at {KJfp_ex.catalog_path}")
     ## stick them together.
-    Kfp_output_dir = paths.get_catalog_dir(field, tile, "K")
+    Kfp_output_dir = paths.get_catalog_dir(*Kspec)
     Kfp_combined_stem = paths.get_catalog_stem(field, tile, "KJ", prefix=prefix)
     Kfp_output_path =  Kfp_output_dir / f"{Kfp_combined_stem}.cat.fits"
     Kfp_matcher = CatalogMatcher(
@@ -236,162 +228,12 @@ def photometry_pipeline(
     if H_ex.detection_mosaic_path.exists() and extract:
         print_header("H-band")
         H_ex.extract()
+        H_ex.add_snr(flux_cols, fluxerr_cols, snr_cols)
         fix_sextractor_column_names(H_ex.catalog_path, band="H")
         H_cov_map_path = K_ex.detection_mosaic_path.with_suffix(".cov.good_cov.fits")
         H_ex.add_map_value(H_cov_map_path, "H_coverage", ra="H_ra", dec="H_dec")
         remove_objects_in_bad_coverage(H_ex.catalog_path, coverage_column="H_coverage")
         H_ex.add_column({"H_tile": tile})
-
-    """
-    ##===========================Match pair of outputs.
-
-    pair_output_stem = paths.get_catalog_stem(field, tile, "", prefix=prefix)
-    pair_output_dir = paths.get_catalog_dir(field, tile, "")
-    pair_output_path = pair_output_dir / f"{pair_output_stem}.cat.fits"
-    pair_matcher = CatalogPairMatcher(
-        J_output_path, K_output_path, pair_output_path, 
-        output_ra="ra", output_dec="dec",
-        ra1="J_ra", dec1="J_dec", 
-        ra2="K_ra", dec2="K_dec",
-    )
-    if match_pair:
-        print_header("Match pair")
-        pair_matcher.best_pair_match(error=2.0)
-        pair_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
-        pair_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
-
-
-    if match_extras:
-        print_header("match extras")
-        if H_ex.catalog_path.exists():
-            pair_matcher.match_catalog(H_ex.catalog_path, ra="H_ra", dec="H_dec", error=2.0)
-            pair_matcher.fix_column_names(column_lookup={"Separation": "H_separation"})
-        
-        ps_name = f"{field}_panstarrs"
-        ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
-        pair_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=2.0)
-        pair_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
-    
-    ##=========================== do the same for fp catalogs.
-
-    pairfp_output_stem = paths.get_catalog_stem(field, tile, "fp", prefix=prefix)
-    pairfp_output_dir = paths.get_catalog_dir(field, tile, "")
-    pairfp_output_path = pair_output_dir / f"{pairfp_output_stem}.fits"
-    pairfp_matcher = CatalogPairMatcher(
-        Jfp_output_path, Kfp_output_path, pairfp_output_path, 
-        output_ra="ra", output_dec="dec",
-        ra1="J_ra", dec1="J_dec", 
-        ra2="K_ra", dec2="K_dec",
-    )
-    if match_pair:
-        print_header("Match fp pairs")
-        pairfp_matcher.best_pair_match(error=2.0)
-        pairfp_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
-        pairfp_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
-
-
-    if match_extras:
-        print_header("match extras")
-        if H_ex.catalog_path.exists():
-            pairfp_matcher.match_catalog(H_ex.catalog_path, ra="H_ra", dec="H_dec", error=2.0)
-            pairfp_matcher.fix_column_names(column_lookup={"Separation": "H_separation"})
-        
-        ps_name = f"{field}_panstarrs"
-        ps_catalog_path = paths.input_data_path / f"external/panstarrs/{ps_name}.fits"
-        pairfp_matcher.match_catalog(ps_catalog_path, ra="i_ra", dec="i_dec", error=2.0)
-        pairfp_matcher.fix_column_names(column_lookup={"Separation": "ps_separation"})
-
-    """
-
-    """
-    # Make some quick plots.
-    bins = np.arange(14, 22, 0.5)
-
-    JK_cov_images = [
-        J_ex.detection_mosaic_path.with_suffix(".cov.good_cov.fits"),
-        K_ex.detection_mosaic_path.with_suffix(".cov.good_cov.fits"),
-    ]
-    ps_cov_image = [paths.input_data_path / f"external/panstarrs/masks/{field}_mask.fits"]
-
-
-    qp = QuickPlotter.from_fits(pair_output_path)
-
-    ra_limits = (np.min(qp.full_catalog["ra"]), np.max(qp.full_catalog["ra"]))
-    dec_limits = (np.min(qp.full_catalog["dec"]), np.max(qp.full_catalog["dec"]))
-
-    JK_survey_area = calc_survey_area(
-        JK_cov_images, ra_limits=ra_limits, dec_limits=dec_limits
-    )
-    print(f"JK survey area = {JK_survey_area:.3f} sq. deg")
-    JKps_survey_area = calc_survey_area(
-        JK_cov_images + ps_cov_image, ra_limits=ra_limits, dec_limits=dec_limits
-    )
-    print(f"JK + opt. area = {JKps_survey_area:.3f} sq. deg")
-    qp.remove_crosstalks()
-    qp.remove_bad_magnitudes(["J", "K"], catalog=qp.catalog)
-    print(f"Catalog length: {len(qp.catalog)}")
-    qp.create_selection("gals", ("J_mag_auto - K_mag_auto > 1.0"), catalog=qp.catalog)
-    qp.create_selection("JKfp_gals", ("J_mag_auto - K_mag_auto_Jfp > 1.0"), catalog=qp.catalog)
-    qp.create_selection("JfpK_gals", ("J_mag_auto_Kfp - K_mag_auto > 1.0"), catalog=qp.catalog)
-    qp.create_selection("drgs", ("J_mag_auto - K_mag_auto > 2.3"), catalog=qp.gals)
-    qp.create_selection("eros", ("i_mag_kron - K_mag_auto > 4.5"), catalog=qp.gals)
-
-    qp.create_plot("n_plot")
-    qp.n_plot.plot_number_density(
-        "K_mag_auto", selection=qp.catalog, bins=bins, label="catalog", survey_area=JK_survey_area
-    )
-    qp.n_plot.plot_number_density(
-        "K_mag_auto", selection=qp.gals, bins=bins, label="gals", survey_area=JK_survey_area
-    )
-    qp.n_plot.plot_number_density(
-        "K_mag_auto", selection=qp.JfpK_gals, bins=bins, label="gals J K-ap", survey_area=JK_survey_area
-    )
-    qp.n_plot.plot_number_density(
-        "K_mag_auto_Jfp", selection=qp.JKfp_gals, bins=bins, label="gals K J-ap", survey_area=JK_survey_area
-    )
-    qp.n_plot.plot_number_density(
-        "K_mag_auto", selection=qp.drgs, bins=bins, label="DRGs", survey_area=JK_survey_area
-    )
-    qp.n_plot.plot_number_density(
-        "K_mag_auto", selection=qp.eros, bins=bins, label="EROs", survey_area=JKps_survey_area
-    )
-    qp.n_plot.axes.semilogy()
-    qp.n_plot.axes.legend()
-
-    #print(qp.catalog.colnames)
-    
-    qp.create_plot("jk_plot")
-    qp.jk_plot.color_magnitude(
-        c1="J_mag_auto", c2="K_mag_auto", mag="K_mag_auto", selection=qp.catalog,
-        color="k", s=1
-    )
-    qp.jk_plot.fig.suptitle("stilts matched")
-
-    qp.create_plot("jkfp_plot")
-    qp.jkfp_plot.color_magnitude(
-        c1="J_mag_auto", c2="K_mag_auto_Jfp", mag="K_mag_auto_Jfp", selection=qp.catalog,
-        color="k", s=1
-    )
-    qp.jk_plot.fig.suptitle("forced J apertures")
-    
-    qp.create_plot("jfpk_plot")
-    qp.jfpk_plot.color_magnitude(
-        c1="J_mag_auto_Kfp", c2="K_mag_auto", mag="K_mag_auto", selection=qp.catalog,
-        color="k", s=1
-    )
-    qp.jk_plot.fig.suptitle("forced K apertures")
-
-    if "H_mag_auto" in qp.catalog.colnames:
-        qp.create_plot("jh_hk")
-        qp.jh_hk.color_color(
-            c_x1="J_mag_auto", c_x2="H_mag_auto", c_y1="H_mag_auto", c_y2="K_mag_auto",
-            selection=qp.catalog,
-            s=1, color="k",
-        )
-    plt.show()"""
-    
-    #qp.save_all_plots()
-
 
 
 

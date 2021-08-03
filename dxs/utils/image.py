@@ -31,24 +31,6 @@ with open(survey_config_path, "r") as f:
 
 ###==================== mosaics ======================###
 
-def build_mosaic_header(
-    center: SkyCoord, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
-):
-    """
-    basically a convenience for 
-    >>> w = build_mosaic_wcs(<args>)
-    >>> header = wcs.to_header()
-    """
-    w = build_mosaic_wcs(center, size, pixel_scale, proj=proj, **kwargs)
-    h = w.to_header()
-    #h.insert(0, "SIMPLE", "T")
-    #h.insert(1, "BITPIX", -32)
-    #h.insert(2, "NAXIS", 2)
-    #h.insert(3, "NAXIS1", size[0])
-    #h.insert(4, "NAXIS2", size[1])
-    #print(h["SIMPLE"])
-    return h   
-
 def build_mosaic_wcs(
     center, size: Tuple[int, int], pixel_scale: float, proj="TAN", **kwargs
 ):
@@ -388,11 +370,13 @@ def mask_regions_in_mosaic(
 
 ###=================== compare mosaics ===================###
 
-def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0, hdu2=0):
+def mosaic_compare(
+    path1, path2, func="diff", save_path=None, show=True, header=1, hdu1=0, hdu2=0
+):
     path1 = Path(path1)
     path2 = Path(path2)
     if save_path is None:
-        save_path = paths.temp_swarp_path / f"diff_{path1.stem}_{path2.stem}.fits"
+        save_path = paths.scratch_swarp_path / f"{func}_{path1.stem}_{path2.stem}.fits"
     save_path = Path(save_path)
     with fits.open(path1) as mosaic1:
         data1 = mosaic1[hdu1].data
@@ -400,14 +384,17 @@ def mosaic_difference(path1, path2, save_path=None, show=True, header=1, hdu1=0,
     with fits.open(path2) as mosaic2:
         data2 = mosaic2[hdu2].data
         header2 = mosaic2[hdu2].header
-    if header==1:
-        header = header1
-    elif header==2:
-        header = header2
-    else:
+    try:
+        out_header = [header1, header2][header-1]
+    except:
         raise ValueError("Choose to keep first header (header=1), or second (header=2)")
-    data = data1-data2
-    output_hdu = fits.PrimaryHDU(data=data, header=header)
+    if func in ["diff", "difference"]:
+        data = np.subtract(data1, data2)
+    elif func in ["quot", "quotient"]:
+        data = np.divide(data1, data2)
+    else:
+        raise ValueError("func=  'quot' or 'diff'")
+    output_hdu = fits.PrimaryHDU(data=data, header=out_header)
     output_hdu.writeto(save_path, overwrite=True)
    
     ds9_command = build_ds9_command(save_path, path1, path2)
@@ -417,7 +404,7 @@ def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
     path1 = Path(path1)
     path2 = Path(path2)
     if save_path is None:
-        save_path = paths.temp_swarp_path / f"quot_{path1.stem}_{path2.stem}.fits"
+        save_path = paths.scratch_swarp_path / f"quot_{path1.stem}_{path2.stem}.fits"
     save_path = Path(save_path)
     with fits.open(path1) as mosaic1:
         data1 = mosaic1[hdu1].data

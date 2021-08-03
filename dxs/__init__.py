@@ -16,7 +16,7 @@ from .mosaic_builder import (
 )
 from .pystilts import Stilts
 #from .photoz_processor import PhotozProcessor
-from .quick_plotter import QPlot, QuickPlotter
+#from .quick_plotter import QPlot, QuickPlotter
 
 from dxs import paths
 

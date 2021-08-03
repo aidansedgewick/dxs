@@ -7,7 +7,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from dxs import CrosstalkProcessor
-from dxs.utils.image import build_mosaic_header
+from dxs.utils.image import build_mosaic_wcs
 from dxs import paths
 
 
@@ -64,8 +64,9 @@ def test__get_stars_in_frame_from_wcs():
     center = (334.0, 0.0)
     pixel_scale = 2.0
     size = ( int(1. / (pixel_scale / 3600.)), int(1. / (pixel_scale / 3600.)) )
-    test_header = build_mosaic_header(center, size, pixel_scale)
-    test_wcs = WCS(test_header)
+    test_wcs = build_mosaic_wcs(center, size, pixel_scale)
+    test_header = test_wcs.to_header()
+    #test_wcs = WCS(test_header)
 
     stars_in_frame = cp.stars_in_frame_from_wcs(
         test_wcs, star_table, mag_column="k_m", mag_limit=12.0, xlen=size[0], ylen=size[1]
@@ -79,11 +80,13 @@ def test__get_stars_in_stack():
     dth = (size[0] // 4) * pixel_scale / 3600.
 
     c1 = (334.0, 1.0)
-    test_header1 = build_mosaic_header(c1, size, pixel_scale)
+    test_wcs1 = build_mosaic_wcs(c1, size, pixel_scale)
+    test_header1 = test_wcs1.to_header()
     #test_wcs1 = WCS(test_header1)
 
     c2 = (334.0, 2.0)
-    test_header2 = build_mosaic_header(c2, size, pixel_scale)
+    test_wcs2 = build_mosaic_wcs(c2, size, pixel_scale)
+    test_header2 = test_wcs2.to_header()
     #test_wcs2 = WCS(test_header2)
 
     h0 = fits.Header()
@@ -183,8 +186,9 @@ def test__collate_crosstalks():
             base_ra + 1e-4 * np.random.uniform(-1, 1), 
             base_dec + 1e-4 * np.random.uniform(-1, 1)
         )
-
-        h0 = build_mosaic_header(center, size, pixel_scale)
+        
+        wcs0 = build_mosaic_wcs(center, size, pixel_scale)
+        h0 = wcs0.to_header()
         h0["OBJECT"] = f"dxs TT00 X {pointing}"
 
         data = np.zeros(size)

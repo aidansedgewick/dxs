@@ -164,7 +164,7 @@ class CatalogExtractor:
         config = self.build_sextractor_config()
         self.sextractor = Astromatic(
             "SExtractor", 
-            str(paths.temp_sextractor_path), # I think Astromatic() ignores anyway?!
+            str(paths.scratch_sextractor_path), # I think Astromatic() ignores anyway?!
             config=config, # command line flags.
             config_file=str(self.sextractor_config_file),
         )
