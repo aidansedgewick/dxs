@@ -51,8 +51,7 @@ jobs:
     #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        cd test_dxs/
-        pytest --cov=./dxs --cov-report=xml
+        pytest --cov=dxs --cov-report=xml test_dxs
 
 
     - name: Upload coverage to Codecov
@@ -62,8 +61,8 @@ jobs:
         directory: ./coverage/reports/
         env_vars: OS,PYTHON
         fail_ci_if_error: false
-        #files: ./coverage.xml
+        files: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
-        path_to_write_report: ./coverage/reports/codecov_report.xml
+        #path_to_write_report: ./coverage/reports/codecov_report.xml
         verbose: true
