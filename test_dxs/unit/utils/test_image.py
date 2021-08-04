@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import pandas as pd
@@ -103,7 +104,7 @@ def test__single_image_coverage():
     ]
 
     vs = [v for v in vertices] + [vertices[0]]
-    dx = 0.05
+    dx = 0.25
     coord_list = []
     for v1, v2 in zip(vs[:-1], vs[1:]):
         const_ra = np.isclose(v1[0], v2[0])
@@ -200,7 +201,6 @@ def test__calc_survey_area():
     s2_min_dec = 46.
     s2_max_dec = 56.
 
-    lsp = np.linspace
 
     vertices = [ # go "anti-clockwise" in the diagram.
         (min_ra, max_dec), (s1_min_ra, max_dec), (s1_min_ra, s1_dec), (s1_max_ra, s1_dec),
@@ -209,7 +209,7 @@ def test__calc_survey_area():
     ]
 
     vs = [v for v in vertices] + [vertices[0]]
-    dx = 0.50
+    dx = 5.0
     coord_list = []
     for v1, v2 in zip(vs[:-1], vs[1:]):
         const_ra = np.isclose(v1[0], v2[0])
@@ -252,7 +252,7 @@ def test__calc_survey_area():
 
     cov_area = main_area - s1_area - s2_area
 
-    est_area = image.calc_survey_area(image_path_1, density=1e4)
+    est_area = image.calc_survey_area(image_path_1, density=1e3)
     
     assert np.isclose(cov_area, est_area, rtol=0.005)
 

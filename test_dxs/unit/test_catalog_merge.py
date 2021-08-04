@@ -35,7 +35,7 @@ def test__contained_in_multiple_wcs():
     wcs1 = build_mosaic_wcs(c1, s1[::-1], pixel_scale=1.0)
     wcs2 = build_mosaic_wcs(c2, s2[::-1], pixel_scale=1.0)
 
-    r_arr = uniform_sphere((179., 181.), (-1.5, 1.5), density=1e5)
+    r_arr = uniform_sphere((179., 181.), (-1.5, 1.5), density=1e4)
     randoms = SkyCoord(ra=r_arr[:,0], dec=r_arr[:,1], unit="deg")
 
     in_wcs1 = wcs1.footprint_contains(randoms)
@@ -98,6 +98,18 @@ def test__select_group_argmax():
     assert np.isclose(result[ result["group_id"] == 4]["test_val"], 9.)
     assert np.isclose(result[ result["group_id"] == 4]["snr_val"], 4.)
 
+def test__check_for_merge_error():
+    tab = Table({
+        "GroupID": [1, 1, 1, 1, 2, 2, 2, 3, 3, 3],
+        "mag": [9.9, 10.05, 10.1, 9.95, 0.2, 0.21, 0.19, 1.0, 1.0, 1.1]
+    })
+    val_check_diff = catalog_merge.check_for_merge_errors(
+        tab, "GroupID", "mag"
+    )
+    assert np.allclose(val_check_diff, [0.2, 0.02, 0.1])
+        
+    
+
 
 def test__merge_catalogs():
     c1 = SkyCoord(ra=214.5, dec=44.5, unit="deg")
@@ -155,8 +167,8 @@ def test__merge_catalogs():
     output_path = paths.scratch_test_path / "merge_test.cat.fits"
     catalog_merge.merge_catalogs(
         input_data_list, output_path, "id", "ra", "dec", "snr", 
-        value_check_col="mag",
-        match_error=0.5,
+        value_check_column="mag",
+        merge_error=0.5,
     )
 
     merged = Table.read(output_path)

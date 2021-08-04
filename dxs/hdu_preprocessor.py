@@ -211,7 +211,9 @@ class HDUPreprocessor:
             mag_diff = self.magzpt - self.reference_magzpt
             flux_scaling = 10**(-0.4*mag_diff)
             self.header["FLXSCALE"] = flux_scaling
-            logger.info(f"flxscl: {flux_scaling:.2f} (diff {mag_diff:.2f}exp {self.exptime:.1f)")
+            logger.info(
+                f"flxscl: {flux_scaling:.2f} (diff {mag_diff:.2f}exp {self.exptime:.1f}"
+            )
         if self.overwrite_magzpt:
             self.header["MAGZPT"] = self.magzpt
         if self.exptime is not None:
