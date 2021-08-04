@@ -179,13 +179,44 @@ def test__add_keys():
     fits_path = paths.scratch_test_path / "add_keys_test.fits"
     empty_fits.writeto(fits_path, overwrite=True)
     
-    keys_to_add = {"test1": 100, "test2": ("some_data", "this is a comment")}    
+    keys_to_add = {
+        "test1": 100, 
+        "test2": ("some_data", "this is a comment"),
+        "test3": True,
+        "test4": False,
+        # "test5": (1000, 10000), # This will be val ==1000, comment==10000. Bad idea!
+        "test6": None,
+    }
 
-    mosaic_builder.add_keys(fits_path, keys_to_add, verbose=True)
+    mb = mosaic_builder.MosaicBuilder(
+        [], mosaic_path=fits_path, header_keys={"seeing": 1.2345}
+    )
+    assert isinstance(mb.header_keys, dict)
+    assert "seeing" in mb.header_keys
+
+    mb.add_extra_keys(extra_keys=keys_to_add)
     with fits.open(fits_path) as f:
+        # test added.
         assert f[0].header["TEST1"] == 100
         assert f[0].header["TEST2"] == "some_data"
         assert f[0].header.comments["TEST2"] == "this is a comment"
+        assert f[0].header["TEST3"]
+        assert not f[0].header["TEST4"]
+        # don't do test 5.
+        assert f[0].header["TEST6"] is None
+
+        # test default added.
+        assert np.isclose(f[0].header["SEEING"], 1.2345)
+        assert not f[0].header["DO_FLXSC"] 
+        assert np.isclose(f[0].header["ABOFFSET"], 0.)
+        assert f[0].header["FILL_VAL"] is None
+        assert f[0].header["TRIMEDGE"] == 0
+        assert not f[0].header["BGR_SUB"]
+        assert f[0].header["BGRFILTR"] == "default"
+        assert f[0].header["BGRSIGMA"] == "default"
+        assert "BRANCH" in f[0].header
+        assert "LOCALSHA" in f[0].header
+        assert "PIPEVERS" in f[0].header
 
 def test__mosaic_builder_init():
 
@@ -207,6 +238,14 @@ def test__mosaic_builder_init():
     input_hdu_list = [paths.scratch_test_path / "mb_init_hdu.fits"]
 
     mb = mosaic_builder.MosaicBuilder(input_hdu_list, output_path)
+    assert isinstance(mb.swarp_config, dict)
+    assert isinstance(mb.header_keys, dict)
+    assert isinstance(mb.hdu_prep_kwargs, dict)
+    
+    assert len(mb.swarp_config) == 0
+    assert len(mb.header_keys) == 0
+    assert len(mb.hdu_prep_kwargs) == 0
+
     assert output_dir.exists()
     assert output_aux_dir.exists()
     assert str(mb.mosaic_path) == str(output_path)
@@ -336,6 +375,10 @@ def test__mosaic_builder_from_spec():
         include_neighbors=False, 
         include_deprecated_stacks=True
     )
+
+    assert "seeing" in SA04K_builder.header_keys
+    assert "magzpt" in SA04K_builder.header_keys
+
     assert len(SA04K_builder.stack_list) == 122
     assert set(tuple(x) for x in SA04K_builder.ccds_list) == set( ((1,2,3,4),) )
     SA04K_builder.initialise_astromatic()
@@ -344,6 +387,7 @@ def test__mosaic_builder_from_spec():
     assert "-CENTER 180.000000,1.234000" in SA04K_builder.cmd_kwargs["cmd"]
     assert "-IMAGE_SIZE 12345,21000" in SA04K_builder.cmd_kwargs["cmd"]
     assert SA04K_builder.cmd_kwargs["code"] == "SWarp"
+    
 
 def test__write_swarp_list():
     input_hdu_list = []

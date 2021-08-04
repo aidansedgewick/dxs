@@ -50,9 +50,13 @@ class HDUPreprocessor:
     hdu_output_path
         str or PathLike - where will this hdu be saved? after prep
     fill_value
-        float- fill the entire data array with a value close to this (+/- small ~1e-4 random noise)
-        bc. swarp doesn't like array of the same value. useful for coverage maps( value = 1.0)
-        or exposure time maps.
+        float- fill the entire data array with a value close to this 
+        (+/- small ~1e-4 random noise)
+        bc. swarp doesn't like array of the same value. 
+        useful for visits maps (fill_value = 1.0)
+        or exposure time maps, fill_value="exptime" - this is the only `str` value allowed.
+    fill_value_var
+        add noise with this standard deviation (as SWARP) does not like array of const.
     resize
         bool - if true, removes `edges` pixels from each hdu in prep. default False.
     edges
@@ -66,7 +70,7 @@ class HDUPreprocessor:
         array with shape equal to `hdu.shape`. Non-zeros values are sources to mask.
         (ie, can use SExtractor segmentation check image as mask).
     exptime
-        float - removed soon... should read exptime from `hdu.header`
+        add use magzpt+2.5log10(exptime) for flxscale
     subtract_bgr
         bool
     bgr_size
@@ -77,10 +81,16 @@ class HDUPreprocessor:
         float - Used as for sigma clipping in bgr_estimation. see `photutils`.
     add_flux_scale
         bool - if True, add `flxscale` to output header, calculated as 
-        10**(-0.4*(magzpt-reference_magzpt)), if `reference_magzpt` is provided. 
+        10**(-0.4*(magzpt-reference_magzpt)), where magzpt is from HDU header.
+        if `reference_magzpt` is not provided, raises an error. 
     reference_magzpt
-        used to calculate flxscale.  
-        default None.
+        used to calculate flxscale, 
+        AB_conversion is ***NOT*** added to this value.
+        +2.5log10(exptime) is ***NOT*** added to this value.
+        it is used as-is.
+    AB_conversion
+        this value is added to the MAGZPT found in the header.
+        this value is ***NOT*** added to the reference magzpt.
     overwrite_magzpt
         bool - if True, replace the MAGZPT entry in the header, with the version with
          +2.5log10(exptime) and +AB_conversion (if provided). default False
@@ -201,7 +211,7 @@ class HDUPreprocessor:
             mag_diff = self.magzpt - self.reference_magzpt
             flux_scaling = 10**(-0.4*mag_diff)
             self.header["FLXSCALE"] = flux_scaling
-            logger.info(f"flxscl {self.hdu_output_path.stem} {flux_scaling:.2f}")
+            logger.info(f"flxscl: {flux_scaling:.2f} (diff {mag_diff:.2f}exp {self.exptime:.1f)")
         if self.overwrite_magzpt:
             self.header["MAGZPT"] = self.magzpt
         if self.exptime is not None:
@@ -212,7 +222,6 @@ class HDUPreprocessor:
             self.data = np.random.normal(
                 self.fill_value, self.fill_value_var, self.data.shape
             )
-
         if self.mask_wcs is not None:
             hdu_footprint = SkyCoord(self.hdu_wcs.calc_footprint(), unit="degree")
             contains = self.mask_wcs.footprint_contains(hdu_footprint)

@@ -400,31 +400,6 @@ def mosaic_compare(
     ds9_command = build_ds9_command(save_path, path1, path2)
     print(f"view image with \n    {ds9_command} &")
 
-def mosaic_quotient(path1, path2, save_path=None, header=1, hdu1=0, hdu2=0):
-    path1 = Path(path1)
-    path2 = Path(path2)
-    if save_path is None:
-        save_path = paths.scratch_swarp_path / f"quot_{path1.stem}_{path2.stem}.fits"
-    save_path = Path(save_path)
-    with fits.open(path1) as mosaic1:
-        data1 = mosaic1[hdu1].data
-        header1 = mosaic1[hdu1].header
-    with fits.open(path2) as mosaic2:
-        data2 = mosaic2[hdu2].data
-        header2 = mosaic2[hdu2].header
-    if header==1:
-        header = header1
-    elif header==2:
-        header = header2
-    else:
-        raise ValueError("Choose to keep first header (header=1), or second (header=2)")
-    data = data1/data2
-    output_hdu = fits.PrimaryHDU(data=data, header=header)
-    output_hdu.writeto(save_path, overwrite=True)
-   
-    ds9_command = build_ds9_command(save_path, path1, path2)
-    print(f"view image with \n    {ds9_command} &")
-
 def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
     path = Path(path)
     save_path = Path(save_path)

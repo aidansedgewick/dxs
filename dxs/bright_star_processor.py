@@ -36,6 +36,11 @@ class BrightStarProcessor:
     """
 
     def __init__(self, star_table: Table, config_path=None):
+        if not isinstance(star_table, Table):
+            msg1 = "star_table should be an astropy Table.\n"
+            msg2 = "Or, you can use bsp = BrightStarProcessor.from_file(<catpath>, **kwargs)"
+            msg3 = " where **kwargs are passed to astropy.table.Table.read()"
+            raise ValueError(msg1 + msg2 + msg3)
         self.star_table = star_table
         
         if config_path is None:            
@@ -59,12 +64,20 @@ class BrightStarProcessor:
             )
 
     @classmethod
-    def from_file(cls, csv_path, queries=None, config_path=None, **kwargs):
+    def from_file(cls, csv_path, config_path=None, query: Query = None, **kwargs):
+        csv_path = Path(csv_path)
         logger.info(f"reading from {csv_path.name}")
         star_table = Table.read(csv_path, **kwargs)
-        if queries is not None:
-            star_table = Query(*queries).filter(star_table)
+        if query is not None:
+            lst = len(star_table)
+            star_table = query.filter(star_table)
+            logger.info(f"remove {lst-len(star_table)} objects from star_table")
         return cls(star_table, config_path=config_path)
+
+    def easyquery_star_table(self, query: Query):
+        lst = len(self.star_table)
+        filtered = query.filter(self.star_table)
+        logger.info("remove {lst-len(filtered)} objects from star_table")
 
     def process_region_masks(self, mag_col, ra_col="ra", dec_col="dec", ncpus=None):
         """

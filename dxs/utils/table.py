@@ -7,6 +7,7 @@ import numpy as np
 
 from astropy.io import fits
 from astropy.table import Table, Column
+from astropy.wcs import WCS
 
 from easyquery import Query
 

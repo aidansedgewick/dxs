@@ -40,9 +40,9 @@ aperture_suffixes = survey_config["catalogs"].get("apertures", None)
 flux_radii_suffixes = survey_config["catalogs"].get("flux_radii", None)
 
 snr_fluxes = ["AUTO"] #, "ISO", "APER"]
-flux_cols = ["FLUX_{flux}" for flux in snr_fluxes]
-fluxerr_cols = ["FLUXERR_{flux}" for flux in snr_fluxes]
-snr_cols = ["SNR_{flux}" for flux in snr_fluxes]
+flux_cols = [f"FLUX_{flux}" for flux in snr_fluxes]
+fluxerr_cols = [f"FLUXERR_{flux}" for flux in snr_fluxes]
+snr_cols = [f"SNR_{flux}" for flux in snr_fluxes]
 
 crosstalk_columns = (
     [f"crosstalk_{x}" for x in ["ra", "dec", "direction", "order", "flag"]]
@@ -87,8 +87,8 @@ def photometry_pipeline(
     collate_crosstalks=True,
     match_crosstalks=True,
     match_fp=True,
-    match_pair=True,
-    match_extras=True,
+    #match_pair=True,
+    #match_extras=True,
     n_cpus=None,
 ):
     field_name = survey_config["code_to_field"][field]
@@ -248,8 +248,8 @@ if __name__ == "__main__":
     parser.add_argument("--match_all", action="store_true", default=False)
     parser.add_argument("--match_crosstalks", action="store_true", default=False)
     parser.add_argument("--match_fp", action="store_true", default=False)
-    parser.add_argument("--match_pair", action="store_true", default=False)
-    parser.add_argument("--match_extras", action="store_true", default=False)
+    #parser.add_argument("--match_pair", action="store_true", default=False)
+    #parser.add_argument("--match_extras", action="store_true", default=False)
     parser.add_argument("--full", action="store_true", default=False)
     parser.add_argument("--n_cpus", action="store", default=None, type=int)
 
@@ -261,16 +261,16 @@ if __name__ == "__main__":
     if args.match_all:
         args.match_crosstalks = True
         args.match_fp = True
-        args.match_pair = True
-        args.match_extras = True        
+        #args.match_pair = True
+        #args.match_extras = True        
 
     if args.full:
         args.extract = True
         args.collate_crosstalks = True
         args.match_crosstalks = True
         args.match_fp = True
-        args.match_pair = True
-        args.match_extras = True
+        #args.match_pair = True
+        #args.match_extras = True
 
     check_modules("swarp", "sex", "stilts")
     
@@ -280,8 +280,8 @@ if __name__ == "__main__":
         collate_crosstalks=args.collate_crosstalks,
         match_crosstalks=args.match_crosstalks,
         match_fp=args.match_fp,
-        match_pair=args.match_pair,
-        match_extras=args.match_extras,
+        #match_pair=args.match_pair,
+        #match_extras=args.match_extras,
         n_cpus=args.n_cpus
     )
 

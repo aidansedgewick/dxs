@@ -59,7 +59,7 @@ bright_stars:
     cutout_sizes: [600, 600, 200, 200, 100, 100]
 
 merge:
-  tile_merge_error: 0.5 # ie, finding repeated objects at the edge of images.
+  tile_merge_error: 0.8 # ie, finding repeated objects at the edge of images.
   nir_match_error: 1.0 #
   panstarrs_match_error: 1.0
   cfhtls_match_error: 1.0

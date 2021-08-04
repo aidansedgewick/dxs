@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.table import Table, Column, MaskedColumn, vstack
+from astropy.time import Time
 from astropy.wcs import WCS
 
 from astromatic_wrapper.api import Astromatic
@@ -29,12 +30,19 @@ from dxs import paths
 logger = logging.getLogger("catalog_merge")
 
 def merge_catalogs(
-    data_list, output_path, id_col, ra_col, dec_col, snr_col,
-    match_error=0.5, 
+    data_list, 
+    output_path, 
+    id_col, 
+    ra_col, 
+    dec_col, 
+    snr_col,
+    merge_error=0.8, 
     coverage_col=None, 
-    value_check_col=None, 
+    value_check_column=None, 
+    vcheck_min=-np.inf,
+    vcheck_max=np.inf,
     rtol=1e-5, 
-    atol=1e-8
+    atol=1e-8,
 ):   
     """
     Merge catalogs.
@@ -48,18 +56,28 @@ def merge_catalogs(
     id col
         We modify the ID of each table so that object IDs are not mangled.
     ra_col, dec_col
+        cols to merge positions 
     snr_col
         select the object in overlapping regions with the highest SNR.
-        
+    merge_error
+        how far apart in arcsec can objects be and be merged? in ARCSEC. default 0.8"
+    coverage_col
+        don't merge objects in bad coverage (ie, if coverage_col  value is 0)
+    value_check_column
+    
     """
     output_path = Path(output_path)
     stem = output_path.name.split(".")[0]
+
+
 
     # Concatenate them...
     concat_list = []
     wcs_list = []
     for ii, (tab, assoc_wcs) in enumerate(data_list):
         if isinstance(tab, str) or isinstance(tab, Path):
+            catalog_path = Path(tab)
+            logger.info(f"reading {catalog_path.name}")
             tab = Table.read(catalog_path)
 
         # modify id value.
@@ -70,10 +88,32 @@ def merge_catalogs(
             tab = tab[ tab[coverage_col] > 0 ]
         coord = SkyCoord(ra=tab[ra_col], dec=tab[dec_col], unit="degree")       
         in_region_mask = assoc_wcs.footprint_contains(coord)
-        assert sum(in_region_mask) == len(in_region_mask)
+
+        ### what if everything is NOT in the region_mask?
+        if not sum(in_region_mask) == len(in_region_mask):
+            xpix, ypix = SkyCoord(
+                    ra=tab[~in_region_mask][ra_col], 
+                    dec=tab[~in_region_mask][dec_col],
+                    unit="deg"
+            ).to_pixel(assoc_wcs)
+            xlen, ylen = assoc_wcs.pixel_shape
+            x_edge_effect = (abs(xpix) < 1.0) | (abs(xpix-xlen) < 1.0)
+            y_edge_effect = (abs(ypix) < 1.0) | (abs(ypix-ylen) < 1.0)
+            is_edge_effect = x_edge_effect | y_edge_effect
+            if not all(is_edge_effect):
+                print("ODD XPIX", xpix)
+                print("ODD YPIX", ypix)
+                          
+        # everything here is in the mosaic...
         tab = tab[ in_region_mask ]
         concat_list.append(tab)
         wcs_list.append(assoc_wcs)
+
+    # Concatenate all the individual tables.
+    concat_time = Time.now().fits
+    logger.info(f"DATE-HDU={concat_time}")
+    for cat in concat_list:
+        cat.meta["DATE-HDU"] = concat_time
     concat = vstack(concat_list) # astropy Table vstack.
 
     # Now select the objects which are in the overlapping regions.
@@ -98,7 +138,7 @@ def merge_catalogs(
     
     stilts = Stilts.tmatch1_sky_fits(
         input_overlap_path, output_path=output_overlap_path, 
-        ra=ra_col, dec=dec_col, error=match_error
+        ra=ra_col, dec=dec_col, error=merge_error
     )
     print(stilts.cmd)
     stilts.run()
@@ -106,16 +146,28 @@ def merge_catalogs(
 
     # separate into unique objects in overlap region vs. grouped objects in overlap region.
     overlap_unique, overlap_groups = separate_unique_grouped(overlap, "GroupID")
-    grouped_best = select_group_argmax(
-        overlap_groups, "GroupID", snr_col, value_check_column=value_check_col,
-        atol=atol
-    )
-    #single = Table.read(temp_single_path)    
+    grouped_best = select_group_argmax(overlap_groups, "GroupID", snr_col)
+
+    if value_check_column is not None:
+        value_check_diff = check_for_merge_errors(
+            overlap_groups, "GroupID", value_check_column,
+            vcheck_min=vcheck_min,
+            vcheck_max=vcheck_max,
+            atol=atol, 
+            rtol=rtol
+        )
+        grouped_best[f"{value_check_column}_range"] = value_check_diff
+
+    #single = Table.read(temp_single_path)
+
+    output_time = Time.now().fits
+    logger.info(f"DATE-HDU={concat_time}")
+    for cat in [single, grouped_best, overlap_unique]:
+        cat.meta["DATE-HDU"] = output_time
+
     output = vstack([single, grouped_best, overlap_unique])
     output["GroupID"] = output["GroupID"].filled(-99)
     output["GroupSize"] = output["GroupSize"].filled(-99)
-    print(output["GroupID"])
-    #output.remove_columns(["GroupSize", "GroupID"])
 
     output.write(output_path, overwrite=True)
     logger.info(f"done merging - output {output_path}!")
@@ -133,27 +185,15 @@ def contained_in_multiple_wcs(coords, wcs_list, at_least_one=True):
     return mask
 
 def select_group_argmax(
-    table, group_id, argmax_col, value_check_column=None, rtol=1e-5, atol=1e-8
+    table, 
+    group_id, 
+    argmax_col, 
 ):
     grouped = table.group_by(group_id)
     split_at = grouped.groups.indices
     group_lengths = np.diff(split_at)
     n_groups = len(group_lengths)
-    # Have we matched the correct objects?!
-    if value_check_column is not None:
-        val_check_maxima = np.maximum.reduceat(grouped[value_check_column], split_at[:-1])
-        val_check_minima = np.minimum.reduceat(grouped[value_check_column], split_at[:-1])
-        val_check_diff = val_check_maxima - val_check_minima
-        assert len(val_check_diff) == n_groups
-        close = np.isclose(val_check_maxima, val_check_minima, atol=atol, rtol=rtol).sum()
-        close = (abs(val_check_diff) < atol).sum()
-        if close != n_groups:
-            logger.warn(
-                f"{n_groups-close} of {n_groups} matches have "
-                f"{value_check_column} diff > tolerance {atol}"
-            )
-    else:
-        val_check_diff = None
+
     # Find maxima split by group.
     argmax_maxima = np.maximum.reduceat(grouped[argmax_col], split_at[:-1])
     assert len(argmax_maxima) == n_groups
@@ -172,9 +212,53 @@ def select_group_argmax(
     grouped_best = grouped[ argmax_inds ]
     assert len(grouped_best[group_id]) == len(np.unique(grouped_best[group_id]))
     assert len(grouped_best) == n_groups
-    if val_check_diff is not None:
-        grouped_best[f"{value_check_column}_range"] = val_check_diff
     return grouped_best
+
+def check_for_merge_errors(
+    table, group_id, value_check_column, 
+    vcheck_min=-np.inf,
+    vcheck_max=np.inf,
+    rtol=1e-5, 
+    atol=1e-8
+):
+    grouped = table.group_by(group_id)
+    split_at = grouped.groups.indices
+    group_lengths = np.diff(split_at)
+    n_groups = len(group_lengths)
+
+    val_check_maxima = np.maximum.reduceat(grouped[value_check_column], split_at[:-1])
+    assert len(val_check_maxima) == n_groups
+    val_check_minima = np.minimum.reduceat(grouped[value_check_column], split_at[:-1])
+    assert len(val_check_minima) == n_groups
+    full_val_check_diff = val_check_maxima - val_check_minima
+
+    min_mask = (val_check_minima > vcheck_min)
+    max_mask = (val_check_maxima < vcheck_max)
+    
+    relevant_val_check_maxima = val_check_maxima[ min_mask & max_mask ]
+    relevant_val_check_minima = val_check_minima[ min_mask & max_mask ]
+    relevant_val_check_diff   = relevant_val_check_maxima - relevant_val_check_minima
+
+    n_relevant_groups = len(relevant_val_check_diff)
+    close = np.isclose(
+        relevant_val_check_maxima, relevant_val_check_minima, atol=atol, rtol=rtol
+    ).sum()
+    #close = (abs(relevant_val_check_diff) < atol).sum()
+    
+    if close != n_relevant_groups:
+        diff = n_relevant_groups - close
+        
+        msg = (
+            f"\n{diff} of {n_relevant_groups} objects with"
+            + f" {vcheck_min:.2f} < {value_check_column} < {vcheck_max:.2f}"
+            + f" are different > tolerance (atol={atol}, rtol={rtol})"
+        )
+        logger.warning(msg)
+    else:
+        logger.info(f"value check of {n_relevant_groups} obj is fine")
+    return full_val_check_diff
+
+
 
 def separate_unique_grouped(table, group_id, fill_value=-99):
     if any(table["GroupID"] < 0):

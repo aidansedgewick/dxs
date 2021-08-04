@@ -14,6 +14,8 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.wcs import WCS
 
+from easyquery import Query
+
 from dxs import (
     MosaicBuilder, 
     BrightStarProcessor,
@@ -47,8 +49,9 @@ def mosaic_pipeline(
         bright_star_catalog_path = (
             paths.input_data_path / f"external/tmass/tmass_{field_name}_stars.csv"
         )
+        query = Query("j_m - k_m < 1.0") | Query("j_m < 8.0") | Query("k_m < 8.0")
         bright_star_processor = BrightStarProcessor.from_file(
-            bright_star_catalog_path, queries=("j_m - k_m < 1.0",), format="ascii"
+            bright_star_catalog_path, query=query, format="ascii"
         )
         extreme_star_processor = BrightStarProcessor.from_file(
             paths.config_path / "very_bright_stars.csv", format="ascii"
@@ -74,7 +77,7 @@ def mosaic_pipeline(
     if initial:
         print_header("make initial mosaic")
         builder.build(n_cpus=n_cpus)
-        builder.add_extra_keys()
+        #builder.add_extra_keys()
         try:
             with fits.open(builder.mosaic_path) as f:
                 header = f[0].header # check we can open the file!
@@ -113,7 +116,7 @@ def mosaic_pipeline(
         print(cov_builder.mosaic_stacks.groupby(["pointing"]).size())
         print(f"minimum_coverage is {minimum_coverage} ")
         cov_builder.build(n_cpus=n_cpus)
-        cov_builder.add_extra_keys()
+        #cov_builder.add_extra_keys()
         good_cov_path = cov_builder.mosaic_path.with_suffix(".good_cov.fits")
         make_good_coverage_map(
             cov_builder.mosaic_path, output_path=good_cov_path, minimum_coverage=minimum_coverage       
@@ -160,7 +163,7 @@ def mosaic_pipeline(
             hdu_prep_kwargs=exptime_prep_kwargs,
         )
         exptime_builder.build(n_cpus=n_cpus)
-        exptime_builder.add_extra_keys()
+        #exptime_builder.add_extra_keys()
 
         try:
             weight_path = exptime_builder.mosaic_path.with_suffix(".weight.fits")
@@ -182,8 +185,6 @@ def mosaic_pipeline(
         except Exception as e:
             logger.warn(f"during delete temp: {e}")
             pass
-
-
                 
     if masked:
         ### get segementation image to use as mask.
@@ -214,7 +215,7 @@ def mosaic_pipeline(
             "image_size": builder.swarp_config["image_size"], # don't calculate twice!
         }        
         masked_prep_kwargs = {
-            "hdu_prefix": paths.get_mosaic_stem(*spec, prefix="m"),
+            "hdu_prefix": f"{stem}_m",
             #resize=True, edges=25.0,
             "mask_sources": True, "mask_header": mask_header, "mask_map": mask_map,
             "subtract_bgr": True, "bgr_size": 64,
@@ -226,19 +227,21 @@ def mosaic_pipeline(
             hdu_prep_kwargs=masked_prep_kwargs
         )
         if masked_builder is None:
+            print("masked builder is None?!")
             sys.exit()
         masked_builder.build(n_cpus=n_cpus,)
-        masked_builder.add_extra_keys(magzpt_inc_exptime=False)
+        #masked_builder.add_extra_keys(magzpt_inc_exptime=True)
 
         try:
             with fits.open(masked_builder.mosaic_path) as f:
                 header = f[0].header # check we can open the file!
-            #with open(masked_builder.swarp_list_path) as f:
-            #    hdu_list = f.read().splitlines()
-            #    for hdu_path in hdu_list:
-            #        assert hdu_path.exists()
-            #        os.remove(hdu_path)
-            #        assert not hdu_path.exists()
+            with open(masked_builder.swarp_list_path) as f:
+                hdu_list = f.read().splitlines()
+                for hdu_path_str in hdu_list[20:]:
+                    hdu_path = Path(hdu_path_str)
+                    assert hdu_path.exists()
+                    os.remove(hdu_path)
+                    assert not hdu_path.exists()
         except Exception as e:
             logger.warn(f"during delete temp: {e}")
             pass
