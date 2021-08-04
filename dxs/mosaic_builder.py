@@ -264,8 +264,8 @@ class MosaicBuilder:
     @classmethod
     def coverage_from_dxs_spec(
         cls, field, tile, band, 
-        pixel_scale, 
         include_neighbors=True,
+        include_deprecated_stacks=False,
         prefix=None,
         suffix=None,
         swarp_config=None, 
@@ -278,7 +278,7 @@ class MosaicBuilder:
         fill_value should be set to 1
         """
         swarp_config = swarp_config or {}
-        swarp_config["pixel_scale"] = pixel_scale
+        #swarp_config["pixel_scale"] = pixel_scale
         swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
         hdu_prep_kwargs = hdu_prep_kwargs or {}
         hdu_prep_kwargs["fill_value"] = 1.0
@@ -288,6 +288,7 @@ class MosaicBuilder:
             prefix=prefix, 
             suffix=suffix, 
             include_neighbors=include_neighbors,
+            include_deprecated_stacks=include_deprecated_stacks,
             extension="cov", 
             add_flux_scale=False,
             swarp_config=swarp_config, 
@@ -298,8 +299,8 @@ class MosaicBuilder:
     @classmethod
     def exptime_from_dxs_spec(
         cls, field, tile, band, 
-        pixel_scale, 
         include_neighbors=True,
+        include_deprecated_stacks=False,
         prefix=None,
         suffix=None,
         swarp_config=None, 
@@ -312,7 +313,7 @@ class MosaicBuilder:
         fill_value should be set to exptime
         """
         swarp_config = swarp_config or {}
-        swarp_config["pixel_scale"] = pixel_scale
+        #swarp_config["pixel_scale"] = pixel_scale
         swarp_config_file = swarp_config_file or paths.config_path / "swarp/coverage.swarp"
         hdu_prep_kwargs = hdu_prep_kwargs or {}
         hdu_prep_kwargs["fill_value"] = "exptime"
@@ -322,6 +323,7 @@ class MosaicBuilder:
             prefix=prefix, 
             suffix=suffix, 
             include_neighbors=include_neighbors,
+            include_deprecated_stacks=include_deprecated_stacks,
             extension="exp", 
             add_flux_scale=False,
             swarp_config=swarp_config, 

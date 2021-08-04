@@ -383,11 +383,66 @@ def test__mosaic_builder_from_spec():
     assert set(tuple(x) for x in SA04K_builder.ccds_list) == set( ((1,2,3,4),) )
     SA04K_builder.initialise_astromatic()
     print(SA04K_builder.cmd_kwargs)
+
+    exp_config_file = str(paths.config_path / "swarp/mosaic.swarp")
+    assert str(SA04K_builder.swarp_config_file) == exp_config_file
+
+    assert "magzpt" in SA04K_builder.header_keys
+    assert "seeing" in SA04K_builder.header_keys
+    
+    assert np.isclose(SA04K_builder.hdu_prep_kwargs["AB_conversion"], 1.900)
+    assert SA04K_builder.hdu_prep_kwargs["add_flux_scale"]
+
     assert "-NTHREADS 1" in SA04K_builder.cmd_kwargs["cmd"]
     assert "-CENTER 180.000000,1.234000" in SA04K_builder.cmd_kwargs["cmd"]
     assert "-IMAGE_SIZE 12345,21000" in SA04K_builder.cmd_kwargs["cmd"]
     assert SA04K_builder.cmd_kwargs["code"] == "SWarp"
     
+def test__mosaic_builder_coverage_from_spec():
+
+    swarp_config = {"center": (215., 1.234), "image_size": (12345, 10000)}
+    mb = mosaic_builder.MosaicBuilder.coverage_from_dxs_spec(
+        "SA", 4, "K",
+        swarp_config=swarp_config,
+        include_neighbors=False, 
+        include_deprecated_stacks=True
+    )
+    mb.initialise_astromatic()
+
+    exp_out_path = str(paths.mosaics_path / "SA04K/SA04K.cov.fits")
+    assert str(mb.mosaic_path) == exp_out_path
+
+    exp_config_file = str(paths.config_path / "swarp/coverage.swarp")
+    assert str(mb.swarp_config_file) == exp_config_file
+    assert not mb.hdu_prep_kwargs["add_flux_scale"]
+    assert np.isclose(mb.hdu_prep_kwargs["fill_value"], 1.0)
+    assert "-CENTER 215.000000,1.234000" in mb.cmd_kwargs["cmd"]
+    assert "-IMAGE_SIZE 12345,10000" in mb.cmd_kwargs["cmd"]
+    assert mb.cmd_kwargs["code"] == "SWarp"
+    
+def test__mosaic_builder_exptime_from_spec():
+
+    swarp_config = {"center": (90., 1.234), "image_size": (12345, 19000)}
+    mb = mosaic_builder.MosaicBuilder.exptime_from_dxs_spec(
+        "SA", 4, "K",
+        swarp_config=swarp_config,
+        include_neighbors=False, 
+        include_deprecated_stacks=True
+    )
+    mb.initialise_astromatic()
+
+
+    exp_out_path = str(paths.mosaics_path / "SA04K/SA04K.exp.fits")
+    assert str(mb.mosaic_path) == exp_out_path
+
+    exp_config_file = str(paths.config_path / "swarp/coverage.swarp")
+    assert str(mb.swarp_config_file) == exp_config_file
+    assert not mb.hdu_prep_kwargs["add_flux_scale"]
+    assert mb.hdu_prep_kwargs["fill_value"] == "exptime"
+    assert "-CENTER 90.000000,1.234000" in mb.cmd_kwargs["cmd"]
+    assert "-IMAGE_SIZE 12345,19000" in mb.cmd_kwargs["cmd"]
+    assert mb.cmd_kwargs["code"] == "SWarp"
+      
 
 def test__write_swarp_list():
     input_hdu_list = []

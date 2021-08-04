@@ -99,10 +99,10 @@ def mosaic_pipeline(
             "image_size": builder.swarp_config["image_size"], # don't calculate twice!
         }
         coverage_prep_kwargs = {"hdu_prefix": f"{stem}_u"}
-        pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
+        #pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
         cov_builder = MosaicBuilder.coverage_from_dxs_spec(
             *spec, 
-            pixel_scale=pixel_scale, 
+            #pixel_scale=pixel_scale, 
             swarp_config=coverage_swarp_config, 
             hdu_prep_kwargs=coverage_prep_kwargs,
         )
@@ -158,7 +158,7 @@ def mosaic_pipeline(
         pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
         exptime_builder = MosaicBuilder.exptime_from_dxs_spec(
             *spec, 
-            pixel_scale=pixel_scale * 10., 
+            #pixel_scale=pixel_scale * 10., 
             swarp_config=exptime_swarp_config, 
             hdu_prep_kwargs=exptime_prep_kwargs,
         )

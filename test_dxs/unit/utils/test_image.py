@@ -69,12 +69,12 @@ def test__uniform_sphere():
 
     # look for uniform distribution in sin(dec)
 
-    ra_lims_2 = (180., 180.2)
-    dec_lims_2 = (50., 90.)
-    density_2 = 1e5
+    ra_lims_2 = (179.9, 180.1)
+    dec_lims_2 = (-90., 90.)
+    density_2 = 1e6
     random_coords_2 = image.uniform_sphere(ra_lims_2, dec_lims_2, density=density_2)
     num_randoms_2 = len(random_coords_2)
-    n_bins_2 = 10
+    n_bins_2 = 20
     bins_2 = np.linspace(
         np.sin(dec_lims_2[0] * np.pi / 180.), 
         np.sin(dec_lims_2[1] * np.pi / 180.), 
@@ -83,7 +83,7 @@ def test__uniform_sphere():
 
     hist_2, _ = np.histogram(np.sin(random_coords_2[:, 1] * np.pi / 180.), bins=bins_2)
     num_per_bin_2 = num_randoms_2 / n_bins_2
-    assert np.allclose(hist_2, num_per_bin_2, rtol=0.02)
+    assert np.allclose(hist_2, num_per_bin_2, rtol=0.05)
 
 def test__single_image_coverage():
     image_size = (1800, 1800)
