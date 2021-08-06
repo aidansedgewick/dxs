@@ -42,7 +42,7 @@ def test__get_mosaic_path():
     assert str(mos_path1) == bp_str + "/data/mosaics/CCfffX/CCfffX.cov.fits"
 
     mos_path2 = paths.get_mosaic_path("DD", 8, "W")
-    assert str(mos_path2) == bp_str + "data/mosaics/DD08W/DD08W.fits"
+    assert str(mos_path2) == bp_str + "/data/mosaics/DD08W/DD08W.fits"
 
 
 def test__get_catalog_stem():
@@ -68,7 +68,7 @@ def test__get_catalog_path():
     cat_path2 = paths.get_catalog_path(
         "HH", 5, "P"
     )
-    assert str(cat_path2) == bp_Str + "/data/catalogs/HH05/HH05P.cat.fits"
+    assert str(cat_path2) == bp_str + "/data/catalogs/HH05/HH05P.cat.fits"
 
 
 
