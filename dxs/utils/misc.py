@@ -88,6 +88,7 @@ def format_flags(config, capitalise=True, float_precision=6):
     Convert float to six decimal place string
     Convert tuple of int to comma-separated string
     Convert tuple of float to comma-sep string with six decimal places.
+    Confert SkyCoord to commasep float-format "ra,dec"
     Do nothing to string.
     """
     formatted_config = {}
@@ -114,7 +115,8 @@ def format_flags(config, capitalise=True, float_precision=6):
             elif all(isinstance(x, float) for x in value):
                 formatted_config[key] = ','.join(f"{x:.{float_precision}f}" for x in value)
             else:
-                raise ValueError(f"Don't know how to format type {type(value)} - check element types?")
+                mixed_types = [type(x) for x in value]
+                raise ValueError(f"Don't know how to format mixed types {mixed_types} - check element types?")
         else:
             raise ValueError(f"Don't know how to format type {type(value)}")
     return formatted_config
@@ -164,13 +166,18 @@ def get_git_info():
         local_SHA = "unavailable"
     return branch, local_SHA
 
-def print_header(string, edge="###", newlines=3):
+def print_header(string, edge="###", newlines=3, return_string=False):
     try:
         columns = shutil.get_terminal_size((80,20)).columns
     except:
         columns = 80
     N = int(columns - len(string) - 2 - 2*len(edge)) // 2
-    print("\n"*newlines + edge + N*"=" + f" {string} " + N*"=" + edge + "\n")
+    header_str = (
+        "\n"*newlines + edge + N*"=" + f" {string} " + N*"=" + edge + "\n"
+    )
+    if return_string:
+        return header_str    
+    print(header_str)
 
 def remove_temp_data(file_list):
     if not isinstance(file_list, list):

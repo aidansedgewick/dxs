@@ -8,7 +8,7 @@ from astropy.table import Table
 from astropy.io import fits
 
 from dxs import catalog_builder
-from dxs.utils.image import build_mosaic_wcs
+from dxs.utils.image import build_mosaic_wcs, uniform_sphere
 
 from dxs import paths
 
@@ -183,13 +183,113 @@ def test__add_snr():
     cat2.write(catalog_path1)
 
     ce2 = catalog_builder.CatalogExtractor(
-        mosaic_path, catalog_path=catalog_path1
+        mosaic_path, catalog_path=catalog_path2
     )
     with pytest.raises(ValueError):
         ce2.add_snr(["flux1", "flux2"], ["fluxerr1"], ["snr1", "snr2"])
+    with pytest.raises(ValueError):
+        ce2.add_snr(["flux1", "flux2"], ["fluxerr1", "fluxerr2"], ["snr1"])
+    tab = Table.read(catalog_path2)
+    assert "snr1" not in tab.columns
+    assert "snr2" not in tab.columns
+
+    # test give non-list input works.
+    ce2.add_snr("flux1", "fluxerr1", "snr1")
+    tab = Table.read(catalog_path2)
+    assert np.allclose(tab["snr1"], [1., 2., 3., 4., 5.])
+    assert "snr2" not in tab.columns
+
+
+
+### =========== now test catalog_matcher =========== ###
+
+def test__catalog_matcher_init():
+    input_path = paths.scratch_test_path / "cat_matcher_init.cat.fits"
+
+    matcher1 = catalog_builder.CatalogMatcher(input_path)
+    assert matcher1.catalog_path == input_path
+    assert matcher1.ra == "ra"
+    assert matcher1.dec == "dec"
+
+    matcher2 = catalog_builder.CatalogMatcher(input_path, ra="ra_test", dec="dec_test")
+    assert matcher2.catalog_path == input_path
+    assert matcher2.ra == "ra_test"
+    assert matcher2.dec == "dec_test"
+
+def test__catalog_matcher_match():
     
+    tab1 = Table({
+        "id1":  [101 , 102 , 103 , 104 , 105 , 106 , 107 , 108 , 109 ,      ],
+        "ra1":  [90. , 90.1, 90.2, 90.3, 90.4, 90.5, 90.6, 90.7, 90.8,      ],
+        "dec1": [0.  , 0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.,        ],
+        "J_m":  [10. , 11.,  12.,  13.,  14.,  15.,  16.,  17.,  18.,       ],
+    })
+    assert len(tab1) == 9 # remember this for later...
 
+    tab2 = Table({
+        "id2":  [101 , 102 , 103 , 104 ,             105 , 106 , 107 , 108  ],
+        "ra2":  [90. , 90.1, 90.2, 90.3,             90.6, 90.7, 90.8, 90.9 ],
+        "dec2": [0.  , 0.,   0.,   0.,               0.,   0.,   0.,   0.   ],
+        "K_m":  [10.5, 11.5, 12.5, 13.5,             16.5, 17.5, 18.5, 19.5,],
+    })
 
+    tab1_path = paths.scratch_test_path / "cat_matcher_tab1.cat.fits"
+    if tab1_path.exists():
+        os.remove(tab1_path)
+    assert not tab1_path.exists()
+    tab1.write(tab1_path)
+
+    tab2_path = paths.scratch_test_path / "cat_matcher_tab2.cat.fits"
+    if tab2_path.exists():
+        os.remove(tab2_path)
+    assert not tab2_path.exists()
+    tab2.write(tab2_path)
+
+    matcher = catalog_builder.CatalogMatcher(tab1_path, ra="ra1", dec="dec1")
+    assert matcher.catalog_path == tab1_path
+
+    output_path = paths.scratch_test_path / "cat_matcher_output.cat.fits"
+    if output_path.exists():
+        os.remove(output_path)
+    assert not output_path.exists()
+
+    matcher.match_catalog(
+        tab2_path, output_path, ra="ra2", dec="dec2", error=1.0, set_output_as_input=True
+    )
+
+    assert "join=all1" in matcher.stilts.cmd
+    assert "find=best" in matcher.stilts.cmd
+
+    output = Table.read(output_path)
+    output.sort("id1")
+    output["ra2"] = output["ra2"].filled(-99.)
+    print(output["ra2"].filled(-99.))
+    print([np.isfinite(x) for x in output["ra2"]])
+    output["dec2"] = output["dec2"].filled(-99.)
+    output["K_m"] = output["K_m"].filled(-99.)
+    print(output[["ra2", "dec2", "K_m"]])
+    assert set(output.columns) == set([
+        "id1", "ra1", "dec1", "J_m", "id2", "ra2", "dec2", "K_m", "Separation"])
+    assert len(output) == 9
+    assert np.allclose(
+        output["ra1"].data, [90., 90.1, 90.2, 90.3, 90.4,   90.5,   90.6, 90.7, 90.8,]
+    )
+    assert np.allclose(
+        output["ra2"].data, [90., 90.1, 90.2, 90.3, np.nan, np.nan, 90.6, 90.7, 90.8,   ],
+        equal_nan=True
+    ) ###                                            ^^^^    ^^^^                    ^^^
+    ### no 90.4, 90.5, so they are nan.
+
+    assert np.allclose(output["dec1"], 0.)
+    assert np.allclose(
+        output["dec2"], [0.,0.,0.,0., np.nan, np.nan, 0., 0., 0.,],
+        equal_nan=True
+    ) ###                              ^^^^    ^^^^
+    jk = output["J_m"] - output["K_m"]
+    assert np.allclose(
+        jk, [-0.5, -0.5, -0.5, -0.5, np.nan, np.nan, -0.5, -0.5, -0.5],
+        equal_nan=True
+    ) ### 
 
 
 

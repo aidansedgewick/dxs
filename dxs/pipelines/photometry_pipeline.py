@@ -148,13 +148,11 @@ def photometry_pipeline(
     Jfp_output_dir = paths.get_catalog_dir(*Jspec)
     Jfp_combined_stem = paths.get_catalog_stem(field, tile, "JK", prefix=prefix)
     Jfp_output_path =  Jfp_output_dir / f"{Jfp_combined_stem}.cat.fits"
-    Jfp_matcher = CatalogMatcher(
-        J_output_path, output_path=Jfp_output_path, ra="J_ra", dec="J_dec"
-    )
+    Jfp_matcher = CatalogMatcher(J_output_path, ra="J_ra", dec="J_dec")
     if match_fp:
         print_header("match J and K forced")
         Jfp_matcher.match_catalog(
-            JKfp_ex.catalog_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
+            JKfp_ex.catalog_path, output_path=Jfp_output_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
         )
         fix_column_names(Jfp_output_path, column_lookup={"Separation": "Jfp_separation"})
         logger.info(f"joined J and K forced at {Jfp_output_path}")
@@ -211,12 +209,11 @@ def photometry_pipeline(
     Kfp_output_dir = paths.get_catalog_dir(*Kspec)
     Kfp_combined_stem = paths.get_catalog_stem(field, tile, "KJ", prefix=prefix)
     Kfp_output_path =  Kfp_output_dir / f"{Kfp_combined_stem}.cat.fits"
-    Kfp_matcher = CatalogMatcher(
-        K_output_path, output_path=Kfp_output_path, ra="K_ra", dec="K_dec"
-    )
+    Kfp_matcher = CatalogMatcher(K_output_path, ra="K_ra", dec="K_dec")
     if match_fp:
         Kfp_matcher.match_catalog(
-            KJfp_ex.catalog_path, ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
+            KJfp_ex.catalog_path, output_path=Kfp_output_path, 
+            ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
         )
         fix_column_names(Kfp_output_path, column_lookup={"Separation": "Kfp_separation"})
         logger.info(f"joined J and K forced at {Kfp_output_path}")
@@ -234,7 +231,10 @@ def photometry_pipeline(
         H_ex.add_map_value(H_cov_map_path, "H_coverage", ra="H_ra", dec="H_dec")
         remove_objects_in_bad_coverage(H_ex.catalog_path, coverage_column="H_coverage")
         H_ex.add_column({"H_tile": tile})
-
+        H_aper_cols = ["H_mag_aper", "H_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
+        explode_columns_in_fits(
+            H_output_path, H_aper_cols, suffixes=aperture_suffixes, remove=True
+        )
 
 
 if __name__ == "__main__":

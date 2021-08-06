@@ -166,8 +166,7 @@ def merge_pipeline(
     for ext in external:
         print_header(f"add {ext} catalog")
         logger.info(f"will left join to {ext_match_input_path.name}")
-        ext_matcher = CatalogMatcher(ext_match_input_path)
-
+        ext_matcher = CatalogMatcher(ext_match_input_path, ra=input_ra, dec=input_dec)
 
         if ext == "H":
             ext_catalog_path = H_output

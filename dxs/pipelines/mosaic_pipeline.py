@@ -24,7 +24,7 @@ from dxs import (
     CatalogPairMatcher, 
     CrosstalkProcessor
 )
-from dxs.utils.misc import check_modules, print_header, remove_temp_data
+from dxs.utils.misc import check_modules, print_header
 from dxs.utils.table import fix_column_names
 from dxs.utils.image import scale_mosaic, make_good_coverage_map, mask_regions_in_mosaic
 from dxs import paths

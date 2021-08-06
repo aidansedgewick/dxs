@@ -266,7 +266,8 @@ def test__get_boundary_pixels():
     assert all( (ypix[ constant_y ] == 0) | (ypix[ constant_y ] == 4000) )
     assert all( (xpix[ constant_x ] == 0) | (xpix[ constant_x ] == 4000) )
 
-    assert sum(constant_y) + sum(constant_x) + 4 == len(xpix)
+    # two for each end point, for y-constant at top and bottom of mosaic.
+    assert sum(constant_y) + 2 + 2 + sum(constant_x) + 2 + 2 == len(xpix)
 
 
 def test__make_good_coverage_map():

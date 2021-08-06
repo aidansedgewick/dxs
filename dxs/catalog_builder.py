@@ -251,8 +251,6 @@ class CatalogMatcher:
     ----------
     catalog_path
         path to main catalog
-    output_path
-        path to output after matchers are made
     ra, dec
         the columns for the coordinates to use in the main catalog when doing matches.
 
@@ -264,75 +262,43 @@ class CatalogMatcher:
 
     """
     
-    def __init__(self, catalog_path, output_path=None, ra="ra", dec="dec"):
+    def __init__(self, catalog_path, ra="ra", dec="dec"):
         self.catalog_path = Path(catalog_path)
-        output_path = output_path or self.catalog_path
-        self.output_path = Path(output_path)
         self.ra = ra
         self.dec = dec
 
         self.summary_info = []
 
-    @classmethod
-    def from_dxs_spec(
-        cls, field, tile, band, prefix=None, suffix=None, output_path=None, ra="ra", dec="dec"
-    ):
-        catalog_dir = paths.get_catalog_dir(field, tile, band)
-        catalog_stem = paths.get_catalog_stem(field, tile, band, prefix=prefix)
-        catalog_path = catalog_dir / f"{catalog_stem}.cat.fits"
-        suffix = suffix or ''
-        prefix = prefix or ''
-        if output_path is None:
-            output_stem = f"{prefix}{catalog_stem}{suffix}"
-            output_path = catalog_dir / f"{output_stem}.cat.fits"
-        return cls(catalog_path, output_path, ra=ra, dec=dec)
-
     def match_catalog(
-        self, extra_catalog, ra="ra", dec="dec", prefix=None, output_path=None, **kwargs
+        self, 
+        extra_catalog, 
+        output_path, 
+        ra="ra", 
+        dec="dec", 
+        engine="stilts", 
+        set_output_as_input=False,
+        **kwargs
     ):
-        prefix = prefix or extra_catalog.stem
         extra_catalog = Path(extra_catalog)
-        output_path = output_path or self.output_path
-        stilts = Stilts.tskymatch2_fits(
-            self.catalog_path, extra_catalog, output_path=output_path,
-            flags={"join": "all1", "find": "best"},
-            ra1=self.ra, dec1=self.dec,
-            ra2=ra, dec2=dec,
-            **kwargs
-        )
-        stilts.run()
-        info = f"{stilts.flags['join']} match {extra_catalog.name}"
-        logger.info(info)
-        self.summary_info.append(info)
-
-    def join_catalog(
-        self, extra_catalog, values1, values2, engine="stilts", **kwargs
-    ):
-        """remember kwarg values overwrite flags value..."""
-        if engine=="stilts":
-            stilts = Stilts.tskymatch2_fits(
-                self.output_catalog, extra_catalog, values1=values1, values2=values2,
-                flags={"join": "all1", "find": "best"}, **kwargs
+        output_path = Path(output_path)       
+        if self.catalog_path == output_path:
+             logger.warning("catalog_path is the same as output_path!!")
+        if engine == "stilts":
+            self.stilts = Stilts.tskymatch2_fits(
+                self.catalog_path, extra_catalog, output_path=output_path,
+                flags={"join": "all1", "find": "best"},
+                ra1=self.ra, dec1=self.dec,
+                ra2=ra, dec2=dec,
+                **kwargs
             )
-            stilts.run()
-        elif engine=="astropy":
-            raise NotImplementedError("DIY for now - or just use tskymatch2_fits.")
-
-    def add_map_value(
-        self, mosaic_path, column_name, ra=None, dec=None, xpix=None, ypix=None, hdu=0,
-    ):
-        info = _add_map_value(
-            self.output_path, mosaic_path, column_name, 
-            ra=ra, dec=dec, xpix=xpix, ypix=ypix, hdu=hdu,        
-        )
+            self.stilts.run()
+            info = f"{self.stilts.flags['join']} match {extra_catalog.name}"
+        else:
+            raise ValueError("currently only engine='stilts' implemented...")
         logger.info(info)
         self.summary_info.append(info)
-
-    def add_column(self, column_data: Dict):
-        add_column_to_catalog(self.output_path, column_data)
-
-    def fix_column_names(self, **kwargs):
-        fix_column_names(self.output_path, **kwargs)
+        if set_output_as_input:
+            self.catalog_path = output_path
 
     def print_summary(self):
         summary = "Summary:"
@@ -352,6 +318,8 @@ class CatalogPairMatcher(CatalogMatcher):
     ----------
     catalog1_path, catalog2_path
         catalogs to match
+    output_path
+        where to store the output?
     ra1, dec1
         name of ra, dec column in catalog 1
     ra2, dec2
@@ -381,33 +349,19 @@ class CatalogPairMatcher(CatalogMatcher):
         self.output_ra = output_ra
         self.output_dec = output_dec
         self.summary_info = []
-
         logger.info(f"pair matcher - {self.catalog1_path.name} and {self.catalog2_path.name}")
 
-    @classmethod
-    def from_dxs_spec(
-        cls, field, tile, output_path, prefix=None, suffix=None,
-    ):
-        catalog1_dir = paths.get_catalog_dir(field, tile, "J")
-        catalog1_stem = paths.get_catalog_stem(field, tile, "J", prefix=prefix)
-        catalog1_path = catalog1_dir / f"{catalog1_stem}.cat.fits"
-        catalog2_dir = paths.get_catalog_dir(field, tile, "K")
-        catalog2_stem = paths.get_catalog_stem(field, tile, "K", prefix=prefix)
-        catalog2_path = catalog2_dir / f"{catalog2_stem}.cat.fits"
-        return cls(
-            catalog1_path, catalog2_path, output_path,
-            ra1="J_ra", dec1="J_dec", prefix1="J", suffix1=suffix,
-            ra2="K_ra", dec2="K_dec", prefix2="K", suffix2=suffix,
-        )
-
-    def best_pair_match(self, **kwargs):
-        stilts = Stilts.tskymatch2_fits(
-            self.catalog1_path, self.catalog2_path, self.catalog_path,
-            ra1=self.ra1, dec1=self.dec1, ra2=self.ra2, dec2=self.dec2,
-            flags={"join": "1or2", "find": "best"},
-            **kwargs
-        )
-        stilts.run()
+    def best_pair_match(self, engine="stilts", **kwargs):
+        if engine == "stilts":
+            self.stilts = Stilts.tskymatch2_fits(
+                self.catalog1_path, self.catalog2_path, self.catalog_path,
+                ra1=self.ra1, dec1=self.dec1, ra2=self.ra2, dec2=self.dec2,
+                flags={"join": "1or2", "find": "best"},
+                **kwargs
+            )
+            self.stilts.run()
+        else:
+            raise ValueError("currently only engine='stilts' implemeneted...")
         info = f"best match {self.catalog1_path.name} and {self.catalog2_path.name}"
         logger.info(info)
         self.summary_info.append(info)
