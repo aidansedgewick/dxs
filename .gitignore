@@ -13,6 +13,7 @@ input_data/
 !input_data/plotting
 safe/
 runner/runs
+runner/runner_outputs
 temp_data/
 
 configuration/virgodb.yaml

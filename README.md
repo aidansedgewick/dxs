@@ -63,6 +63,8 @@ to create a single mosaic. Mosaics are ~1Gb each.
 
 It took me about 1hr per mosaic to run the full "pipeline" on a 16 core node.
 
+![mosaic layouts](https://github.com/aidansedgewick/dxs/tree/main/configuration/cartoon_layout.png)
+
 ### Creating catalogs.
 
 These don't take as long.
