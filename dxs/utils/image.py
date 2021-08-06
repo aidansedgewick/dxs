@@ -18,6 +18,8 @@ from astropy.nddata.utils import Cutout2D
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 
+import healpy as hp
+
 from regions import PolygonPixelRegion, PolygonSkyRegion, PixCoord, read_ds9
 
 from dxs import paths
@@ -92,6 +94,9 @@ def uniform_sphere(
     Returns Nx2 numpy array with columns [ra, dec].
     Use this over astropy, as astropy only does the whole sphere...
 
+    https://astronomy.stackexchange.com/questions/22388/generate-an-uniform-distribution-on-the-sky
+    - answer 2.
+
     Parameters
     ----------
     ra_limits
@@ -123,6 +128,7 @@ def single_image_coverage(
         fwcs = WCS(header)
         if absolute_value:
             data = abs(img[hdu].data)
+    """
     ra = ra.flatten()
     dec = dec.flatten()
     coord = np.column_stack([ra, dec])
@@ -131,9 +137,22 @@ def single_image_coverage(
     xmask = (0 < pix[:,0]) & (pix[:,0] < header["NAXIS1"])
     ymask = (0 < pix[:,1]) & (pix[:,1] < header["NAXIS2"])
     pix_mask = xmask & ymask
+    """
 
-    pix = pix[ pix_mask ]
-    mask[ pix_mask ] = data[pix[:,1], pix[:,0]] > minimum_coverage
+    coord = SkyCoord(ra=ra, dec=dec, unit="deg")
+    mask = np.full(len(coord), False)
+
+    xpix, ypix = coord.to_pixel(fwcs)
+    pix_mask = fwcs.footprint_contains(coord)
+
+    xpix = xpix.astype(int)[pix_mask]
+    ypix = ypix.astype(int)[pix_mask]
+    #pix = pix[ pix_mask ]
+
+    in_good_coverage = data[ypix, xpix] > minimum_coverage # boolean.
+    assert len(in_good_coverage) == sum(pix_mask)
+
+    mask[ pix_mask ] = in_good_coverage
     return mask
 
 def objects_in_coverage(
@@ -187,52 +206,66 @@ def objects_in_coverage(
     return full_mask
 
 def calc_survey_area(
-    image_list, ra_limits=None, dec_limits=None, density=1e4, return_randoms=False
+    image_list, ra_limits=None, dec_limits=None, limits_units="deg", nside=4096
 ):
-    """
-    Monte-carlo to find survey area from list of fits files.
-    Calculate the area of the spherical rectangle which bounds all of the images.
-    Generate N random points (on the surface of a sphere), 
-    where N is density * area_rectangle.
-    See what fraction of them fall within the data,
-    Return fraction * area_recangle. 
-
-    Paramters
-    ---------
-    image_list
-        list of fits files to calculate survey area from.
-    ra_limits
-        optionally provide a tuple of min/max of the survey ra - else calculated
-        from the footprint of the fits files - values in degrees!
-    dec_limits
-        optionally provide a tuple of min/max of the survey dec - else calculated
-        from the footprint of the fits files - values in degrees!
-    density
-        number of points per sq. deg. used for monte carlo.
-    """
     if not isinstance(image_list, list):
         image_list = [image_list]
+
+    # TODO: SELECT HEALPIX IPIX BETTER...
     if not all([ra_limits, dec_limits]):
         ra_values = []
         dec_values = []
         for image_path in image_list:
             with fits.open(image_path) as img:
                 fwcs = WCS(img[0].header)
-                footprint = fwcs.calc_footprint()
-                ra_values.extend(footprint[:,0])
-                dec_values.extend(footprint[:,1])
+                xlen, ylen = fwcs.pixel_shape
+                boundary_x, boundary_y = get_boundary_pixels(xlen, ylen)
+                boundary_coords = SkyCoord.from_pixel(boundary_x, boundary_y, fwcs)
+                
+                #footprint = fwcs.calc_footprint()
+                ra_values.extend(boundary_coords.ra.deg) #footprint[:,0])
+                dec_values.extend(boundary_coords.dec.deg) #footprint[:,1])
         ra_limits = (np.min(ra_values), np.max(ra_values))
         dec_limits = (np.min(dec_values), np.max(dec_values))
 
-    area_box = calc_spherical_rectangle_area(ra_limits, dec_limits)
-    randoms = uniform_sphere(ra_limits, dec_limits, density=density)
-    survey_mask = objects_in_coverage(image_list, randoms[:,0], randoms[:,1])
-    factor = len(randoms[ survey_mask ]) / len(randoms)
-    survey_area = factor * area_box
-    if return_randoms:
-        return survey_area, randoms[ survey_mask ]
-    return survey_area
-   
+    poly = SkyCoord(
+        ra=[ra_limits[0], ra_limits[0], ra_limits[1], ra_limits[1]],
+        dec=[dec_limits[0], dec_limits[1], dec_limits[1], dec_limits[0]],
+        unit=limits_units
+    )
+    # https://emfollow.docs.ligo.org/userguide/tutorial/skymaps.html
+    # go to "Manipulating HEALPix Coordinates".
+    poly_theta = 0.5 * np.pi - poly.dec.rad
+    poly_phi = poly.ra.rad
+    poly_vec = hp.ang2vec(poly_theta, poly_phi)
+
+    ipix = hp.query_polygon(nside, poly_vec)
+    pix_area = hp.nside2pixarea(nside, degrees=True)
+    logger.info(f"npix={len(ipix)}, area={pix_area:.2e} (nside={nside})")
+
+    theta, phi = hp.pix2ang(nside, ipix)
+    ra = np.rad2deg(phi)
+    dec = np.rad2deg(0.5 * np.pi - theta)
+    mask = objects_in_coverage(image_list, ra, dec)
+
+    return sum(mask) * pix_area
+
+def get_boundary_pixels(xlen, ylen, spacing=100, origin=0):
+    xpix = np.concatenate([
+        np.linspace(origin, xlen, int(xlen/spacing)),    # (0,0) -> (xlen, 0)
+        np.linspace(xlen, xlen, int(ylen/spacing)), # (xlen, 0) -> (xlen, ylen)
+        np.linspace(xlen, origin,  int(xlen/spacing)),  # (xlen, ylen) -> (0, ylen)
+        np.linspace(origin, origin, int(ylen/spacing)),       # (0, ylen) -> (0, 0)
+    ]).astype(int)
+    ypix = np.concatenate([
+        np.linspace(origin, origin, int(xlen/spacing)),    # (0,0) -> (xlen, 0)
+        np.linspace(origin, ylen, int(ylen/spacing)), # (xlen, 0) -> (xlen, ylen)
+        np.linspace(ylen, ylen,  int(xlen/spacing)),  # (xlen, ylen) -> (0, ylen)
+        np.linspace(ylen, origin, int(ylen/spacing)),       # (0, ylen) -> (0, 0)
+    ]).astype(int)
+    return xpix, ypix
+
+
 
 ###================== coverage mosaics ==================###
 
@@ -326,7 +359,9 @@ def mask_regions_in_mosaic(
         dec_vals = np.array([region.center.dec.degree for region in region_list])
         sky_coord = SkyCoord(ra=ra_vals, dec=dec_vals, unit="degree")
         contained_by = sky_coord.contained_by(expanded_wcs)
-        region_list = [region for region, contained in zip(region_list, contained_by) if contained]
+        region_list = [
+            region for region, contained in zip(region_list, contained_by) if contained
+        ]
     else:
         logger.info("skip checking for relevant regions")
 

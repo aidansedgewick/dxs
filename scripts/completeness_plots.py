@@ -2,6 +2,7 @@ import copy
 import yaml
 from argparse import ArgumentParser
 from pathlib import Path
+from tqdm import tqdm
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -46,7 +47,7 @@ args = parser.parse_args()
 if args.gen_stars:
     args.force_extract = True
 
-fields = ["SA", "LH"]
+fields = ["SA", "LH", "EN"]#, "XM"]
 
 for field in fields:
 
@@ -70,18 +71,18 @@ for field in fields:
     mag_mids = calc_mids(mag_bins)
 
 
-    field_input_stars_path = paths.temp_swarp_path / f"{field}_input_stars.cat.fits"
+    field_input_stars_path = paths.scratch_swarp_path / f"{field}_input_stars.cat.fits"
     if not field_input_stars_path.exists() or args.gen_stars:
         print("generate new randoms")
         randoms = uniform_sphere(field_limits["ra"], field_limits["dec"], density=density)
-        mags = np.random.uniform(20, 25, len(randoms)) - 1.900
+        mags = np.random.uniform(18, 25, len(randoms)) #- 1.900
 
         field_input_stars = Table({"ra": randoms[:,0], "dec": randoms[:,1], "input_mag": mags})
         print(field_input_stars)
 
         field_input_stars.write(field_input_stars_path, overwrite=True)
 
-        args.force_extract = True
+        #args.force_extract = True
     else:
         print("reading existing randoms")
         field_input_stars = Table.read(field_input_stars_path)
@@ -99,19 +100,22 @@ for field in fields:
         mosaic_path = paths.get_mosaic_path(field, tile, band)
         segmentation_path = paths.get_mosaic_path(field, tile, band, extension=".seg.fits")
 
+        if not segmentation_path.exists():
+            continue
+
         print(mosaic_path)
         print(segmentation_path)
 
         spec = (field, tile, band)
 
         imgout_name = paths.get_mosaic_stem(*spec, suffix="_fake_stars") + ".fits"
-        imgout_path = paths.temp_swarp_path / imgout_name
+        imgout_path = paths.scratch_swarp_path / imgout_name
         input_stars_name = paths.get_catalog_stem(*spec, suffix="_input_stars") + ".cat.fits"
-        input_stars_path = paths.temp_swarp_path / input_stars_name
+        input_stars_path = paths.scratch_swarp_path / input_stars_name
         extracted_cat_name = paths.get_catalog_stem(*spec, suffix="_extracted") + ".cat.fits"
-        extracted_cat_path = paths.temp_swarp_path / extracted_cat_name
+        extracted_cat_path = paths.scratch_swarp_path / extracted_cat_name
         joined_cat_name = paths.get_catalog_stem(*spec, suffix="_merged") + ".cat.fits"
-        joined_cat_path = paths.temp_swarp_path / joined_cat_name
+        joined_cat_path = paths.scratch_swarp_path / joined_cat_name
 
         joined_catalog_paths.append(joined_cat_path)
 
@@ -121,12 +125,12 @@ for field in fields:
 
             mosaic_headers.append((seg_map, swcs))
             
-            region_path = paths.get_mosaic_path(
-                field, tile, band, extension=".reg"
-            )
-            region = read_ds9(region_path)
-            assert len(region) == 1
-            mosaic_regions.append(region[0])
+            #region_path = paths.get_mosaic_path(
+            #    field, tile, band, extension=".reg"
+            #)
+            #region = read_ds9(region_path)
+            #assert len(region) == 1
+            #mosaic_regions.append(region[0])
             footprint = swcs.calc_footprint()
 
         print("not force", args.force_extract, "exists", extracted_cat_path.exists())
@@ -185,7 +189,7 @@ for field in fields:
             model_list = [models.Gaussian2D(**dict(row)) for row in source_table]
 
             source_img = np.zeros(data.shape)
-            for ii, model in tqdm(enumerate(model_list)):
+            for model in tqdm(model_list):
                 model.bounding_box = (
                     (model.y_mean-30, model.y_mean+30), (model.x_mean-30, model.x_mean+30)
                 )
@@ -216,7 +220,7 @@ for field in fields:
         joined = Table.read(joined_cat_path)
 
         joined["MAG_AUTO"][ ~np.isfinite(joined["MAG_AUTO"]) ] = 99.0
-        joined["input_mag"] = joined["input_mag"] + 1.900
+        #joined["input_mag"] = joined["input_mag"] + 1.900
 
         detected = joined[ joined["MAG_AUTO"] < 50. ]
 
@@ -241,8 +245,10 @@ for field in fields:
     ax.legend(ncol=3)
     ax.axhline(0.9, color="k", ls=":")
     ax.axvline(22.7, color="k", ls=":")
+    #ax.set_ylim(0.5, 1.1)
     ax.set_ylabel("fraction recovered", fontsize=12)
     ax.set_xlabel("$K$", fontsize=12)
+    fig.suptitle(f"{field}")
 
 
     """
@@ -317,7 +323,7 @@ for field in fields:
         merged_catalog_name = paths.get_catalog_stem(
             field, 00, band, suffix="_joined"
         ) + ".cat.fits"
-        merged_catalog_path = paths.temp_swarp_path / merged_catalog_name
+        merged_catalog_path = paths.scratch_swarp_path / merged_catalog_name
         if not merged_catalog_path.exists():
             merge_catalogs(
                 joined_catalog_paths, mosaic_regions, merged_catalog_path,

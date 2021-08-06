@@ -74,11 +74,6 @@ class BrightStarProcessor:
             logger.info(f"remove {lst-len(star_table)} objects from star_table")
         return cls(star_table, config_path=config_path)
 
-    def easyquery_star_table(self, query: Query):
-        lst = len(self.star_table)
-        filtered = query.filter(self.star_table)
-        logger.info("remove {lst-len(filtered)} objects from star_table")
-
     def process_region_masks(self, mag_col, ra_col="ra", dec_col="dec", ncpus=None):
         """
         which column to look at?
@@ -132,74 +127,6 @@ class BrightStarProcessor:
             logger.info(f"using {self.comment}") # comment is so we know what's writing!
             region_list = self.region_list
         write_ds9(output_path, region_list)
-
-def stack_bright_stars(
-    self, table: Table, stacked_image_path, 
-    mag_col, ra_col="ra", dec_col="dec", id_col=None, mosaic_paths=None, 
-    cutout_size=(500, 500), save_cutouts=False, 
-    imshow_kwargs=None, savefig_kwargs=None
-):
-    imshow_kwargs = imshow_kwargs or {}
-    savefig_kwargs = savefig_kwargs or {}
-
-    consecutives = [sum(1 for _ in group) for _, group in groupby(mosaic_paths)]
-    if len(consecutives) > 20:
-        print("It's better to sort your inputs such that the objects from the same mosaic are sorted.")
-
-    stacked_image_path = Path(stacked_image_path)
-
-    cutouts_dir = paths.scratch_data_path / "cutouts"
-    cutouts_dir.mkdir(exist_ok=True, parents=True)
-
-    coords = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit="degree")
-    cutout_paths = []
-    data_list = []
-
-    average_ra = np.average(coords.ra.degree)
-    average_dec = np.average(coords.dec.degree)
-
-    data = 0 
-    old_mosaic_path = 0
-    for ii, (coord, mag, mosaic_path) in zip(coords, table[mag_col], mosaic_paths):
-        if mosaic_path != old_mosaic_path:
-            del data
-            with fits.open(mosaic_path) as f:
-                data = f[0].data.copy()
-                wcs = WCS(f[0].header)
-        old_mosaic_path = mosaic_path
-        cutout = Cutout2D(
-            data, position=coord, size=cutout_size, wcs=wcs, mode="partial"
-        )
-        if save_cutouts or ii == 0: # we need a header anyway.
-            header = cutout.wcs.to_header()
-            header["CRVAL1"] = average_ra
-            header["CRVAL2"] = average_dec
-            header["CRPIX1"] = cutout_size[0] / 2.
-            header["CRPIX2"] = cutout_size[1] / 2.
-
-        if save_cutouts:
-            hdu = fits.PrimaryHDU(data=cutout.data.copy(), header=header)
-            cutout_path = cutouts_dir / f"{coord.ra.degree*100:05d}_{abs(coord.ra.degree)*100:04d}_cutout.fits"
-            hdu.writeto(cutout_path, overwrite=True)
-            cutout_paths.append(cutout_path)
-            # astropy garbage collection is not good...
-            del hdu
-        del cutout
-        data_list.append(cutout.data)
-    gc.collect()
-
-    cube = np.dstack(data_list)
-    output = np.nanmedian(cube, axis=2)
-
-    hdu = fits.PrimaryHDU(data=output, header=header)
-    hdu.writeto(stacked_image_path, overwrite=True)
-
-    fig, ax = plt.subplots()
-    ax.imshow(output, **imshow_kwargs)
-    png_path = stacked_image_path.with_suffix(".png")
-    fig.savefig(png_path, **savefig_kwargs)
-    plt.close()
-    
 
 if __name__ == "__main__":
     tmass_catalog_path = (

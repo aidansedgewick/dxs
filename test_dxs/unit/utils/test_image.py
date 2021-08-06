@@ -209,7 +209,7 @@ def test__calc_survey_area():
     ]
 
     vs = [v for v in vertices] + [vertices[0]]
-    dx = 5.0
+    dx = 1.0
     coord_list = []
     for v1, v2 in zip(vs[:-1], vs[1:]):
         const_ra = np.isclose(v1[0], v2[0])
@@ -252,9 +252,21 @@ def test__calc_survey_area():
 
     cov_area = main_area - s1_area - s2_area
 
-    est_area = image.calc_survey_area(image_path_1, density=1e3)
+    est_area = image.calc_survey_area(image_path_1, nside=1024) #density=1e3)
     
-    assert np.isclose(cov_area, est_area, rtol=0.005)
+    assert np.isclose(cov_area, est_area, rtol=1e-4)
+
+def test__get_boundary_pixels():
+    xpix, ypix = image.get_boundary_pixels(4000, 4000)
+    assert len(xpix) == len(ypix)
+
+    constant_x = ~( (ypix == 0) | (ypix == 4000))
+    constant_y = ~( (xpix == 0) | (xpix == 4000))
+
+    assert all( (ypix[ constant_y ] == 0) | (ypix[ constant_y ] == 4000) )
+    assert all( (xpix[ constant_x ] == 0) | (xpix[ constant_x ] == 4000) )
+
+    assert sum(constant_y) + sum(constant_x) + 4 == len(xpix)
 
 
 def test__make_good_coverage_map():

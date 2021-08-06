@@ -108,12 +108,13 @@ def mosaic_pipeline(
         )
         try:
             df = cov_builder.mosaic_stacks.copy()
-            df = df[ df["ccds"].str.len() == 4 ] # only the ones where we have 4 ccds?
-            minimum_coverage = df.groupby(["pointing"]).size.min()
+            df = df.explode("ccds")
+            summary = df.query("tile==@tile").groupby(["pointing", "ccds"]).size()
+            minimum_coverage = summary.min()
         except Exception as e:
             logger.warning(f"error in min coverage:\n{e}")
-            minimum_coverage = cov_builder.mosaic_stacks.groupby(["pointing"]).size().min()
-        print(cov_builder.mosaic_stacks.groupby(["pointing"]).size())
+            summary = cov_builder.mosaic_stacks.groupby(["pointing"]).size()
+            minimum_coverage = summary.min()
         print(f"minimum_coverage is {minimum_coverage} ")
         cov_builder.build(n_cpus=n_cpus)
         #cov_builder.add_extra_keys()

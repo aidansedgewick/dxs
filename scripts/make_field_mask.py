@@ -76,7 +76,7 @@ if __name__ == "__main__":
     parser.add_argument("tiles")
     parser.add_argument("bands")
     parser.add_argument("--skip-reprojection", action="store_true", default=False)
-    parser.add_argument("--skip-stars", action="store_true", default=False)
+    #parser.add_argument("--skip-stars", action="store_true", default=False)
     parser.add_argument("--resolution", default=1.0, type=float, required=False)
     parser.add_argument("--mosaic-type", choices=["data", "cov", "good_cov"], default="good_cov")
     parser.add_argument("--output-suffix", default="mask")
@@ -87,6 +87,8 @@ if __name__ == "__main__":
     field = args.field
     tiles = tile_parser(args.tiles) # converts eg. "1,2,7-10" to [1,2,7,8,9,10]
     bands = args.bands.split(",")
+
+    logger.info(f"mask for {field} {tiles} {bands}")
 
     output_mask_paths = []
 

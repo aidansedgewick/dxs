@@ -13,7 +13,8 @@ from regions import read_ds9
 
 from dxs import merge_catalogs, CatalogMatcher, CatalogPairMatcher
 from dxs.mosaic_builder import add_keys
-from dxs.utils.misc import get_git_info, print_header
+from dxs.utils.table import fix_column_names
+from dxs.utils.misc import get_git_info, print_header, tile_parser, tile_encoder
 from dxs import paths
 
 survey_config_path = paths.config_path / "survey_config.yaml"
@@ -97,7 +98,9 @@ def merge_pipeline(
         merge_catalogs(
             data_list, output_path, id_col, ra_col, dec_col, snr_col, **merge_kwargs
         )
-            
+        fix_column_names(output_path, column_lookup={
+            "GroupID": f"{band}_GroupID", "GroupSize": f"{band}_GroupSize"
+        })
         branch, local_SHA = get_git_info()
         meta_data = {
             "branch": (branch, "pipeline branch"),
@@ -115,7 +118,7 @@ def merge_pipeline(
     H_output = output_catalogs.get("H", None)
     external = external or []
     if H_output is not None:
-        external = external.insert(0, "H")
+        external.insert(0, "H")
 
     nir_output_dir = paths.get_catalog_dir(field, output_code, "")
 
@@ -130,8 +133,10 @@ def merge_pipeline(
             ra1="J_ra", dec1="J_dec",
             ra2="K_ra", dec2="K_dec",
         )
-        nir_matcher.ra = "ra"
-        nir_matcher.dec = "dec"
+        input_ra = "ra"
+        input_ra = "dec"
+
+        ext_match_input_path = nir_output_path
 
         if nir_output_path.exists() and not force_merge:
             print("skipping J&K merge")
@@ -145,39 +150,52 @@ def merge_pipeline(
                 tab.add_column(np.arange(len(tab)), name="id")
             tab.write(nir_matcher.catalog_path, overwrite=True)
 
-    elif (J_output and not K_output) or (K_output and not J_output):
-        nir_matcher = CatalogMatcher(catalog)
-        nir_matcher.ra = f"{band}_ra"
-        nir_matcher.dec = f"{band}_dec"
 
-    ext_output_stem = nir_output_stem
+
+    elif (J_output and not K_output): 
+        ext_match_input_path = J_output
+        input_ra = "J_ra"
+        input_dec = "J_dec"
+    elif (K_output and not J_output): 
+        ext_match_input_path = K_output
+        input_ra = "K_ra"
+        input_dec = "K_dec"
+
+    ext_output_stem = ext_match_input_path.name.split(".")[0]
+    
     for ext in external:
         print_header(f"add {ext} catalog")
+        logger.info(f"will left join to {ext_match_input_path.name}")
+        ext_matcher = CatalogMatcher(ext_match_input_path)
+
+
         if ext == "H":
             ext_catalog_path = H_output
             ext_match_error = merge_config["nir_match_error"]
+            ext_ra, ext_dec = "H_ra", "H_dec"
         else:
             ext_name = f"{field}_{ext}"
-            ext_catalog = (
+            ext_catalog_path = (
                 paths.input_data_path / f"external/{ext}/catalogs/{ext_name}.cat.fits"
             )
             ext_match_error = merge_config[f"{ext}_match_error"]
+            ext_ra, ext_dec = f"ra_{ext}", f"dec_{ext}"
 
-        output_stem = nir_output_stem + f"_{ext}"
-        ext_output_path = nir_output_dir / f"{output_stem}.cat.fits"
+        ext_output_stem = ext_output_stem + f"_{ext}"
+        ext_output_path = nir_output_dir / f"{ext_output_stem}.cat.fits"
 
-        logger.info(f"output at {output_path.name}")
+        logger.info(f"output at {ext_output_path.name}")
         logger.info(f"match {ext} with error={ext_match_error:.2f}")
-        nir_matcher.match_catalog(
-            ext_catalog, 
+        ext_matcher.match_catalog(
+            ext_catalog_path, 
             output_path=ext_output_path,
-            ra=f"ra_{ext}", dec=f"dec_{ext}", 
+            ra=ext_ra,
+            dec=ext_dec,
             error=ext_match_error,
             find="best1"
         )
-        nir_matcher.fix_column_names(column_lookup={"Separation": f"{ext}_separation"})
-
-    print(nir_matcher.summary_info)
+        ext_matcher.fix_column_names(column_lookup={"Separation": f"{ext}_separation"})
+        ext_match_input_path = ext_output_path
             
     try:
         print_path = ext_output_path.relative_to(paths.base_path)
@@ -188,10 +206,10 @@ def merge_pipeline(
 if __name__ == "__main__":
 
     parser = ArgumentParser()
-    parser.add_argument("fields")
-    parser.add_argument("tiles")
+    parser.add_argument("field")
     parser.add_argument("bands")
-    parser.add_argument("--output-code", action="store", default=0, type=int, required=False)
+    parser.add_argument("--tiles", action="store", default=None)
+    #parser.add_argument("--output-code", action="store", default=0, type=int, required=False)
     parser.add_argument("--force-merge", action="store_true", default=False, required=False)
     parser.add_argument("--use-fp", action="store_true", default=False, required=False)
     parser.add_argument(
@@ -202,28 +220,34 @@ if __name__ == "__main__":
     parser.add_argument("--prefix", action="store", default="", required=False)
     args = parser.parse_args()
 
-    fields = [x for x in args.fields.split(",")]
-    tile_ranges = [x for x in args.tiles.split(",")]
-    tiles = []
-    for t in tile_ranges:
-        if "-" in t:
-            ts = t.split("-")
-            tiles.extend([x for x in range(int(ts[0]), int(ts[1])+1)])
-        else:
-            tiles.append(int(t))
+    field = args.field #[x for x in args.fields.split(",")]
+    tiles = args.tiles
+
+    if tiles is None:
+        tiles = merge_config["default_tiles"].get(field, None)
+        output_code = merge_config["default_code"]
+    else:
+        if isinstance(tiles, str):
+            tiles = tile_parser(tiles)
+        output_code = tile_encoder(tiles)
+
+    if tiles is None:
+        raise ValueError(
+            "provide --tiles, or modify survey_config.merge_config.default_tiles"
+        )
     bands = [x for x in args.bands.split(",")]
 
-    for field in fields:
-        logger.info(f"merge {field} {tiles} for {bands}")
-        merge_pipeline(
-            field, tiles, bands, 
-            output_code=args.output_code, 
-            force_merge=args.force_merge,
-            use_fp_catalogs=args.use_fp,
-            external=args.external,
-            require_all=args.require_all,
-            prefix=args.prefix
-        )
+    #for field in fields:
+    logger.info(f"merge {field} {tiles} for {bands} (output_code {output_code}")
+    merge_pipeline(
+        field, tiles, bands, 
+        output_code=output_code, 
+        force_merge=args.force_merge,
+        use_fp_catalogs=args.use_fp,
+        external=args.external,
+        require_all=args.require_all,
+        prefix=args.prefix
+    )
             
 
 

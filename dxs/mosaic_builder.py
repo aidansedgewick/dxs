@@ -81,7 +81,7 @@ class MosaicBuilder:
             else:
                 relevant_stacks = mosaic_stacks
             try:
-                logger.info("stacks to use: \n")
+                logger.info("stacks to use:")
                 print(relevant_stacks.groupby(["field", "tile", "pointing"]).size()) 
             except:
                 pass
@@ -230,7 +230,7 @@ class MosaicBuilder:
             if AB_conversion is None:
                 logger.warning("No AB offset for {band} - check survey_config.yaml...")
                 AB_conversion = 0.
-            logger.info(f"Conversion to AB: add {AB_conversion:.4f} to magzpt")
+            logger.info(f"Convert to AB: add {AB_conversion:.4f} to magzpt")
         else:
             AB_conversion = 0.
 
@@ -241,11 +241,11 @@ class MosaicBuilder:
         magzpt_value = cls.calc_magzpt(mosaic_stacks, magzpt_inc_exptime=True)
         magzpt_value = magzpt_value + AB_conversion
         header_keys["magzpt"] = (
-            magzpt_value, f"median; inc. 2.5log(t_exp), dAB={AB_conversion:.2f}"
+            magzpt_value, f"median; inc. 2.5log(t_exp), dAB={AB_conversion:.4f}"
         )
-        print("will add to header")
+        logger.info("header_keys:")
         for k, v in header_keys.items():
-            print(f"header_key {k} = {v}")
+            print(f"     {k} = {v}")
 
         hdu_prep_kwargs["add_flux_scale"] = add_flux_scale
         hdu_prep_kwargs["AB_conversion"] = AB_conversion
@@ -544,7 +544,7 @@ class MosaicBuilder:
         for col in magzpt_cols:
             magzpt_df[col] = stack_data[col] + exptime_col
         magzpt = np.median(magzpt_df.stack().values)
-        logger.info(f"magzpt = {magzpt}; inc. exptime: {magzpt_inc_exptime}")
+        logger.info(f"magzpt={magzpt:.3f} (+2.5log(expT): {magzpt_inc_exptime})")
         return magzpt
 
 ##======== Aux. functions for HDUPreprocessor
@@ -603,7 +603,6 @@ def get_neighbor_stacks(field, tile, band, include_deprecated_stacks=False):
     neighbors = get_neighbor_tiles(field, tile)
     df_list = []
     for neighbor_tile, cardinal in neighbors.items():
-        print(f"{neighbor_tile} is in {cardinal}")
         hdus_for_cardinal = neighbors_config["border_hdus"][cardinal]
         for pointing, relevant_ccds in hdus_for_cardinal.items():
             stacks = get_stack_data(

@@ -199,6 +199,20 @@ def tile_parser(s):
             out_list.append(int(x))
     return out_list
 
+def tile_encoder(l):
+    if isinstance(l, str):
+        l = tile_parser(l)
+    tot = sum([2 ** (x-1) for x in l])
+    tile_code = "{:03x}".format(tot)
+    return tile_code
+    
+def tile_decoder(s):
+    value = int(s, 16)
+    b = "{:b}".format(value)
+    tiles = [ii+1 for ii, bit in enumerate(b[::-1]) if bool(int(bit))]
+    return tiles
+    
+
 ###========= helpful common(?) 1d-array problems.
 
 def calc_mids(arr):
@@ -209,4 +223,13 @@ def calc_widths(arr):
 
 def calc_range(arr, axis=None):
     return (arr.min(axis=axis), arr.max(axis=axis))
+
+if __name__ == "__main__":
+    code = tile_encoder("2-7")
+    print(code)
+    tiles = tile_decoder(code)
+    print(tiles)
+
+
+
 

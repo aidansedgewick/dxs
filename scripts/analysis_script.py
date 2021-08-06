@@ -67,6 +67,41 @@ if not set(select_from_galaxies).isdisjoint(select_from_catalog):
 
 object_choices = object_types + ["all"]
 
+###====================== sort the inputs ====================###
+parser = ArgumentParser()
+parser.add_argument("--fields", default=field_choices, choices=field_choices, nargs="+")
+parser.add_argument("--optical", default="panstarrs")
+parser.add_argument("--mir", default=None)
+parser.add_argument("--zphot", nargs="?", default=None)
+parser.add_argument("--objects", default=[], choices=object_choices, nargs="+")
+parser.add_argument("--color-plots", default=False, action="store_true")
+parser.add_argument("--venn-plots", default=False, action="store_true")
+parser.add_argument("--cp-density", default=0.2, type=float)
+parser.add_argument("--lf", default=False, action="store_true")
+parser.add_argument("--corr", default=False, action="store_true")
+parser.add_argument("--treecorr-config", default=default_treecorr_config_path)
+parser.add_argument("--uvj", default=False, action="store_true")
+parser.add_argument("--save-figs", default=False, action="store_true")
+parser.add_argument("--force-write", default=False, action="store_true")
+parser.add_argument("--read-corr", default=False, action="store_true")
+args = parser.parse_args()
+
+#number_counts_plot_kwargs = {
+#    "ref_galaxies": {"ls": ".",}
+#    "galaxies": {"marker": "s", "ms": 10},
+#    "eros_245": 
+#    "sf_gzKs": 
+    
+    
+cosmol = cosmology.FlatLambdaCDM(H0=70.0, Om0=0.3, ) #Planck15
+
+#if __name__ == "__main__":
+
+
+
+
+### Which magnitudes do we want to use?
+
 opt_mag_type = "aper_30"
 nir_mag_type = "aper_30"
 mir_mag_type = "aper_30"
@@ -94,28 +129,16 @@ W1mag = f"W1_mag_auto"
 itot_mag = f"i_mag_{opt_tot_mag_type}"
 Ktot_mag = f"K_mag_{nir_tot_mag_type}"
 
-plotting_data_dir = paths.input_data_path / "plotting"
 
-kim11_number_counts_path = plotting_data_dir / "kim11_number_counts.csv"
-kim14_number_counts_path = plotting_data_dir / "kim14_number_counts.csv"
-arcilaosejo19_number_counts_path = plotting_data_dir / "arcilaosejo19_number_counts.csv"
-mccracken10_number_counts_path = plotting_data_dir / "mccracken10_number_counts.csv"
-kajisawa06_number_counts_path = plotting_data_dir / "kajisawa06_number_counts.csv"
-davies21_number_counts_path = plotting_data_dir / "davies21_number_counts.csv"
+### What selections will we make?
 
-kim14_zdist_path = plotting_data_dir / "kim14_zdist.csv"
-grazian07_zdist_path = plotting_data_dir / "grazian07_zdist.csv"
-
-hartley08_lf_path = plotting_data_dir / "hartley2008_BzK_lf.csv"
-
-kim11_drgs_corr_path = plotting_data_dir / "kim11_drg_eros_K_lt_188.csv"
-kim14_eros_corr_path = plotting_data_dir / "jwk_2pcf_ps_eros_245.csv"
-
+# MUST leave trailing comma, as queries are tuples.
 selection_queries = {
     #"galaxies": (f"({Jmag} - 0.938) - ({Kmag} - 1.900) > 1.0", ),
-    "eros_245": (f"{imag} - {Kmag} > 2.55", f"{imag} < 25.5", ),
-    "eros_295": (f"{imag} - {Kmag} > 2.95", f"{imag} < 25.5", ),
-    "drgs": (f"({Jmag} - 0.938) - ({Kmag} - 1.900) > 2.3", ),
+    "eros_245": (f"{imag} - {Kmag} > 2.55", f"{imag} < 25.0", ),
+    "eros_295": (f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0", ),
+    #"drgs": (f"({Jmag} - 0.938) - ({Kmag} - 1.900) > 2.3", ),
+    "drgs": (f"{Jmag} - {Kmag} > 1.34", ), # AB equiv of >2.3
     "sf_gzKs": (
         f"({zmag} - {Kmag}) - 1.27 * ({gmag} - {zmag}) >= -0.022", 
         f"{gmag} < 50.0", f"{zmag} < 50.0",f"{Kmag} < 22.2"
@@ -127,36 +150,6 @@ selection_queries = {
     ),
 }
 
-
-#number_counts_plot_kwargs = {
-#    "ref_galaxies": {"ls": ".",}
-#    "galaxies": {"marker": "s", "ms": 10},
-#    "eros_245": 
-#    "sf_gzKs": 
-    
-    
-cosmol = cosmology.FlatLambdaCDM(H0=70.0, Om0=0.3, ) #Planck15
-
-#if __name__ == "__main__":
-
-###====================== sort the inputs ====================###
-parser = ArgumentParser()
-parser.add_argument("--fields", default=field_choices, choices=field_choices, nargs="+")
-parser.add_argument("--optical", default="panstarrs")
-parser.add_argument("--mir", default=None)
-parser.add_argument("--zphot", nargs="?", default=None)
-parser.add_argument("--objects", default=[], choices=object_choices, nargs="+")
-parser.add_argument("--color-plots", default=False, action="store_true")
-parser.add_argument("--venn-plots", default=False, action="store_true")
-parser.add_argument("--cp-density", default=0.2, type=float)
-parser.add_argument("--lf", default=False, action="store_true")
-parser.add_argument("--corr", default=False, action="store_true")
-parser.add_argument("--treecorr-config", default=default_treecorr_config_path)
-parser.add_argument("--uvj", default=False, action="store_true")
-parser.add_argument("--save-figs", default=False, action="store_true")
-parser.add_argument("--force-write", default=False, action="store_true")
-parser.add_argument("--read-corr", default=False, action="store_true")
-args = parser.parse_args()
 
 suffix = f"_{args.optical}"
 if args.mir is not None:
@@ -222,8 +215,7 @@ if args.read_corr:
             corr_data_path = paths.data_path / "analysis/corr_{args.optical}.pkl"
             with open(corr_data_path, "rb") as f:
                 dat = pickle.load(f)
-                corr_data[obj] = dat
-    
+                corr_data[obj] = dat    
 
 ###====================== create DataFrames =====================###
 
@@ -232,6 +224,24 @@ for obj in args.objects:
     counts_df_lookup[obj] =  pd.DataFrame({"K": K_mids})
 
 ###=================== load some plotting data ==================###
+
+plotting_data_dir = paths.input_data_path / "plotting"
+
+kim11_number_counts_path = plotting_data_dir / "kim11_number_counts.csv"
+kim14_number_counts_path = plotting_data_dir / "kim14_number_counts.csv"
+arcilaosejo19_number_counts_path = plotting_data_dir / "arcilaosejo19_number_counts.csv"
+mccracken10_number_counts_path = plotting_data_dir / "mccracken10_number_counts.csv"
+kajisawa06_number_counts_path = plotting_data_dir / "kajisawa06_number_counts.csv"
+davies21_number_counts_path = plotting_data_dir / "davies21_number_counts.csv"
+
+kim14_zdist_path = plotting_data_dir / "kim14_zdist.csv"
+grazian07_zdist_path = plotting_data_dir / "grazian07_zdist.csv"
+
+hartley08_lf_path = plotting_data_dir / "hartley2008_BzK_lf.csv"
+
+kim11_drgs_corr_path = plotting_data_dir / "kim11_drg_eros_K_lt_188.csv"
+kim14_eros_corr_path = plotting_data_dir / "jwk_2pcf_ps_eros_245.csv"
+
 
 kim11_dat = pd.read_csv(kim11_number_counts_path)
 kim14_dat = pd.read_csv(kim14_number_counts_path)
@@ -510,13 +520,13 @@ for ii, field in enumerate(args.fields):
                 raise IOError(f"no mask {p.relative_to(paths.base_path)}")
 
     area_density = counts_config["area_density"]
-    JK_area = calc_survey_area(JK_mask_list, density=area_density)
-    iJK_area = calc_survey_area(iJK_mask_list, density=area_density)
-    gzK_area = calc_survey_area(gzK_mask_list, density=area_density)
+    JK_area = calc_survey_area(JK_mask_list)#, density=area_density)
+    iJK_area = calc_survey_area(iJK_mask_list)#, density=area_density)
+    gzK_area = calc_survey_area(gzK_mask_list)#, density=area_density)
     print(f"JK_area: {JK_area:.2f}, iJK_area: {iJK_area:.2f}, gzK_area: {gzK_area:.2f}")
     if args.mir == "swire":        
-        JKI1_area = calc_survey_area(giJKI1_mask_list, density=area_density)
-        iJKI1_area = calc_survey_area(iJKI1_mask_list, density=area_density)
+        JKI1_area = calc_survey_area(giJKI1_mask_list)#, density=area_density)
+        iJKI1_area = calc_survey_area(iJKI1_mask_list)#, density=area_density)
         print("JK_I1 area: {JKI1_area:.2f}, iJK_I1 area: {iJK_I1}")
 
     area_lookup = {
@@ -547,11 +557,11 @@ for ii, field in enumerate(args.fields):
     for band, col in opt_mags.items():
         catalog[col] = apply_extinction(catalog[col], ebv, band=band)
 
-    for band, col in nir_mags.items():
-        if col not in catalog.columns:
-            continue               
-        catalog[col] = vega_to_ab(catalog[col], band=band)
-    catalog[Ktot_mag] = vega_to_ab(catalog[Ktot_mag], band="K")
+    #for band, col in nir_mags.items():
+    #    if col not in catalog.columns:
+    #        continue               
+    #    catalog[col] = vega_to_ab(catalog[col], band=band)
+    #catalog[Ktot_mag] = vega_to_ab(catalog[Ktot_mag], band="K")
 
 
     if W1mag in catalog.columns:
@@ -914,8 +924,14 @@ for obj in args.objects:
     )
 
     obj_label = object_names[obj]
-    obj_l = Nax.errorbar(K_mids, Nhist_norm, yerr=Nhist_err, label=obj_label, color="k")
-    gal_l = Nax.errorbar(K_mids, total_gal_hist_norm, yerr=total_gal_hist_err, color="k", ls="--", label="galaxies") #, label="comb.", color="k")
+    obj_l = Nax.errorbar(
+        K_mids, Nhist_norm, yerr=Nhist_err, label=obj_label, 
+        color="k"
+    )
+    gal_l = Nax.errorbar(
+        K_mids, total_gal_hist_norm, yerr=total_gal_hist_err, label="galaxies", 
+        color="k", ls="--"
+    ) #, label="comb.", color="k")
     counts_main_lines_lookup[obj].extend([obj_l, gal_l])
     l = Nax.errorbar([17,17], [0,0], yerr=[0,0], label="combined", color="k")
     counts_fields_lines_lookup[obj].append(l)
