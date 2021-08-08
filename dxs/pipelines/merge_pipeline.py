@@ -134,7 +134,7 @@ def merge_pipeline(
             ra2="K_ra", dec2="K_dec",
         )
         input_ra = "ra"
-        input_ra = "dec"
+        input_dec = "dec"
 
         ext_match_input_path = nir_output_path
 
@@ -193,7 +193,9 @@ def merge_pipeline(
             error=ext_match_error,
             find="best1"
         )
-        ext_matcher.fix_column_names(column_lookup={"Separation": f"{ext}_separation"})
+        fix_column_names(
+            ext_output_path, column_lookup={"Separation": f"{ext}_separation"}
+        )
         ext_match_input_path = ext_output_path
             
     try:

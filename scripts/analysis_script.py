@@ -171,7 +171,7 @@ randoms_density = corr_processing_config.get("randoms_density", 1e4)
 patch_size = corr_processing_config.get("patch_size", None)
 
 print(f"randoms density is {int(randoms_density)} / sq. deg.")
-print(f"corr_processing_config: patch size {patch_size} sq. deg.")    
+print(f"corr_processing_config: target patch size {patch_size} sq. deg.")    
 
 ###==================== make some useful arrays ================###
 K_bright = counts_config["K_bright"]
@@ -496,7 +496,7 @@ for ii, field in enumerate(args.fields):
     ###====================== masks and area =====================###
     mask_lookup = {}
     for band in "J H K".split():
-        mask_lookup[band] = paths.masks_path / f"{field}_{band}_good_cov_mask.fits"
+        mask_lookup[band] = paths.masks_path / f"{field}00{band}_good_cov_mask.fits"
     for band in "g r i z y".split():
         mask_lookup[band] = (
             paths.input_data_path / f"external/{args.optical}/masks/{field}_{band}_mask.fits"
@@ -803,7 +803,11 @@ for ii, field in enumerate(args.fields):
             if patch_size is not None:
                 patch_ratio = selection_area / patch_size
                 N_patches = int(round(patch_ratio, 0))
-                print(f"N_patches={N_patches} (rounded from {patch_ratio:.2f})")
+                actual_area = selection_area = patch_ratio / N_patches
+                print(
+                    f"N_patches={N_patches} (rounded from {patch_ratio:.2f})"
+                    f" = {actual_area:.2f} sq. deg./patch"
+                )
             else:
                 N_patches = 1
 

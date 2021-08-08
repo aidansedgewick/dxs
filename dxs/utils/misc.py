@@ -176,7 +176,7 @@ def print_header(string, edge="###", newlines=3, return_string=False):
         "\n"*newlines + edge + N*"=" + f" {string} " + N*"=" + edge + "\n"
     )
     if return_string:
-        return header_str    
+        return header_str
     print(header_str)
 
 def remove_temp_data(file_list):

@@ -329,8 +329,8 @@ class CatalogPairMatcher(CatalogMatcher):
         value to use from the above column.
     
     >>> pair_matcher = CatalogPairMatcher(
-            "J.cat.fits", "K.cat.fits", "./matched.cat.fits", ra1="Jra", dec1="Jdec"
-
+    ...       "J.cat.fits", "K.cat.fits", "./matched.cat.fits", ra1="Jra", dec1="Jdec"
+    ... )
     """
 
     def __init__(
@@ -395,8 +395,8 @@ class CatalogPairMatcher(CatalogMatcher):
         catalog[output_dec][ keep_coord1 ] = catalog[dec1][ keep_coord1 ]
         catalog[output_ra][ keep_coord2 ] = catalog[ra2][ keep_coord2 ]
         catalog[output_dec][ keep_coord2 ] = catalog[dec2][ keep_coord2 ]
-        assert len(catalog[ catalog["ra"] < -90.0 ]) == 0
-        assert len(catalog[ catalog["dec"] < -90.0 ]) == 0
+        assert len(catalog[ catalog[output_ra] < -90.0 ]) == 0
+        assert len(catalog[ catalog[output_dec] < -90.0 ]) == 0
         catalog.write(self.catalog_path, overwrite=True)
         self.ra = output_ra
         self.dec = output_dec

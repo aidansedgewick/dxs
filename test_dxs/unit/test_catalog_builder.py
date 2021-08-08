@@ -292,11 +292,66 @@ def test__catalog_matcher_match():
     ) ### 
 
 
+def test__catalog_pair_matcher():
+    
+    tab1 = Table({
+        "id_1" : [101,        103,  104,  105,  106,  107,  108,  109,  110,  111 ],
+        "ra_1" : [90.0,       90.2, 90.3, 90.4, 90.5, 90.6, 90.7, 90.8, 90.9, 91.0],
+        "dec_1": [0.,         0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ],
+        "snr_1" : [10.,        10.,  20.,  10.,  20.,  10.,  20.,  10.,  20.,  10. ],
+        "J_m"  : [22.,        18.,  20.5, 19.7, 24.0, 18.,  16.,  20.7, 19.,  20.1]
+    })
+    tab1["ra_1"] = tab1["ra_1"] + 1e-4
+
+    tab1_path = paths.scratch_test_path / "cat_builder_pair_merge1.cat.fits"
+    if tab1_path.exists():
+        os.remove(tab1_path)
+    assert not tab1_path.exists()
+    tab1.write(tab1_path)
+
+    tab2 = Table({
+        "id_2" : [201,  202,  203,              206,  207,  208,  209,  210,  211 ],
+        "ra_2" : [90.0, 90.1, 90.2,             90.5, 90.6, 90.7, 90.8, 90.9, 91.0],
+        "dec_2": [0.,   0.,   0.,               0.,   0.,   0.,   0.,   0.,   0.  ],
+        "snr_2" : [20.,  20.,  20.,              10.,  20.,  10.,  20.,  10.,  20. ],
+        "K_m"  : [21.6, 18.3, 17.2,             22.0, 17.,  15.,  20.2, 18.5, 20. ]
+    })
+    tab2["ra_2"] = tab2["ra_2"] - 1e-4
+    tab2_path = paths.scratch_test_path / "cat_builder_pair_merge2.cat.fits"
+    if tab2_path.exists():
+        os.remove(tab2_path)
+    assert not tab2_path.exists()
+    tab2.write(tab2_path)
+
+    pair_output_path = paths.scratch_test_path / "cat_builder_pair_output1.cat.fits"
+    if pair_output_path.exists():
+        os.remove(pair_output_path)
+    assert not pair_output_path.exists()
+
+    pm = catalog_builder.CatalogPairMatcher(
+        tab1_path, tab2_path, pair_output_path, 
+        ra1="ra_1", dec1="dec_1", ra2="ra_2", dec2="dec_2",
+        output_ra="best_ra", output_dec="best_dec"
+    )
+    pm.best_pair_match(error=1.0)
+    pm.select_best_coords("snr_1", "snr_2")
+
+    
+    output1 = Table.read(pair_output_path)
+    assert len(output1) == 11
+
+    assert "best_ra" in output1.columns
 
 
+    mask1 = (
+        (output1["snr_1"] > output1["snr_2"]) | (~np.isfinite(output1["snr_2"]))
+    )
+    assert np.allclose(output1["best_ra"][mask1], output1["ra_1"][mask1])
 
+    mask2 = (
+        (output1["snr_2"] > output1["snr_1"]) | (~np.isfinite(output1["snr_1"]))
+    )
+    assert np.allclose(output1["best_ra"][mask2], output1["ra_2"][mask2])
 
-
-
-
-
+    assert sum(mask1) + sum(mask2) == len(output1)
+    

@@ -106,7 +106,7 @@ bounds_lookup = {
         [1e+2, 3e+0, 1e+2, 3e+0, 1e+1]
     ),
     "trunc_power_exp_law": ( #(-np.inf, np.inf),
-        [1e-5, 1e-2, 1e0, 1e-6, 1e-2],
+        [1e-5, 1e-2, 1e-2, 1e-6, 1e-2],
         [1e+2, 5e+0, 1e+2, 1e+0, 1e+3],
     )
 }
@@ -198,7 +198,7 @@ ls_list = ["-", "--"]
 
 for opt_ii, optical in enumerate(optical_list):
 
-    corr_data_path = paths.data_path / f"analysis/corr_{obj}_{optical}.pkl"
+    corr_data_path = paths.data_path / f"analysis/corr_{obj}_{optical}_d02.pkl"
     treecorr_data_path = paths.data_path / f"analysis/treecorr_{obj}_{optical}.pkl"
 
     with open(corr_data_path, "rb") as f:
@@ -298,7 +298,7 @@ for opt_ii, optical in enumerate(optical_list):
         p0 = p0_lookup[func.__name__]
         bounds = bounds_lookup.get(func.__name__, (-np.inf, np.inf))
 
-        #fix_parameters(func, "d", 1.1, p0=p0, bounds=bounds)
+        p0, bounds = fix_parameters(func, "d", 1.35, p0=p0, bounds=bounds)
         print(bounds)
 
         try:

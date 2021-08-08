@@ -9,11 +9,13 @@ correlation_function:
   eros_245:
     K_limits: [20.7, 21.2, 21.7, 22.2, 22.7]
   eros_295:
-    K_limits: [20.7]
+    K_limits: [20.7, 21.2, 21.7, 22.2, 22.7]
   drgs:
     K_limits: [19.7, 20.2, 20.7, 21.2, 21.7, 22.2, 22.7]
   sf_gzKs:
-    K_limits: [21.5]
+    K_limits: [20.5, 21.0, 21.5, 22.0, 22.5]
+  pe_gzKs:
+    K_limits: [20.5, 21.0, 21.5, 22.0, 22.5]
 
 luminosity_function:
   M_bright: -26.0

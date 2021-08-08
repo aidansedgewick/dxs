@@ -198,5 +198,18 @@ unwise:
   bands: [W1, W2]
   eazy_filter_codes: {W1: 244, W2: 245}
 
+uds:
+  bands: [J, H, K]
+  catalog_url: http://pleiades.nottingham.ac.uk/UDS/DR11/UDS_DR11_JHK_rawweight.cat.fits
+  image_urls:
+    J: http://pleiades.nottingham.ac.uk/UDS/DR11/UDS-DR11-J_bin2x2.mef.fits
+    H: http://pleiades.nottingham.ac.uk/UDS/DR11/UDS-DR11-H_bin2x2.mef.fits
+    K: http://pleiades.nottingham.ac.uk/UDS/DR11/UDS-DR11-K_bin2x2.mef.fits
+  
+  # https://pleiades.nottingham.ac.uk/UDS/DR11/UDS-DR11.sex
+  phot_apertures: [5.2,7.5,11.2,14.9,22.4,29.8,37.3,178.8376]
+
+
+
 
 

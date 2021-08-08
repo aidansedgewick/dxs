@@ -100,10 +100,10 @@ def explode_columns_in_fits(
         new_column_names = [None] * len(column_names)
     elif isinstance(new_column_names, list):
         if len(column_names) > 1:
-            if len(column_names) != len(new_names):
+            if len(column_names) != len(new_column_names):
                 raise ValueError(
-                    "There should be the same number of column_names as"
-                    "new_column_names elements (each a list)"
+                    f"There should be the same number of column_names ({len(column_names)})"
+                    f" as new_column_names ({len(new_column_names)}) elements (each a list)"
                 )
             if not all([isinstance(x, list) or x is None for x in new_column_names]):
                 raise ValueError(
