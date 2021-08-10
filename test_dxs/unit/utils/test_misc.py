@@ -61,6 +61,11 @@ def test__format_flags():
         failing_input2 = {"test1": np.array([1,2,3])}
         fail2 = misc.format_flags(failing_input2)
 
+def test__git_info():
+    branch, local_SHA = misc.get_git_info()
+    assert isinstance(branch, str)
+    assert isinstance(local_SHA, str)
+
 def test__print_header():
     header_str = misc.print_header("this is a test_str", newlines=3, return_string=True)
 
@@ -121,6 +126,12 @@ def test__calc_mids():
     assert np.allclose(misc.calc_mids(arr1), np.array([4.5, 5.5, 7.]))
     arr2 = np.array([4.5, 10.0, 1000.0, 1001.0])
     assert np.allclose(misc.calc_mids(arr2), np.array([7.25, 505.0, 1000.5]))
+
+def test__calc_widths():
+    inputs = np.array([10., 100., 120., 125., 210.])
+    exp = np.array([90., 20., 5., 85.])
+    res = misc.calc_widths(inputs)
+    assert np.allclose(exp, res)
 
 def test__calc_range():
     arr = np.array([-100., -201.0, 3.14, 3.])

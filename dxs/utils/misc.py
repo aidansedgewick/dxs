@@ -143,6 +143,7 @@ def get_git_info():
     """
     dxs_git = Path(__file__).parent.parent.parent / ".git"
     branch_cmd = f"git --git-dir {dxs_git} rev-parse --abbrev-ref HEAD".split()
+    branch = "unavailable"
     try:
         branch = (
             subprocess.run(branch_cmd, stdout=subprocess.PIPE)
@@ -150,10 +151,9 @@ def get_git_info():
             .strip()
         )
     except Exception as e:
-        print(e)
-        print("Couldn't find git branch")
-        branch = "unavailable"
+        print("Couldn't find git branch", e)
     local_SHA_cmd = f'git --git-dir {dxs_git} log -n 1 --format="%h"'.split()
+    local_SHA = "unavailable"
     try:
         local_SHA = (
             subprocess.run(local_SHA_cmd, stdout=subprocess.PIPE)
@@ -161,9 +161,7 @@ def get_git_info():
             .strip()
         )
     except Exception as e:
-        print(e)
-        print("could not record local git SHA")
-        local_SHA = "unavailable"
+        print("could not record local git SHA", e)
     return branch, local_SHA
 
 def print_header(string, edge="###", newlines=3, return_string=False):
@@ -178,22 +176,6 @@ def print_header(string, edge="###", newlines=3, return_string=False):
     if return_string:
         return header_str
     print(header_str)
-
-def remove_temp_data(file_list):
-    if not isinstance(file_list, list):
-        file_list = [file_list]
-    for x in file_list:
-        if "temp_data" not in str(x):
-            logger.info(f"remove: {x} does not contain 'temp_data' - refusing to remove!")
-            return None
-    logger.info("deleting temp HDUs...")
-    total_deleted = 0
-    for x in file_list:
-        if Path(x).exists():        
-            os.remove(x)
-            total_deleted += 1
-    logger.info(f"deleted {total_deleted} temp HDUs")
-    
 
 def tile_parser(s):
     init_list = s.split(",")
@@ -230,13 +212,6 @@ def calc_widths(arr):
 
 def calc_range(arr, axis=None):
     return (arr.min(axis=axis), arr.max(axis=axis))
-
-if __name__ == "__main__":
-    code = tile_encoder("2-7")
-    print(code)
-    tiles = tile_decoder(code)
-    print(tiles)
-
 
 
 

@@ -18,7 +18,6 @@ from stilts_wrapper import Stilts
 from dxs import CatalogExtractor
 from dxs.mosaic_builder import get_stack_data
 from dxs.utils.image import scale_mosaic
-from dxs.utils.misc import remove_temp_data
 from dxs.utils.table import table_to_numpynd, fix_column_names
 
 from dxs import paths
@@ -235,6 +234,7 @@ class CrosstalkProcessor:
         stilts.run()
         self.flag_crosstalks_in_catalog(output_path, flag_value)
 
+    """
     def extract_from_inverse_mosaic(self, mosaic_path, weight_path=None):
         mosaic_path = Path(mosaic_path)
         scratch_crosstalks_dir = paths.scratch_data_path / "crosstalks"
@@ -252,11 +252,10 @@ class CrosstalkProcessor:
             sextractor_parameter_file=paths.config_path / "sextractor/inv_xtalks.param",
         )
         extractor.extract()
-        remove_temp_data([
-            extractor.detection_mosaic_path, # this will be equal to inv_mosaic_path.
-            extractor.segmentation_mosaic_path
-        ])
+        os.remove(extractor.detection_mosaic_path)
+        os.remove(extractor.segmentation_mosaic_path)
         return extractor.catalog_path
+    """
 
     def flag_crosstalks_in_catalog(self, catalog_path, flag_value=1, coeffs=None):
         catalog = Table.read(catalog_path)
@@ -293,45 +292,9 @@ def calc_crosstalk_magnitude_coeffs(cat, band):
         for yoff in [6,7,8,9,10,11,12]:
             axes[ii].plot((0,20), (yoff, 20+yoff), color="k", ls="--", alpha=0.2)
         axes[ii].set_xlim(6,13)
-        axes[ii].set_ylim(14,22)"""
-
+        axes[ii].set_ylim(14,22)
     return fig
-
-if __name__ == "__main__":
-
-
-    star_table_path = (
-        paths.input_data_path / "external/tmass/tmass_SA22_stars.csv"
-    )
-    star_catalog = Table.read(star_table_path, format="ascii")
-    star_catalog = star_catalog[ star_catalog["k_m"] < 15.0 ]
-    crosstalk_catalog_path = "./sa04kx.fits"
-    processor = CrosstalkProcessor.from_dxs_spec("SA", 4, "K", star_catalog=star_catalog, 
-        crosstalk_catalog_path=crosstalk_catalog_path)
-    crosstalks = processor.collate_crosstalks(mag_column="k_m", mag_limit=15.0, n_cpus=4)
-    processor.extract_from_inverse_mosaic("data/mosaics/SA04K/smSA04K.fits")
-    #crosstalks.pprint_all()
-
-    plt.scatter(star_catalog["ra"], star_catalog["dec"], color="k", marker="x", s=8)
-    plt.scatter(
-        crosstalks["crosstalk_ra"], crosstalks["crosstalk_dec"], 
-        c=abs(crosstalks["crosstalk_order"]), s=4
-    )
-    #plt.scatter(
-    #    t["crosstalk_ra"], t["crosstalk_dec"], 
-    #    color="k", s=1, alpha=0.1
-    #)
-    plt.show()
-
     """
-    cat_path = paths.get_catalog_path("SA", 0, "_cfhtls", prefix="m")
-    cat = Table.read(cat_path)
-
-    Jfig = calc_crosstalk_magnitude_coeffs(cat, "J")
-    Kfig = calc_crosstalk_magnitude_coeffs(cat, "K")
-    
-    plt.show()"""
-
 
 
 

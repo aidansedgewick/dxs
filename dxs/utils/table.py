@@ -25,7 +25,8 @@ def table_to_numpynd(table):
 def fix_column_names(
     catalog_path, 
     output_path=None, 
-    input_columns=None, 
+    input_columns=None,
+    lower_case=True,
     output_columns=None,
     column_lookup=None,
     band=None,
@@ -62,7 +63,10 @@ def fix_column_names(
         elif input_columns == "catalog":
             if output_columns is not None:
                 logger.warn("input is \"catalog\" so ignoring output_columns {output_columns}")
-            lookup = {x: x.lower() for x in catalog_columns.values()}
+            if lower_case:
+                lookup = {x: x.lower() for x in catalog_columns.values()}
+            else:
+                lookup = {x: x for x in catalog_columns.values()}
         else:
             raise ValueError(
                 f"input_columns is list or string \"catalog\", not {input_columns}"
@@ -87,49 +91,39 @@ def fix_column_names(
         catalog.writeto(output_path, overwrite=True)
 
 def explode_columns_in_fits(
-    catalog_path: str, column_names: str, new_column_names=None, suffixes=None, remove=True
+    catalog_path: str, column_names: str, suffixes=None, remove=True
 ):
     """
-    if column_names is list, then new_names should either be None, or nested list.
+    Explode several columns (each of the same shape) in a fits file.
+    For columns of different shape (ie, a 100x5 column and a 100x3 column), you should use
+    this function more than once.
     """
     catalog = Table.read(catalog_path)
 
     if not isinstance(column_names, list):
         column_names = [column_names]
-    if new_column_names is None:
-        new_column_names = [None] * len(column_names)
-    elif isinstance(new_column_names, list):
-        if len(column_names) > 1:
-            if len(column_names) != len(new_column_names):
-                raise ValueError(
-                    f"There should be the same number of column_names ({len(column_names)})"
-                    f" as new_column_names ({len(new_column_names)}) elements (each a list)"
-                )
-            if not all([isinstance(x, list) or x is None for x in new_column_names]):
-                raise ValueError(
-                    "if column_names is a list len>1, "
-                    + "then each of new_column_names should be a list "
-                    + "-- each with the number of columns to be exploded."
-                )
-    for column_name, new_names in zip(column_names, new_column_names):        
-        explode_column(catalog, column_name, new_names=new_names, suffixes=suffixes, remove=remove)
+    for column_name in column_names:
+        explode_column(catalog, column_name, suffixes=suffixes, remove=remove)
         logger.info(f"explode {column_name}")
     catalog.write(catalog_path, overwrite=True)
 
 
 def explode_column(
-    table: Table, column_name: str, new_names=None, suffixes=None, remove=True
+    table: Table, column_name: str, suffixes=None, remove=True
 ):
+    """
+    Explode a single column in an astropy table.
+    """
+
     col = table[column_name]
     if len(col.shape) != 2:
         logger.info(f"Can't explode column {column_name}, shape {col.shape}")
         return
     N_cols = col.shape[1]
-    if new_names is None:
-        if suffixes is None:
-            suffixes = ["_{ii}" for ii in range(N_cols)]
-        assert len(suffixes) == N_cols
-        new_names = [f"{column_name}_{suffix}" for suffix in suffixes]
+    if suffixes is None:
+        suffixes = [f"{ii}" for ii in range(N_cols)]
+    assert len(suffixes) == N_cols
+    new_names = [f"{column_name}_{suffix}" for suffix in suffixes]
     assert len(new_names) == N_cols
 
     for ii, col_name in enumerate(new_names):
