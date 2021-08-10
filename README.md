@@ -4,7 +4,7 @@
 
 ## Pipeline for creating mosaics and catalogs from UKIDSS-DXS
 
-[dxs](./configuration/dxs_graphic.png?raw=true)
+![dxs](./configuration/dxs_graphic.png?raw=true)
 
 ### Setup.
 
