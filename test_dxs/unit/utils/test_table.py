@@ -110,9 +110,9 @@ def test__explode_column():
     assert set(table.columns) == set(["x", "y_0", "y_1", "y_2"])
     assert np.allclose(table["y_0"], [0, 3, 6, 9, 12])
     assert np.allclose(table["y_1"], [1, 4, 7, 10, 13])
-    assert np.allclose(table["y_2"], [2, 5, 8, 11, 14])
-    
+    assert np.allclose(table["y_2"], [2, 5, 8, 11, 14])    
 
+    ### give suffixes.
     table = Table({
         "x": np.random.uniform(0, 1, 5),
         "y": np.arange(0,15).astype(float).reshape(5,3)
@@ -134,8 +134,6 @@ def test__explode_column():
     table_utils.explode_column(table, column_name="x")
     assert len(table.columns) == 2
     assert np.allclose(table["x"], tc["x"])
-        
-
 
 def test__explode_columns_in_fits():
     table = Table({
@@ -158,11 +156,6 @@ def test__explode_columns_in_fits():
 
     assert np.allclose(res["y_c1"], [0, 3, 6, 9, 12])
     assert np.allclose(res["z_c1"], [100, 103, 106, 109, 112])
-
-
-
-
-
 
 def test__remove_objects_in_bad_coverage():
     catalog_path = paths.scratch_test_path / "tableutils_bad_coverage.cat.fits"
