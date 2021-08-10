@@ -25,7 +25,7 @@ from dxs.utils.misc import print_header, calc_mids
 from dxs import analysis_tools as tools
 
 from dxs import paths
-
+daaaa
 logger = logging.getLogger("analysis")
 
 if not os.isatty(0):
@@ -47,7 +47,7 @@ corr_config = analysis_config["correlation_function"]
 
 default_treecorr_config_path = paths.config_path / "treecorr/treecorr_default_d02.yaml"
 
-field_choices = ["EN", "SA", "LH", "XM", "Euclid"]
+field_choices = ["EN", "SA", "LH", "XM"]
 
 object_types = ["galaxies", "eros_245", "eros_295", "drgs", "sf_gzKs", "pe_gzKs"]
 object_names = {
@@ -78,6 +78,7 @@ parser.add_argument("--color-plots", default=False, action="store_true")
 parser.add_argument("--venn-plots", default=False, action="store_true")
 parser.add_argument("--cp-density", default=0.2, type=float)
 parser.add_argument("--lf", default=False, action="store_true")
+parser.add_argument("--locations", default=False, action="store_true")
 parser.add_argument("--corr", default=False, action="store_true")
 parser.add_argument("--treecorr-config", default=default_treecorr_config_path)
 parser.add_argument("--uvj", default=False, action="store_true")
@@ -233,6 +234,7 @@ arcilaosejo19_number_counts_path = plotting_data_dir / "arcilaosejo19_number_cou
 mccracken10_number_counts_path = plotting_data_dir / "mccracken10_number_counts.csv"
 kajisawa06_number_counts_path = plotting_data_dir / "kajisawa06_number_counts.csv"
 davies21_number_counts_path = plotting_data_dir / "davies21_number_counts.csv"
+uds_number_counts_path = plotting_data_dir / "uds_number_counts.csv"
 
 kim14_zdist_path = plotting_data_dir / "kim14_zdist.csv"
 grazian07_zdist_path = plotting_data_dir / "grazian07_zdist.csv"
@@ -250,6 +252,7 @@ mccracken10_dat = pd.read_csv(mccracken10_number_counts_path)
 kajisawa06_dat = pd.read_csv(kajisawa06_number_counts_path)
 davies21_dat = pd.read_csv(davies21_number_counts_path)
 hartley08_dat = pd.read_csv(hartley08_lf_path)
+uds_dat = pd.read_csv(uds_number_counts_path)
 
 ###================== initalize plots ==================###
 
@@ -262,6 +265,10 @@ corr_plot_lookup = {}
 zdist_plot_lookup = {}
 
 obj_ids_lookup = {obj: [] for obj in args.objects}
+
+### format is:
+### (x_data_array, y_data_array, {mpl_key1: val, mpl_key2: val, ...})
+
 
 literature_galaxy_counts = [
     (kim14_dat["Kmag"].values, kim14_dat["galaxies"].values, 
@@ -279,10 +286,16 @@ literature_counts["eros_245"] = [
     (kim14_dat["Kmag"].values, kim14_dat["ero245_ps"].values,
         {"s": 20, "marker": "^", "color": "k", "label": "Kim+2014, EROs (PS1)"}
     ),
+    (uds_dat["Kmag"].values, uds_dat["eros_245"].values,
+        {"s": 20, "marker": "d", "color": "k", "label": "UDS+HSC, EROs"}
+    ),
 ]
 literature_counts["eros_295"] = [
     (kim14_dat["Kmag"].values, kim14_dat["ero295_ps"].values,
         {"s": 20, "marker": "^", "color": "k", "label": "Kim+2014, EROs (PS1)"}
+    ),
+    (uds_dat["Kmag"].values, uds_dat["eros_295"].values,
+        {"s": 20, "marker": "d", "color": "k", "label": "UDS+HSC, EROs"}
     ),
 ]
 literature_counts["drgs"] = [
@@ -292,6 +305,9 @@ literature_counts["drgs"] = [
     (kim11_dat["Kmag"].values, kim11_dat["drg"].values, 
         {"s": 20, "marker": "x", "color" :"k", "label": "Kim+2011, DRGs"}
     ),
+    (uds_dat["Kmag"].values, uds_dat["drgs"].values,
+        {"s": 20, "marker": "d", "color": "k", "label": "UDS+HSC, DRGs"}
+    ),
 ]
 literature_counts["sf_gzKs"] = [
     (arcilaosejo19_dat["Kmag"].values, arcilaosejo19_dat["sf_gzK"].values, 
@@ -299,6 +315,9 @@ literature_counts["sf_gzKs"] = [
     ),
     (mccracken10_dat["Kmag"].values, mccracken10_dat["sf_BzK"].values, 
         {"s": 20, "marker": "x", "color": "k", "label": "McCracken+2010, SF BzK"}
+    ),
+    (uds_dat["Kmag"].values, uds_dat["sf_gzKs"].values,
+        {"s": 20, "marker": "d", "color": "k", "label": "UDS+HSC, SF gzK"}
     ),
 ]
 literature_counts["pe_gzKs"] = [
@@ -308,11 +327,14 @@ literature_counts["pe_gzKs"] = [
     (mccracken10_dat["Kmag"].values, mccracken10_dat["pe_BzK"].values, 
         {"s": 20, "marker": "x", "color": "k", "label": "McCracken+2010, PE BzK"}
     ),
+    (uds_dat["Kmag"].values, uds_dat["pe_gzKs"].values,
+        {"s": 20, "marker": "d", "color": "k", "label": "UDS+HSC, PE gzK"}
+    ),
 ]
 
 for obj in args.objects:
     obj_lit_counts = literature_counts[obj]
-    Nfig, Nax = plt.subplots()        
+    Nfig, Nax = plt.subplots()       
     pl_dat = literature_counts[obj] + literature_galaxy_counts
     for x, y, kwargs in pl_dat:
         l = Nax.scatter(x, y, **kwargs)
@@ -547,7 +569,7 @@ for ii, field in enumerate(args.fields):
     # remove CROSSTALK artefacts
     catalog = Query(
         "J_crosstalk_flag < 1", "K_crosstalk_flag < 1", 
-        "J_coverage > 0", "K_coverage > 0"
+        #"J_coverage > 0", "K_coverage > 0"
     ).filter(full_catalog)
     del full_catalog
 
@@ -711,15 +733,7 @@ for ii, field in enumerate(args.fields):
         total_number_counts[obj] = total_number_counts[obj] + Nhist
         total_area[obj] = total_area[obj] + selection_area
 
-        #ax.scatter(selection["ra"], selection["dec"], s=1)
-        #ax2.scatter(
-        #    selection[Ktot_mag], 
-        #    selection[imag] - selection[Kmag],# - selection["K_mag_aper_30"],
-        #    s=1
-        #)
-
         Nhist_norm = Nhist / selection_area
-
         Nhist_err = np.sqrt(Nhist) / selection_area
 
         field_name = survey_config["code_to_field"][field]
@@ -728,6 +742,29 @@ for ii, field in enumerate(args.fields):
         Nax.errorbar(K_mids, gal_hist_norm, yerr=gal_hist_err, color=f"C{ii}", ls="--")
 
         counts_df_lookup[obj][field] = Nhist_norm
+
+
+    
+        ### ================= PLOT LOCATIONS OF OBJECTS =============== ###
+        
+        if args.locations:
+            obj_corr_config = corr_config[obj]
+            obj_mask_list = mask_list_lookup[obj]
+            ra_lim = (np.min(selection["ra"]), np.max(selection["ra"]))
+            dec_lim = (np.min(selection["dec"]), np.max(selection["dec"]))
+            loc_randoms = tools.get_randoms(
+                ra_lim, dec_lim, obj_mask_list, randoms_density=randoms_density
+            )
+            for kk, K_lim in enumerate(obj_corr_config["K_limits"]):
+                K_selection = Query(f"{Ktot_mag} < {K_lim}").filter(selection)         
+                obj_pos_fig, obj_pos_ax = plt.subplots()
+                obj_pos_fig.suptitle(f"{field} {obj} {K_lim}")
+                obj_pos_ax.scatter(loc_randoms.ra, loc_randoms.dec, s=1, color="k")
+                obj_pos_ax.scatter(K_selection["ra"], K_selection["dec"], s=1, color="r")
+
+
+
+        ### ==================== MAKE Z-DIST PLOTS ==================== ###
 
         if args.zphot is not None:
             obj_zdist_fig, obj_zdist_ax = zdist_plot_lookup[obj]
@@ -738,7 +775,7 @@ for ii, field in enumerate(args.fields):
                 step="pre", edgecolor=f"C{ii}", facecolor="none", #hatch=hatch_styles[ii]
             )
         
-        ### =============== OBJECT LUMINOSITY FUNCTIONS =============== ###
+        ### ================ OBJECT LUMINOSITY FUNCTIONS ============== ###
         if args.lf:
             obj_lf_fig, obj_lf_axes = lf_plot_lookup[obj]
 
@@ -832,7 +869,7 @@ for ii, field in enumerate(args.fields):
                 obj_pos_fig.suptitle(f"{field} {obj} {K_lim}")
                 obj_pos_ax.scatter(randoms.ra, randoms.dec, s=1, color="k")
                 obj_pos_ax.scatter(corr_selection["ra"], corr_selection["dec"], s=1, color="r")
-
+                
                 ### prepare components
                 print("##======= process DD")
                 dd_cat, dd = tools.prepare_auto_component(
@@ -949,6 +986,8 @@ for obj in args.objects:
     #Nax.legend()
     Nax.set_ylabel(r"N/deg$^{2}$/0.5 mag", fontsize=14)
     Nax.set_xlabel(r"$K_{AB}$", fontsize=14)
+
+    Nfig.tight_layout()
     
     if args.corr:
         obj_corr_fig, obj_corr_ax = corr_plot_lookup[obj]

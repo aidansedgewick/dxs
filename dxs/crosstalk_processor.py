@@ -13,9 +13,10 @@ import astropy.io.fits as fits
 from astropy import wcs
 from astropy.table import Table, Column, vstack, join
 
+from stilts_wrapper import Stilts
+
 from dxs import CatalogExtractor
 from dxs.mosaic_builder import get_stack_data
-from dxs.pystilts import Stilts
 from dxs.utils.image import scale_mosaic
 from dxs.utils.misc import remove_temp_data
 from dxs.utils.table import table_to_numpynd, fix_column_names
@@ -219,16 +220,17 @@ class CrosstalkProcessor:
             output_path = catalog_path
         logger.info(f"match crosstalks {crosstalk_catalog_path.name} to {catalog_path.name}")
         stilts = Stilts.tskymatch2_fits(
-            catalog_path,
-            crosstalk_catalog_path,
-            output_path=output_path,
+            in1=catalog_path,
+            in2=crosstalk_catalog_path,
+            out=output_path,
             ra1=ra,
             dec1=dec,
             join="all1",
             find="best1",
             ra2="crosstalk_ra",
             dec2="crosstalk_dec",
-            error=error
+            error=error,
+            all_formats="fits"
         )
         stilts.run()
         self.flag_crosstalks_in_catalog(output_path, flag_value)

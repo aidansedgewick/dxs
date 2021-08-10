@@ -13,8 +13,8 @@ from .hdu_preprocessor import HDUPreprocessor
 from .mosaic_builder import (
     MosaicBuilder, 
     calculate_mosaic_geometry
+
 )
-from .pystilts import Stilts
 #from .photoz_processor import PhotozProcessor
 #from .quick_plotter import QPlot, QuickPlotter
 

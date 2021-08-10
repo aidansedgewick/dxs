@@ -227,9 +227,11 @@ def photometry_pipeline(
         H_ex.extract()
         H_ex.add_snr(flux_cols, fluxerr_cols, snr_cols)
         fix_sextractor_column_names(H_ex.catalog_path, band="H")
+        H_output_path = H_ex.catalog_path
+        explode_columns_in_fits(H_output_path, "H_flux_radius", suffixes=flux_radii_suffixes)
         H_cov_map_path = K_ex.detection_mosaic_path.with_suffix(".cov.good_cov.fits")
         H_ex.add_map_value(H_cov_map_path, "H_coverage", ra="H_ra", dec="H_dec")
-        remove_objects_in_bad_coverage(H_ex.catalog_path, coverage_column="H_coverage")
+        #remove_objects_in_bad_coverage(H_ex.catalog_path, coverage_column="H_coverage")
         H_ex.add_column({"H_tile": tile})
         H_aper_cols = ["H_mag_aper", "H_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
         explode_columns_in_fits(
@@ -273,7 +275,8 @@ if __name__ == "__main__":
         #args.match_extras = True
 
     check_modules("swarp", "sex", "stilts")
-    
+
+    t1 = time.time()
     photometry_pipeline(
         field, tile, prefix=args.prefix, 
         extract=args.extract, 
@@ -284,8 +287,6 @@ if __name__ == "__main__":
         #match_extras=args.match_extras,
         n_cpus=args.n_cpus
     )
-
-    t1 = time.time()
     print("done!")
     t2 = time.time()
 

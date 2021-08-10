@@ -4,7 +4,7 @@ import yaml
 from argparse import ArgumentParser
 from pathlib import Path
 
-from dxs.runner import ScriptMaker
+from .runner import ScriptMaker
 
 
 

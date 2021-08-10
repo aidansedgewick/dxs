@@ -13,6 +13,7 @@ from lmfit import Model
 from treecorr import estimate_multi_cov
 
 from dxs import analysis_tools as tools
+from dxs.utils.misc import print_header
 
 from dxs import paths
 
@@ -68,6 +69,8 @@ def fix_parameters(func, names, values, p0=None, bounds=None, tol=1e-6):
     sig = inspect.signature(func)
     param_list = list(sig.parameters)
 
+    print("FIXING PARAMETERS", names)
+
     if p0 is None:
         p0 = np.ones(len(param_list))
     if bounds is None:
@@ -96,7 +99,7 @@ p0_lookup = {
     "fixed_double_power_law": [1e-4, 1e-3],
     "power_exp_law": [1., 1., 1., 1.], #[1e-4, 1.0, 5e-3, 10.],
     "trunc_power_exp_law": [1e-2, 1.0, 5e1, 1e-2, 4e0],
-    "double_trunc_power_law": [1., 1., 1., 1., 1., 1.,],
+    "double_trunc_power_law": [1e-2, 1.0, 5e1, 1e-2, 0.0, 4e0],
     "double_exp_law": [1e-1, 10., 1e-3, 100.],
 }
 
@@ -108,6 +111,10 @@ bounds_lookup = {
     "trunc_power_exp_law": ( #(-np.inf, np.inf),
         [1e-5, 1e-2, 1e-2, 1e-6, 1e-2],
         [1e+2, 5e+0, 1e+2, 1e+0, 1e+3],
+    ),
+    "double_trunc_power_law": ( #(-np.inf, np.inf),
+        [0., 0., 0., 0., 0., 0.,], 
+        np.inf
     )
 }
 
@@ -163,7 +170,8 @@ gs = plt.GridSpec(2,2)
 #params_fig, params_axes = plt.subplots(2,2)
 #params_axes = params_axes.flatten()
 
-func = trunc_power_exp_law
+func = power_exp_law
+#func = trunc_power_exp_law
 #func = double_trunc_power_law
 #func = double_power_law_C # 
 
@@ -190,9 +198,9 @@ params_axes["amplitude"].semilogy()
 if "cutoff" in params_axes:
     params_axes["cutoff"].semilogy()
 
-optical_list = ["panstarrs"] #"hsc", 
+optical_list = ["panstarrs", "hsc"] #"hsc", 
     
-obj = "drgs"
+obj = "pe_gzKs"
 
 ls_list = ["-", "--"]
 
@@ -233,6 +241,9 @@ for opt_ii, optical in enumerate(optical_list):
 
         K_lim = K_limits[ii]
 
+        print_header(f"corr {obj}, K<{K_lim}, {optical}")
+        print(corr_data.keys())
+
         K_lims.append(K_lim)
 
         fig, axes = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 1]}, figsize=(8.5, 6.4))
@@ -241,7 +252,7 @@ for opt_ii, optical in enumerate(optical_list):
         axes[0].loglog()
         xref = np.logspace(-4.0, 1.0, 1000)
         pl_ref = power_law(xref, 1e-3, 0.8)
-        axes[0].plot(xref, pl_ref, color="k", alpha=0.5)
+        axes[0].plot(xref, pl_ref, color="k", alpha=0.5, zorder=2)
         axes[0].set_ylim(1e-4, 5e1)
         axes[0].set_xlim(2e-4, 3e0)
         
@@ -298,8 +309,8 @@ for opt_ii, optical in enumerate(optical_list):
         p0 = p0_lookup[func.__name__]
         bounds = bounds_lookup.get(func.__name__, (-np.inf, np.inf))
 
-        p0, bounds = fix_parameters(func, "d", 1.35, p0=p0, bounds=bounds)
-        print(bounds)
+        #p0, bounds = fix_parameters(func, "d", 1.35, p0=p0, bounds=bounds)
+        #print(bounds)
 
         try:
             comb_params, comb_pcov = curve_fit(
@@ -322,7 +333,8 @@ for opt_ii, optical in enumerate(optical_list):
         fit_parameters = comb_params.copy()
 
         #ic_estimates = [ic_roche]
-        for jj in range(20):
+        for kk in range(20):
+                
             IC = IC_Roche(x_fit, RR_fit, func, *fit_parameters)
             ic_roche = IC
             if func.__name__ == "double_power_law_C":
@@ -340,8 +352,9 @@ for opt_ii, optical in enumerate(optical_list):
             if func.__name__ == "double_power_law_C":
                 IC = IC + fit_parameters[-1]
                 
-            with np.printoptions(precision=2):
-                print(f"{jj} {obj} {K_lim} {fit_parameters} \n      {ic_roche:.5f} {IC:.5f}")
+            if kk+1 % 5 == 0:
+                with np.printoptions(precision=2):
+                    print(f"{jj} {obj} {K_lim} {fit_parameters} {IC:.5f}")
 
         #w_ic = w
         #fit_parameters = comb_params
@@ -352,11 +365,10 @@ for opt_ii, optical in enumerate(optical_list):
             x, w_ic, yerr=w_err, color=f"k", ls="none", zorder=10, marker="o",
         )
         
-
         params_lookup["combined"].append(fit_parameters)
 
         w_eval = func(x_grid, *fit_parameters)
-        axes[0].plot(x_grid, w_eval, color=f"k", ls="--")
+        axes[0].plot(x_grid, w_eval, color=f"k", zorder=8)#, ls="--")
 
         component_functions = composite_lookup[func.__name__]
         n_params = composite_n_params.get(func.__name__, (2, 2))
@@ -374,24 +386,25 @@ for opt_ii, optical in enumerate(optical_list):
             cf1 = component_functions[0]
             print(stop1, fit_parameters[:stop1])
             component1 = cf1(x_grid, *fit_parameters[:stop1])
-            axes[0].plot(x_grid, component1, color=f"k", ls=":")
+            axes[0].plot(x_grid, component1, color=f"k", ls="--", zorder=8)
 
             cf1_init = cf1(x_grid, *comb_params[:stop1])
-            axes[0].plot(x_grid, cf1_init, color=f"k", ls=":", alpha=0.5)
+            axes[0].plot(x_grid, cf1_init, color=f"k", ls=":", alpha=0.5, zorder=8)
 
             cf2 = component_functions[1]
             component2 = cf2(x_grid, *fit_parameters[stop1:stop2])
-            axes[0].plot(x_grid, component2, color=f"k", ls=":")
+            axes[0].plot(x_grid, component2, color=f"k", ls="--", zorder=8)
 
             cf2_init = cf2(x_grid, *comb_params[stop1:stop2])
-            axes[0].plot(x_grid, cf2_init, color=f"k", ls=":", alpha=0.5)
+            axes[0].plot(x_grid, cf2_init, color=f"k", ls=":", alpha=0.5, zorder=8)
 
 
         x_eval = func(x, *fit_parameters)
         resid = (w_ic - x_eval) / w_err
         ### now plot residuals.
-        axes[1].scatter(x, resid, color=f"k", s=4)
-        """
+        axes[1].scatter(x, resid, color=f"k", s=4, zorder=8)
+        
+        
         for jj, field in enumerate(fields):
 
             if field not in corr_data:
@@ -425,24 +438,28 @@ for opt_ii, optical in enumerate(optical_list):
                 print(e)
                 continue
             params_lookup[field].append(params_jj)
+                       
+            fit_parameters_jj = params_jj.copy()
+            ic_roche = IC_Roche(x_fit, RR_jj_fit, func, *fit_parameters_jj)
+            ic_estimates = [ic_roche]
+            for kk in range(20):        
+                w_ic = w_jj_fit + ic_roche
+                IC_jj = IC_Roche(x_fit, RR_jj_fit, func, *fit_parameters_jj)
+                w_ic_jj = w_jj_fit + IC_jj
+                fit_parameters_jj, fit_pcov = curve_fit(
+                    func, x_fit, w_ic_jj, sigma=w_err_jj_fit, 
+                    p0=p0, bounds=bounds, 
+                    maxfev=10000000
+                )
+                if kk+1 % 5 == 0:
+                    with np.printoptions(precision=2):
+                        print(f"{field} {jj} {K_lim} {fit_parameters} {IC_jj:.5f}")
+            w_ic_jj = w_jj + IC_jj
 
-            w_eval_jj = func(x_grid, *params_jj)
-            axes[0].plot(x_grid, w_eval_jj, color=f"C{jj}", ls="--", alpha=0.3)
-            
-            #fit_parameters = params_jj.copy()
-            #ic_roche = IC_Roche(x_fit, RR_fit, func, *fit_parameters)
-            #ic_estimates = [ic_roche]
-            #for jj in range(100):        
-            #    w_ic = w_fit + ic_roche
-            #
-            #    fit_parameters, fit_pcov = curve_fit(
-            #        func, x_fit, w_ic, sigma=w_err_fit, 
-            #        p0=p0, bounds=bounds, 
-            #        maxfev=10000000
-            #    )
-            #    ic_roche = IC_Roche(x_fit, RR_fit, func, *fit_parameters)
-            #    with np.printoptions(precision=2):
-            #        print(f"{jj} {obj} {K_lim} {fit_parameters} {ic_roche:.5f}")
+
+
+            w_eval_jj = func(x_grid, *fit_parameters_jj)
+            axes[0].plot(x_grid, w_eval_jj, color=f"C{jj}", alpha=0.8, zorder=6)
 
             if func.__name__ in ["double_power_law", "double_power_law_C"]:
                 A_ratio = params_jj[2] / params_jj[0]
@@ -450,22 +467,29 @@ for opt_ii, optical in enumerate(optical_list):
                 theta_c = A_ratio ** (1. / d_diff)
                 theta_cross[field].append(theta_c)
 
-            component_functions = composite_lookup[func.__name__]
-            #if len(component_functions) > 1:
-            #    cf1 = component_functions[0]
-            #    component1 = cf1(x_grid, *params_jj[:2])
-            #    axes[0].plot(x_grid, component1, color=f"C{jj}", ls=":")
+            if len(component_functions) > 1:            
+                cf1 = component_functions[0]
+                print(f"plot {field}, jj={jj}")
+                component1 = cf1(x_grid, *fit_parameters_jj[:stop1])
+                axes[0].plot(x_grid, component1, color=f"C{jj}", ls="--", alpha=0.5, zorder=4)
 
-            #    cf2 = component_functions[1]
-            #    component2 = cf2(x_grid, *params_jj[2:4])
-            #    axes[0].plot(x_grid, component2, color=f"C{jj}", ls=":")
+                cf1_init = cf1(x_grid, *params_jj[:stop1])
+                axes[0].plot(x_grid, cf1_init, color=f"C{jj}", ls=":", alpha=0.2, zorder=4)
+
+                cf2 = component_functions[1]
+                component2 = cf2(x_grid, *fit_parameters_jj[stop1:stop2])
+                axes[0].plot(x_grid, component2, color=f"C{jj}", ls="--", alpha=0.5, zorder=4)
+
+                cf2_init = cf2(x_grid, *params_jj[stop1:stop2])
+                axes[0].plot(x_grid, cf2_init, color=f"C{jj}", ls=":", alpha=0.2, zorder=4)
+
 
 
             x_eval_jj = func(x, *params_jj)
-            resid = (w_jj - x_eval_jj) / w_err_jj
+            resid = (w_ic_jj - x_eval_jj) / w_err_jj
             ### now plot residuals.
-            axes[1].scatter(x, resid, color=f"C{jj}", s=4, alpha=0.3)
-        """    
+            axes[1].scatter(x, resid, color=f"C{jj}", s=4, alpha=0.3, zorder=4)
+        
         fig.subplots_adjust(hspace=0, wspace=0)
 
         #fig.savefig(paths.base_path / f"{obj}_{optical}_{ii}.png")

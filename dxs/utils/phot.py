@@ -27,6 +27,8 @@ def get_rv(band):
 
 def ab_to_vega(mag_ab, dM=None, band=None):
     """dM is defined st. m_AB = m_Vega + offset"""
+    if isinstance(dM, str):
+        raise ValueError("dM must be float. did you mean 'band=\"{dM}\"'?")
     if band is not None:
         dM = get_dM(band)
     if dM is None:
@@ -35,13 +37,18 @@ def ab_to_vega(mag_ab, dM=None, band=None):
 
 def vega_to_ab(mag_v, dM=None, band=None):
     """dM is defined st. m_AB = m_Vega + offset"""
+    if isinstance(dM, str):
+        raise ValueError(f"dM must be float. did you mean 'band=\"{dM}\"'?")
     if band is not None:
         dM = get_dM(band)
     if dM is None:
-        raise ValueError("dM cannot be None - provide dM [float] or band [str]")
+        raise ValueError(f"dM cannot be None - provide dM [float] or band [str]")
+    logger.info(f"add {dM}")
     return mag_v + dM
 
 def vega_to_flux(mag, f0=None, band=None):
+    if isinstance(f0, str):
+        raise ValueError(f"f0 must be float. did you mean 'band=\"{f0}\"'?")
     if band is not None:
         get_f0(band)
     if f0 is None:

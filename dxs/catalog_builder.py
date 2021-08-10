@@ -16,8 +16,9 @@ from astropy.wcs import WCS
 from astromatic_wrapper.api import Astromatic
 from easyquery import Query
 
+from stilts_wrapper import Stilts
+
 #from dxs.mosaic_builder import get_mosaic_dir, get_mosaic_stem
-from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
 from dxs.utils.table import (
     fix_column_names, add_map_value_to_catalog, add_column_to_catalog
@@ -284,15 +285,19 @@ class CatalogMatcher:
         if self.catalog_path == output_path:
              logger.warning("catalog_path is the same as output_path!!")
         if engine == "stilts":
-            self.stilts = Stilts.tskymatch2_fits(
-                self.catalog_path, extra_catalog, output_path=output_path,
-                flags={"join": "all1", "find": "best"},
+            flags = {"join": "all1", "find": "best"}
+            flags.update(kwargs)
+            self.stilts = Stilts.tskymatch2(
+                in1=self.catalog_path, 
+                in2=extra_catalog, 
+                out=output_path,
                 ra1=self.ra, dec1=self.dec,
                 ra2=ra, dec2=dec,
-                **kwargs
+                all_formats="fits",
+                **flags
             )
             self.stilts.run()
-            info = f"{self.stilts.flags['join']} match {extra_catalog.name}"
+            info = f"{self.stilts.parameters['join']} match {extra_catalog.name}"
         else:
             raise ValueError("currently only engine='stilts' implemented...")
         logger.info(info)
@@ -353,11 +358,12 @@ class CatalogPairMatcher(CatalogMatcher):
 
     def best_pair_match(self, engine="stilts", **kwargs):
         if engine == "stilts":
-            self.stilts = Stilts.tskymatch2_fits(
-                self.catalog1_path, self.catalog2_path, self.catalog_path,
+            self.stilts = Stilts.tskymatch2(
+                in1=self.catalog1_path, in2=self.catalog2_path, out=self.catalog_path,
                 ra1=self.ra1, dec1=self.dec1, ra2=self.ra2, dec2=self.dec2,
-                flags={"join": "1or2", "find": "best"},
-                **kwargs
+                join="1or2", find="best",
+                all_formats="fits",
+                **kwargs                
             )
             self.stilts.run()
         else:

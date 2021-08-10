@@ -47,8 +47,9 @@ args = parser.parse_args()
 if args.gen_stars:
     args.force_extract = True
 
-fields = ["SA", "LH", "EN"]#, "XM"]
+fields = ["SA", "LH", "EN", "XM"]#, "XM"]
 
+fig, ax = plt.subplots()
 for field in fields:
 
     if args.tiles is not None:
@@ -67,7 +68,7 @@ for field in fields:
 
 
     dM = 0.25
-    mag_bins = np.arange(19.0, 28. + dM, dM)
+    mag_bins = np.arange(20., 28. + dM, dM)
     mag_mids = calc_mids(mag_bins)
 
 
@@ -92,8 +93,8 @@ for field in fields:
     joined_catalog_paths = []
 
     #matplotlib.use('Agg')
-
     fig, ax = plt.subplots()
+
     for tile in tiles:
         input_stars = copy.deepcopy(field_input_stars)
 
@@ -230,6 +231,8 @@ for field in fields:
         mask = denom_hist > 0
         denom_hist = denom_hist[ mask ]
         numer_hist = numer_hist[ mask ]
+
+        denom_err = np.sqrt(denom_hist)
 
         mag_mids_relevant = mag_mids[ mask ]
 

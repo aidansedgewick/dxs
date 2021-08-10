@@ -19,8 +19,9 @@ from astromatic_wrapper.api import Astromatic
 from easyquery import Query
 from regions import read_ds9
 
+from stilts_wrapper import Stilts
+
 from dxs.crosstalk_processor import CrosstalkProcessor
-from dxs.pystilts import Stilts
 from dxs.utils.misc import check_modules, format_flags, create_file_backups
 from dxs.utils.table import fix_column_names, table_to_numpynd
 #from dxs.utils.region import in_only_one_tile, in_only_one_region, guess_wcs_from_region
@@ -136,9 +137,10 @@ def merge_catalogs(
         os.remove(output_overlap_path)
     assert not output_overlap_path.exists()
     
-    stilts = Stilts.tmatch1_sky_fits(
-        input_overlap_path, output_path=output_overlap_path, 
-        ra=ra_col, dec=dec_col, error=merge_error
+    stilts = Stilts.tmatch1(
+        in_=input_overlap_path, out=output_overlap_path, 
+        params=merge_error, all_formats="fits",
+        values=f"\"{ra_col} {dec_col}\"", action="identify", matcher="sky"
     )
     print(stilts.cmd)
     stilts.run()

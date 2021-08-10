@@ -206,7 +206,7 @@ def objects_in_coverage(
     return full_mask
 
 def calc_survey_area(
-    image_list, ra_limits=None, dec_limits=None, limits_units="deg", nside=4096
+    image_list, ra_limits=None, dec_limits=None, limits_units="deg", nside=2048
 ):
     if not isinstance(image_list, list):
         image_list = [image_list]
@@ -331,7 +331,7 @@ def dilate_zero_regions(data, structure=None, iterations=50):
 def mask_regions_in_mosaic(
     mosaic_path,
     region_list,
-    expand=1000,
+    expand=4000,
     output_path=None,
     skip_checks=False,
 ):
@@ -354,10 +354,11 @@ def mask_regions_in_mosaic(
         footprint_region = PolygonSkyRegion(SkyCoord(footprint, unit="degree")).to_pixel(wcs)
 
         logger.info(f"find relevant regions from {len(region_list)}")
-        # ugly ugly blergh - but faster than concat...
+        # very ugly, blergh - but faster than skycoord concat...
         ra_vals = np.array([region.center.ra.degree for region in region_list])
         dec_vals = np.array([region.center.dec.degree for region in region_list])
         sky_coord = SkyCoord(ra=ra_vals, dec=dec_vals, unit="degree")
+        logger.info("check contained by...")
         contained_by = sky_coord.contained_by(expanded_wcs)
         region_list = [
             region for region, contained in zip(region_list, contained_by) if contained

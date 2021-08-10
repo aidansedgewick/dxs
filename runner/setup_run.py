@@ -4,8 +4,11 @@ from argparse import ArgumentParser
 from itertools import product
 from pathlib import Path
 
-from dxs.runner import ScriptMaker
+
 from dxs.utils.misc import tile_parser
+
+from .runner import ScriptMaker
+
 from dxs import paths
 
 
@@ -78,13 +81,36 @@ if __name__ == "__main__":
                 arg_list.append([v])
         else:
             arg_list.append([v])
-    
+
     arg_tuple = tuple(arg_list)
     combinations = product(*arg_tuple)
     combinations = [x for x in combinations] # no genexpr!
+
+    print(combinations)
+
+    kwargs = run_config.get("kwargs", {})
+    per_run_kwargs = run_config.get("per_run_kwargs", {})
+    if len(per_run_kwargs) > 0:
+        kwargs_list = [kw for kw in per_run_kwargs]
+        for kw in kwargs_list:
+            kw.update(kwargs)
+        print(kwargs_list)
+        if len(combinations) == 1:
+            combinations = [() for _ in kwargs_list]
+        elif len(kwargs_list) != len(combinations):
+            raise ValueError("diff num. combinations to per_run_kwargs!")   
+    else:
+        kwargs = [kwargs for _ in combinations]
+
+
     print(f"There are {len(combinations)} combinations")
 
-    kwargs = [run_config.get("kwargs", {}) for _ in combinations]
+    script_maker.write_all_scripts(combinations, kwargs_list)
 
-    script_maker.write_all_scripts(combinations, kwargs)
+
+
+
+
+
+
 

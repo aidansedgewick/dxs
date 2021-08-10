@@ -54,11 +54,11 @@ def merge_pipeline(
         output_path = output_dir / f"{output_stem}.cat.fits"
         output_catalogs[band] = output_path
 
+
+        print_header(f"merge {output_stem}")
         if output_path.exists() and not force_merge:
             logger.info(f"SKIP {field} {tiles} {band} merge; {output_path.name} exists")
             continue
-
-        print_header(f"merge {output_stem}")
 
         if use_fp_catalogs:
             mband = measurement_lookup.get(band, None)
@@ -142,7 +142,7 @@ def merge_pipeline(
             print("skipping J&K merge")
         else:
             nir_matcher.best_pair_match(error=merge_config["nir_match_error"]) # arcsec
-            nir_matcher.fix_column_names(column_lookup={"Separation": "JK_separation"})
+            fix_column_names(nir_output_path, column_lookup={"Separation": "JK_separation"})
             nir_matcher.select_best_coords(snr1="J_snr_auto", snr2="K_snr_auto")
 
             tab = Table.read(nir_matcher.catalog_path)
