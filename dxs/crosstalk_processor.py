@@ -218,7 +218,7 @@ class CrosstalkProcessor:
         if output_path is None:
             output_path = catalog_path
         logger.info(f"match crosstalks {crosstalk_catalog_path.name} to {catalog_path.name}")
-        stilts = Stilts.tskymatch2_fits(
+        stilts = Stilts.tskymatch2(
             in1=catalog_path,
             in2=crosstalk_catalog_path,
             out=output_path,

@@ -99,6 +99,7 @@ def photometry_pipeline(
     print(f"Match crosstalk stars in {star_catalog_path.name}")
 
     ##============================Extract catalog from J-image.
+
     Jspec = (field, tile, "J")
     Jcat_stem = paths.get_catalog_stem(*Jspec, prefix=prefix, suffix="_init")
     J_ex = CatalogExtractor.from_dxs_spec(*Jspec, catalog_stem=Jcat_stem, prefix=prefix)
@@ -114,7 +115,9 @@ def photometry_pipeline(
         logger.info(f"initial J cat at {J_ex.catalog_path}")
         J_ex.add_column({"J_tile": tile})
 
-    ## Match its crosstalks
+
+    ## ============================ Match its crosstalks
+
     J_xproc = CrosstalkProcessor.from_dxs_spec(*Jspec, star_catalog.copy())
     assert "j_m" in J_xproc.star_catalog.colnames
     if collate_crosstalks:
@@ -135,31 +138,35 @@ def photometry_pipeline(
         #remove_objects_in_bad_coverage(J_output_path, coverage_column="J_coverage")
         logger.info(f"xtalk-matched J cat at {J_output_path}")
 
-    ## Now do K-forced photometry from J image.
+
+    ## ==================== Now do K-forced photometry from J image.
     JKfp_ex = CatalogExtractor.from_dxs_spec(
         field, tile, "J", measurement_band="K", prefix=prefix
     )
     if extract:
         print_header("K forced from J apers")
         JKfp_ex.extract()
-        fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="_Jfp")
+        fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="")
         logger.info(f"K forced from J apers at {JKfp_ex.catalog_path}")
     # stick them together.
     Jfp_output_dir = paths.get_catalog_dir(*Jspec)
-    Jfp_combined_stem = paths.get_catalog_stem(field, tile, "JK", prefix=prefix)
+    Jfp_combined_stem = paths.get_catalog_stem(field, tile, "J_K", prefix=prefix)
     Jfp_output_path =  Jfp_output_dir / f"{Jfp_combined_stem}.cat.fits"
     Jfp_matcher = CatalogMatcher(J_output_path, ra="J_ra", dec="J_dec")
     if match_fp:
         print_header("match J and K forced")
         Jfp_matcher.match_catalog(
-            JKfp_ex.catalog_path, output_path=Jfp_output_path, ra="K_ra_Jfp", dec="K_dec_Jfp", error=1.0
+            JKfp_ex.catalog_path, output_path=Jfp_output_path, ra="K_ra", dec="K_dec", error=1.0
         )
-        fix_column_names(Jfp_output_path, column_lookup={"Separation": "Jfp_separation"})
+        fix_column_names(Jfp_output_path, column_lookup={"Separation": "JKfp_separation"})
         logger.info(f"joined J and K forced at {Jfp_output_path}")
 
 
 
-    ##=========================Extract catalog from K-image.
+
+
+    ## =========================Extract catalog from K-image.
+
     Kspec = (field, tile, "K")
     Kcat_stem = paths.get_catalog_stem(*Kspec, prefix=prefix, suffix="_init") 
     K_ex = CatalogExtractor.from_dxs_spec(
@@ -177,7 +184,8 @@ def photometry_pipeline(
         K_ex.add_column({"K_tile": tile})
         logger.info(f"initial K cat at {K_ex.catalog_path}")
 
-    ## Match its crosstalks
+    ## ========================= Match its crosstalks
+
     K_xproc = CrosstalkProcessor.from_dxs_spec(field, tile, "K", star_catalog.copy())
     assert "k_m" in K_xproc.star_catalog.colnames
     if collate_crosstalks:
@@ -198,29 +206,32 @@ def photometry_pipeline(
         #remove_objects_in_bad_coverage(K_output_path, coverage_column="K_coverage")
         logger.info(f"xtalk-matched K cat at {K_output_path}")
 
-    ## Now do K-forced photometry from J image.
+    ## ===================== Now do K-forced photometry from J image.
+
     KJfp_ex = CatalogExtractor.from_dxs_spec(*Kspec, measurement_band="J", prefix=prefix)
     if extract:
         print_header("J forced from K apers")
         KJfp_ex.extract()
-        fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="_Kfp")
+        fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="")
         logger.info(f"J forced from K apers at {KJfp_ex.catalog_path}")
     ## stick them together.
     Kfp_output_dir = paths.get_catalog_dir(*Kspec)
-    Kfp_combined_stem = paths.get_catalog_stem(field, tile, "KJ", prefix=prefix)
+    Kfp_combined_stem = paths.get_catalog_stem(field, tile, "K_J", prefix=prefix)
     Kfp_output_path =  Kfp_output_dir / f"{Kfp_combined_stem}.cat.fits"
     Kfp_matcher = CatalogMatcher(K_output_path, ra="K_ra", dec="K_dec")
     if match_fp:
         Kfp_matcher.match_catalog(
             KJfp_ex.catalog_path, output_path=Kfp_output_path, 
-            ra="J_ra_Kfp", dec="J_dec_Kfp", error=1.0
+            ra="J_ra", dec="J_dec", error=1.0
         )
-        fix_column_names(Kfp_output_path, column_lookup={"Separation": "Kfp_separation"})
+        fix_column_names(Kfp_output_path, column_lookup={"Separation": "KJfp_separation"})
         logger.info(f"joined J and K forced at {Kfp_output_path}")
 
     ##======================== extract H
 
     ## Extract catalog from H-image.
+    Hspec = (field, tile, "H")
+
     H_ex = CatalogExtractor.from_dxs_spec(field, tile, "H", prefix=prefix)
     if H_ex.detection_mosaic_path.exists() and extract:
         print_header("H-band")
@@ -237,6 +248,25 @@ def photometry_pipeline(
         explode_columns_in_fits(
             H_output_path, H_aper_cols, suffixes=aperture_suffixes, remove=True
         )
+
+        ## also do forced photometry.
+        KHfp_ex = CatalogExtractor.from_dxs_spec(*Kspec, measurement_band="H", prefix=prefix)
+        print_header("H forced from K apers")
+        KHfp_ex.extract()
+        fix_sextractor_column_names(KHfp_ex.catalog_path, band="H", suffix="")
+        
+        Kfp_output_dir = paths.get_catalog_dir(*Kspec)
+        KHfp_combined_stem = paths.get_catalog_stem(field, tile, "K_JH", prefix=prefix)
+        KHfp_output_path =  Kfp_output_dir / f"{KHfp_combined_stem}.cat.fits"
+        KHfp_matcher = CatalogMatcher(K_output_path, ra="K_ra", dec="K_dec")
+        if match_fp:
+            Kfp_matcher.match_catalog(
+                Kfp_output_path, output_path=KHfp_output_path, 
+                ra="H_ra", dec="H_dec", error=1.0
+            )
+            fix_column_names(Kfp_output_path, column_lookup={"Separation": "KHfp_separation"})
+            logger.info(f"joined J and K forced at {Kfp_output_path}")      
+
 
 
 if __name__ == "__main__":

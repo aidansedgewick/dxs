@@ -239,7 +239,7 @@ if __name__ == "__main__":
     bands = [x for x in args.bands.split(",")]
 
     #for field in fields:
-    logger.info(f"merge {field} {tiles} for {bands} (output_code {output_code}")
+    logger.info(f"merge {field} {tiles} for {bands} (output_code {output_code})")
     merge_pipeline(
         field, tiles, bands, 
         output_code=output_code, 

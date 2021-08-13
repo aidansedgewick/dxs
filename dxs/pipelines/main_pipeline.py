@@ -31,7 +31,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
     mosaic_pipeline(args.field, args.tile, "J", n_cpus=args.n_cpus)
     mosaic_pipeline(args.field, args.tile, "K", n_cpus=args.n_cpus)
     mosaic_pipeline(args.field, args.tile, "H", n_cpus=args.n_cpus)
@@ -52,6 +51,5 @@ if __name__ == "__main__":
         field_mask_pipeline(args.field, tiles, "K")
     except Exception as e:
         logger.info(f"Can't make K field mask:\n    {e}")
-
 
     print("Done!")

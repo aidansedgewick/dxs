@@ -34,6 +34,7 @@ with open(survey_config_path, "r") as f:
     survey_config = yaml.load(f, Loader=yaml.FullLoader)
 
 logger = logging.getLogger("mosaic_pipeline")
+
 def mosaic_pipeline(
     field, tile, band, n_cpus=1, initial=False, coverage=False, exptime=False, masked=False
 ):
@@ -67,7 +68,8 @@ def mosaic_pipeline(
     prep_kwargs = {"hdu_prefix": f"{stem}_i"}
     builder = MosaicBuilder.from_dxs_spec(
         *spec, 
-        suffix="_init", 
+        suffix="_init",
+        include_deprecated_stacks=survey_config["mosaics"]["include_deprecated_stacks"],
         hdu_prep_kwargs=prep_kwargs,
     )
 
@@ -102,7 +104,8 @@ def mosaic_pipeline(
         #pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
         cov_builder = MosaicBuilder.coverage_from_dxs_spec(
             *spec, 
-            #pixel_scale=pixel_scale, 
+            #pixel_scale=pixel_scale,
+            include_deprecated_stacks=survey_config["mosaics"]["include_deprecated_stacks"],
             swarp_config=coverage_swarp_config, 
             hdu_prep_kwargs=coverage_prep_kwargs,
         )
@@ -159,7 +162,8 @@ def mosaic_pipeline(
         pixel_scale = survey_config["mosaics"]["pixel_scale"]# * 10.0
         exptime_builder = MosaicBuilder.exptime_from_dxs_spec(
             *spec, 
-            #pixel_scale=pixel_scale * 10., 
+            #pixel_scale=pixel_scale * 10.,
+            include_deprecated_stacks=survey_config["mosaics"]["include_deprecated_stacks"],
             swarp_config=exptime_swarp_config, 
             hdu_prep_kwargs=exptime_prep_kwargs,
         )
@@ -224,7 +228,8 @@ def mosaic_pipeline(
         }
         masked_builder = MosaicBuilder.from_dxs_spec(
             *spec, 
-            swarp_config=masked_swarp_config, 
+            swarp_config=masked_swarp_config,
+            include_deprecated_stacks=survey_config["mosaics"]["include_deprecated_stacks"],
             hdu_prep_kwargs=masked_prep_kwargs
         )
         if masked_builder is None:

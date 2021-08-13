@@ -131,7 +131,7 @@ class MosaicBuilder:
         cls, field, tile, band, 
         include_neighbors=True,
         convert_vega_to_AB=True,
-        include_deprecated_stacks=False,
+        include_deprecated_stacks=True,
         prefix=None,
         suffix=None,
         extension=None,
@@ -178,7 +178,7 @@ class MosaicBuilder:
 
         # Get a list of all the stacks in this tile (ignoring band) for geometry.
         geom_mosaic_stacks = get_stack_data(
-            field, tile, band=None, include_deprecated_stacks=True
+            field, tile, band=None, include_deprecated_stacks=True # always inc. for geom...
         )
         if len(geom_mosaic_stacks) == 0:
             logger.info(f"No stacks in {field}, {tile}, in any band")
@@ -200,20 +200,23 @@ class MosaicBuilder:
         swarp_config["center_type"] = "MANUAL"
         swarp_config["pixelscale_type"] = "MANUAL"
         # which stacks should go into the swarp?
+        logger.info(f"include deprec stacks? {include_deprecated_stacks}")
+
         mosaic_stacks = get_stack_data(
             field, tile, band, include_deprecated_stacks=include_deprecated_stacks
         )
         if len(mosaic_stacks) == 0:
             logger.info(f"No stacks in {field} {tile} {band} to build.")
             return None
-        
-    
+            
         if include_neighbors:
             if "ccds" not in mosaic_stacks.columns:
                 mosaic_stacks["ccds"] = [
                     survey_config["ccds"] for _ in range(len(mosaic_stacks))
                 ]
-            neighbor_stacks = get_neighbor_stacks(field, tile, band)
+            neighbor_stacks = get_neighbor_stacks(
+                field, tile, band, include_deprecated_stacks=include_deprecated_stacks
+            )
             logger.info(f"{len(neighbor_stacks)} stacks (including neighbors)")
         else:
             neighbor_stacks = None
@@ -243,6 +246,9 @@ class MosaicBuilder:
         header_keys["magzpt"] = (
             magzpt_value, f"median; inc. 2.5log(t_exp), dAB={AB_conversion:.4f}"
         )
+        header_keys["usedeprec"] = (
+            include_deprecated_stacks, f"mosaic include deprecated stacks?"
+        )
         logger.info("header_keys:")
         for k, v in header_keys.items():
             print(f"     {k} = {v}")
@@ -265,7 +271,7 @@ class MosaicBuilder:
     def coverage_from_dxs_spec(
         cls, field, tile, band, 
         include_neighbors=True,
-        include_deprecated_stacks=False,
+        include_deprecated_stacks=True,
         prefix=None,
         suffix=None,
         swarp_config=None, 
@@ -300,7 +306,7 @@ class MosaicBuilder:
     def exptime_from_dxs_spec(
         cls, field, tile, band, 
         include_neighbors=True,
-        include_deprecated_stacks=False,
+        include_deprecated_stacks=True,
         prefix=None,
         suffix=None,
         swarp_config=None, 
@@ -555,7 +561,7 @@ def _hdu_prep_wrapper(arg):
 
 ##======== Finding out which stacks are important for a mosaic.
 
-def get_stack_data(field, tile, band, pointing=None, include_deprecated_stacks=False):
+def get_stack_data(field, tile, band, pointing=None, include_deprecated_stacks=True):
     """
     Data frame of info for stacks in a given field/tile/band [optionally pointing].
     Must provide, field, tile, band as args - although tile and band can be None, or a list.
@@ -595,10 +601,10 @@ def get_stack_data(field, tile, band, pointing=None, include_deprecated_stacks=F
     stacks.insert(len(stacks.columns), "ccds", ccds_series)
     return stacks
 
-def get_neighbor_stacks(field, tile, band, include_deprecated_stacks=False):
+def get_neighbor_stacks(field, tile, band, include_deprecated_stacks=True):
     """
     Which stacks are on the border of the mosaic we're SWarping? 
-    We should add these in to make extracting the catalog nicer.
+    We should add these in, to make extracting the catalog nicer.
     """
     neighbors = get_neighbor_tiles(field, tile)
     df_list = []

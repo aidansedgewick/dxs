@@ -33,7 +33,9 @@ masks_path = data_path / "masks"
 # RUNNER
 runner_path = file_path.parent.parent / "runner"
 
-print(f"input_data_path {input_data_path}\nconfig_path {config_path}\n")
+print(f"\033[36minput_data_path\033[0m {input_data_path}")
+print(f"\033[36mdata_path\033[0m {data_path}")
+print(f"\033[36mconfig_path\033[0m {config_path}\n")
 
 # HELPER FUNCS
 

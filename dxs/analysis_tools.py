@@ -268,8 +268,8 @@ def jackknife_cov_from_NN_list(NN_dd_list: List[NNCorrelation]):
         sum([r_DR * dw * dw for r_DR, dw in zip(DR_jk_ratios, delta_w)])
     )
 
-    print(cov_w_err)
-    print(DR_w_err)
+    #print(cov_w_err)
+    #print(DR_w_err)
 
     return cov, DR_w_err
 

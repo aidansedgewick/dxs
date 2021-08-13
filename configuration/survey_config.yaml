@@ -20,6 +20,7 @@ mosaics:
   border: 100
   max_size: [25000, 25000]
   pixel_scale: 0.2 # arcsec.
+  include_deprecated_stacks: True
 
 field_limits:
   SA: {ra: [332.0, 336.0], dec: [-1.2, 2.0]}

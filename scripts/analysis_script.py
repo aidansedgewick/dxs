@@ -25,7 +25,7 @@ from dxs.utils.misc import print_header, calc_mids
 from dxs import analysis_tools as tools
 
 from dxs import paths
-daaaa
+
 logger = logging.getLogger("analysis")
 
 if not os.isatty(0):
@@ -74,6 +74,7 @@ parser.add_argument("--optical", default="panstarrs")
 parser.add_argument("--mir", default=None)
 parser.add_argument("--zphot", nargs="?", default=None)
 parser.add_argument("--objects", default=[], choices=object_choices, nargs="+")
+parser.add_argument("--icut", default=25.0, type=float)
 parser.add_argument("--color-plots", default=False, action="store_true")
 parser.add_argument("--venn-plots", default=False, action="store_true")
 parser.add_argument("--cp-density", default=0.2, type=float)
@@ -83,6 +84,7 @@ parser.add_argument("--corr", default=False, action="store_true")
 parser.add_argument("--treecorr-config", default=default_treecorr_config_path)
 parser.add_argument("--uvj", default=False, action="store_true")
 parser.add_argument("--save-figs", default=False, action="store_true")
+parser.add_argument("--plot-dir", default=None, action="store")
 parser.add_argument("--force-write", default=False, action="store_true")
 parser.add_argument("--read-corr", default=False, action="store_true")
 args = parser.parse_args()
@@ -103,8 +105,11 @@ cosmol = cosmology.FlatLambdaCDM(H0=70.0, Om0=0.3, ) #Planck15
 
 ### Which magnitudes do we want to use?
 
-opt_mag_type = "aper_30"
-nir_mag_type = "aper_30"
+if args.optical == "hsc":
+    opt_mag_type = "aper_20"
+elif args.optical == "panstarrs":
+    opt_mag_type = "aper_30"
+nir_mag_type = "aper_20"
 mir_mag_type = "aper_30"
 
 opt_tot_mag_type = "kron"
@@ -136,18 +141,18 @@ Ktot_mag = f"K_mag_{nir_tot_mag_type}"
 # MUST leave trailing comma, as queries are tuples.
 selection_queries = {
     #"galaxies": (f"({Jmag} - 0.938) - ({Kmag} - 1.900) > 1.0", ),
-    "eros_245": (f"{imag} - {Kmag} > 2.55", f"{imag} < 25.0", ),
-    "eros_295": (f"{imag} - {Kmag} > 2.95", f"{imag} < 25.0", ),
+    "eros_245": (f"{imag} - {Kmag} > 2.55", f"{imag} < 25.", ), # f"{imag} < 30.", 
+    "eros_295": (f"{imag} - {Kmag} > 2.95", f"{imag} < 25.", ),
     #"drgs": (f"({Jmag} - 0.938) - ({Kmag} - 1.900) > 2.3", ),
     "drgs": (f"{Jmag} - {Kmag} > 1.34", ), # AB equiv of >2.3
     "sf_gzKs": (
         f"({zmag} - {Kmag}) - 1.27 * ({gmag} - {zmag}) >= -0.022", 
-        f"{gmag} < 50.0", f"{zmag} < 50.0",f"{Kmag} < 22.2"
+        f"{gmag} < 50.0", f"{zmag} < 50.0", #f"{Kmag} < 22.2"
     ),
     "pe_gzKs": (
         f"({zmag} - {Kmag}) - 1.27 * ({gmag} - {zmag}) < -0.022", 
         f"{zmag} - {Kmag} > 2.55", 
-        f"{gmag} < 50.0", f"{zmag} < 50.0", f"{Kmag} < 22.5"
+        f"{gmag} < 50.0", f"{zmag} < 50.0", #f"{Kmag} < 22.5"
     ),
 }
 
@@ -193,6 +198,7 @@ zdist_bins = np.arange(0., 6. + d_zdist, d_zdist)
 
 
 ###==================== load some other stuff ===================###
+
 sfdq = sfd.SFDQuery()
 
 
@@ -282,8 +288,14 @@ literature_galaxy_counts = [
     ),
 ]
 literature_counts = {"galaxies": []}
+
+if args.optical == "hsc":
+    JWKOPT = "hsc"
+elif args.optical == "panstarrs":
+    JWKOPT = "ps"
+
 literature_counts["eros_245"] = [
-    (kim14_dat["Kmag"].values, kim14_dat["ero245_ps"].values,
+    (kim14_dat["Kmag"].values, kim14_dat[f"ero245_{JWKOPT}"].values,
         {"s": 20, "marker": "^", "color": "k", "label": "Kim+2014, EROs (PS1)"}
     ),
     (uds_dat["Kmag"].values, uds_dat["eros_245"].values,
@@ -291,7 +303,7 @@ literature_counts["eros_245"] = [
     ),
 ]
 literature_counts["eros_295"] = [
-    (kim14_dat["Kmag"].values, kim14_dat["ero295_ps"].values,
+    (kim14_dat["Kmag"].values, kim14_dat[f"ero245_{JWKOPT}"].values,
         {"s": 20, "marker": "^", "color": "k", "label": "Kim+2014, EROs (PS1)"}
     ),
     (uds_dat["Kmag"].values, uds_dat["eros_295"].values,
@@ -502,6 +514,13 @@ if args.corr:
         corr_ax.set_ylim(ylim)
         corr_ax.loglog()
         corr_plot_lookup[obj] = (corr_fig, corr_ax)
+
+
+
+################################################################################
+###                         analysis starts here                             ###
+################################################################################
+
 
 
 for ii, field in enumerate(args.fields):
@@ -761,6 +780,7 @@ for ii, field in enumerate(args.fields):
                 obj_pos_fig.suptitle(f"{field} {obj} {K_lim}")
                 obj_pos_ax.scatter(loc_randoms.ra, loc_randoms.dec, s=1, color="k")
                 obj_pos_ax.scatter(K_selection["ra"], K_selection["dec"], s=1, color="r")
+                obj_pos_ax.set_xlim(obj_pos_ax.get_xlim()[::-1])
 
 
 
