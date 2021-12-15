@@ -42,6 +42,13 @@ jobs:
     - name: Install stilts-wrapper
       run:
         python3 -m pip install stilts-wrapper
+    - name: Install EAZY
+      run: |
+        git clone --recurse-submodules https://github.com/gbrammer/eazy-py.git
+        echo "export EAZYCODE=${PWD}/eazy-py/eazy-photoz" >> ~/.bashrc
+        cd eazy-py
+        pip install .  -r requirements.tx
+        cd ..
     - name: Install dxs suite
       run: |
         python3 configuration/configure_dustmaps.py
