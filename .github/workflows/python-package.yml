@@ -47,7 +47,7 @@ jobs:
         git clone --recurse-submodules https://github.com/gbrammer/eazy-py.git
         echo "export EAZYCODE=${PWD}/eazy-py/eazy-photoz" >> ~/.bashrc
         cd eazy-py
-        pip install .  -r requirements.tx
+        pip install .  -r requirements.txt
         cd ..
     - name: Install dxs suite
       run: |
