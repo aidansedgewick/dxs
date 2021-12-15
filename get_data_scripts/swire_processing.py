@@ -219,7 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--force-download", action="store_true", default=False)
     parser.add_argument("--skip-catalog", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
-    parser.add_argument("--image-types", nargs="+", default=["mask"], choices=image_type_choices, required=False)
+    parser.add_argument("--image-types", nargs="+", default=["cov"], choices=image_type_choices, required=False)
     parser.add_argument("--resolution", default=2.0, type=float)
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()

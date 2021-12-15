@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.ndimage.morphology import binary_fill_holes, binary_erosion
+from scipy.ndimage import morphology 
 
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
@@ -34,7 +34,7 @@ with open(survey_config_path, "r") as f:
 
 def download_data(url, output_path):
     try:
-        result = subprocess.run(["wget", url, "-O", output_path])
+        result = subprocess.run(["wget", url, "-O", output_path, "--no-check-certificate"])
         return 0
     except Exception as e:
         print(f"Download failed; result:")
@@ -77,9 +77,9 @@ def process_large_region_file(file_path, band):
     box_re = re.compile("\(([0-9e\.]*),([-0-9e\.]*),([0-9\.]*)d,([0-9\.]*)d\).*mag:([0-9\.]*)")
 
     with open(file_path) as f:
-        #i = 0
-        for i, l in enumerate(f):
-            #i = i+1
+        i = 0
+        for i,l in enumerate(f):
+            i = i+1
                 
             if l.startswith("circle"):
                 #print(l)
@@ -123,7 +123,7 @@ def process_large_region_file(file_path, band):
     with open(reg_dir / f"XM_{band}.reg", "w+") as f:
         f.writelines(header + XM_reg)
 
-def faster_region_parse(file_path, mag_lim=15.):
+def faster_region_parse(file_path, mag_lim=12.):
     regions = []
     header = []
     logger.info("parsing regions...")
@@ -135,6 +135,8 @@ def faster_region_parse(file_path, mag_lim=15.):
             if not (l.startswith("circle") or l.startswith("box")):
                 header.append(l)
             else:
+                #if l.startswith("box"):
+                #    continue
                 res = mag_re.search(l)
                 mag = float(res.group(1))
                 if mag > mag_lim:
@@ -146,7 +148,7 @@ def faster_region_parse(file_path, mag_lim=15.):
     
 
 def create_field_mask(
-    field, bands, random_catalog_path, output_path, resolution=20.
+    field, bands, random_catalog_path, output_path, resolution=10., skip_stars=False,
 ):
 
     logger.info(f"read {random_catalog_path}")
@@ -181,12 +183,18 @@ def create_field_mask(
 
     mask_array = np.zeros(shape_out[::-1])
 
+
     arr = np.column_stack((randoms["ra"], randoms["dec"]))
     logger.info(f"start wcs transform, {len(arr)} obj")
     rand_pix = wcs_out.wcs_world2pix(arr, 0).astype(int) # NOT array_index - this gives (col, row)
 
     for pix in tqdm.tqdm(rand_pix):
         mask_array[tuple(pix[::-1])] += 1
+    mask_array[ mask_array > 0 ] = 1
+
+
+    ##mask_array = binary_dilation(mask_array, iterations=10).astype(int)
+    #mask_array = binary_erosion(mask_array, iterations=4).astype(int)
 
     for band in bands:
         print(f"look at {band}")  
@@ -204,14 +212,26 @@ def create_field_mask(
             
         bad_randoms = (
             rand_bad_q | rand_satcenter_q | rand_edge_q | rand_null_q
-        ).filter(randoms)s
+        ).filter(randoms)
 
         arr = np.column_stack([bad_randoms["ra"], bad_randoms["dec"]])
         bad_pix = wcs_out.wcs_world2pix(arr, 0).astype(int)
         for pix in tqdm.tqdm(bad_pix):
             band_array[tuple(pix[::-1])] = 0.
-        band_array[ band_array > 0 ] = 1.
-    
+
+        band_array = morphology.binary_fill_holes(band_array).astype(int)
+        band_array = morphology.binary_erosion(band_array).astype(int)
+
+
+
+        # Keep and unmodified version, too...
+        exp_mask_output_path = mask_dir / f"{field}_{band}_exp_mask.fits"
+        hdu = fits.PrimaryHDU(data=band_array, header=header)
+        hdu.writeto(exp_mask_output_path, overwrite=True)
+        
+        if skip_stars:
+            continue
+
         mask_output_path = mask_dir / f"{field}_{band}_mask.fits"
         hdu = fits.PrimaryHDU(data=band_array, header=header)
         hdu.writeto(mask_output_path, overwrite=True)
@@ -227,6 +247,19 @@ def create_field_mask(
         print(region_list[0].meta)
 
         mask_regions_in_mosaic(mask_output_path, region_list)
+
+        #aux_reg_path = paths.input_data_path / f"external/hsc/regions/{field}_{band}_aux.reg"
+        #if aux_reg_path.exists():
+            #aux_regions = DS9Parser(str(aux_reg_path))
+            
+            #region_list = faster_region_parse(reg_path)
+
+            #print(region_list[0].meta)
+    
+            #mask_regions_in_mosaic(mask_output_path, region_list)
+
+
+
 
     #plot_array = mask_array.copy()
     #plot_array[ plot_array == 0 ] = np.nan
@@ -245,6 +278,7 @@ if __name__ == "__main__":
     parser.add_argument("--force-download", action="store_true", default=False)
     parser.add_argument("--skip-mask", action="store_true", default=False)
     parser.add_argument("--mask-bands", default=hsc_bands, choices=hsc_bands, nargs="+")
+    parser.add_argument("--skip-stars", default=False, action="store_true")
     args = parser.parse_args()
     
     fields = args.fields #.split(",")
@@ -273,9 +307,10 @@ if __name__ == "__main__":
             print(f"No download URL for field {field}")
             continue
         url = base_url + catalog_url_code
-        catalog_output_path = catalog_dir / f"{field}_catalog.fits"
+        catalog_output_path = catalog_dir / f"{field}_hsc.cat.fits"
 
         if not catalog_output_path.exists() or args.force_download:
+            logger.info(f"downloading {catalog_output_path}")
             status = download_data(url, catalog_output_path)
             if status == 1:
                 query_path = base_dir / f"{field}_hsc_query.sql"
@@ -312,7 +347,7 @@ if __name__ == "__main__":
                 print(f"{print_path}")
 
         fig = create_field_mask(
-            field, args.mask_bands, random_output_path, mask_dir
+            field, args.mask_bands, random_output_path, mask_dir, skip_stars=args.skip_stars
         )
   
     plt.show()

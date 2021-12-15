@@ -227,10 +227,11 @@ def process_panstarrs_mosaic_mask(
     base_dir=None, 
     skip_regions=False, 
     resolution=2.0, 
+    output_wcs=None,
     hdu=0,
 ):
     ps_field = ps_config["from_dxs_field"][field]
-    """
+    
     print(f"process {ps_field} {output_path}")
     if base_dir is None:
         base_dir = paths.input_data_path / f"external/panstarrs/images"
@@ -255,9 +256,23 @@ def process_panstarrs_mosaic_mask(
         input_list.append(t)
         
     logger.info("find output wcs")
-    wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
-        input_list, resolution = resolution * u.arcsec
-    )
+    if output_wcs is None:
+        wcs_out, shape_out = mosaicking.find_optimal_celestial_wcs(
+            input_list, resolution = resolution * u.arcsec
+        )
+    else:
+        if isinstance(output_wcs, Path) or isinstance(output_wcs, str):
+            try:
+                print_path = Path(output_wcs).relative_to(Path.getcwd())
+            except:
+                print_path = Path(output_wcs)
+            print("read output wcs from {print_path}")
+            with fits.open(output_wcs) as f:
+                wcs_out = WCS(f[0].header)
+                shape_out = f[0].data.shape
+        else:
+            raise ValueError("output_wcs should be Path/str, not {type(output_wcs)}")
+            
     logger.info("starting reprojection")
     mask_array, footprint = mosaicking.reproject_and_coadd(
         input_list, wcs_out, shape_out=shape_out,
@@ -269,7 +284,7 @@ def process_panstarrs_mosaic_mask(
 
     output_hdu = fits.PrimaryHDU(data=mask_array, header=header)
     output_hdu.writeto(output_path, overwrite=True)
-    """
+    
     
 
     if not skip_regions:
@@ -332,7 +347,9 @@ if __name__ == "__main__":
     parser.add_argument("--mask-extension", default=".unconv.fits")
     parser.add_argument("--resolution", default=2.0, type=float)
     parser.add_argument("--mask-bands", default=["i"], choices=["g", "r", "i", "z", "y"], nargs="+")
+    parser.add_argument("--mask-stem", default=None)
     parser.add_argument("--skip-regions", default=False, action="store_true")
+    parser.add_argument("--output-wcs", default=None)
     # remember: dashes go to underscores after parse, ie, "--skip-mask" -> args.skip_mask 
     args = parser.parse_args()
 
@@ -356,13 +373,16 @@ if __name__ == "__main__":
                 extension = "_" + "_".join(extension_split)
             for band in args.mask_bands:
                 mask_dir.mkdir(exist_ok=True, parents=True)
-                output_path = mask_dir / f"{field}_{band}{extension}.fits"
+                mask_stem = args.mask_stem or f"{field}_{band}{extension}"
+                    
+                output_path = mask_dir / f"{mask_stem}.fits"
                 process_panstarrs_mosaic_mask(
                     field, 
                     output_path=output_path, 
-                    band=band, 
+                    band=band,
                     extension=args.mask_extension,
                     resolution=args.resolution,
+                    output_wcs=args.output_wcs,
                     skip_regions=args.skip_regions
                 )
 

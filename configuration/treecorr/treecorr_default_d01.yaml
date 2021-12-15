@@ -12,5 +12,5 @@ treecorr:
 
 # not used by treecorr expicitly, but kept here for convenience
 # ie, script "pops" from dict.
-randoms_density: 36000
+randoms_density: 5000
 patch_size: null

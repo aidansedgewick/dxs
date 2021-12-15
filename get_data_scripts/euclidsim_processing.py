@@ -1,5 +1,6 @@
 import getpass
 import logging
+import time
 import tqdm
 import sys
 import yaml
@@ -62,8 +63,9 @@ if __name__ == "__main__":
         del pwd
 
         opt_mag_cols = ",\n    ".join(
-            f"DES_{band}_obs_app as {band.lower()}_mag_kron" for band in "grizY" 
+            f"SDSS_{band}_obs_app as {band.lower()}_mag_kron" for band in "griz" 
         )
+        opt_mag_cols = opt_mag_cols + "PanSTARRS_y_obs_app as y_mag_kron"
         nir_mag_cols = ",\n    ".join(
             f"mag_{band}_obs_app as {band}_mag_kron" for band in "JHK" 
         )
@@ -82,11 +84,15 @@ if __name__ == "__main__":
         query = (
             f"select \n    {cols}\n"
             f"from EUCLID_v1..LC_DEEP_Gonzalez2014a\n"
-            f"where mag_K_obs_app < 24.5"
+            f"where mag_K_obs_app < 25.3" # roughly =24.5 after accounting for +5log10(0.7)
         )
         print(query)
+
+        t1 = time.time()
         data = eagleSqlTools.execute_query(con, query)
-        print(f"selected {len(data)} rows")
+        t2 = time.time()
+        dt = t2 - t1
+        print(f"selected {len(data)} rows in {(dt/60.):.2f} minutes")
 
         col_names = [col.split()[-1] for col in cols.split(",")]
         euclid = Table(data, names=col_names)
@@ -104,7 +110,7 @@ if __name__ == "__main__":
     min_dec = min(euclid["dec"]) - 0.1
     max_dec = max(euclid["dec"]) + 0.1
 
-    resolution = 60.
+    resolution = 30.
 
     center = [
         0.5 * (min_ra + max_ra),
@@ -132,6 +138,12 @@ if __name__ == "__main__":
 
     for pix in tqdm.tqdm(rand_pix):
         mask_array[tuple(pix[::-1])] += 1    
+
+
+    euclidsim_mask_path = euclid_dir / "euclidsim_mask.fits"
+
+    hdu = fits.PrimaryHDU(data=mask_array, header=header)
+    hdu.writeto(euclidsim_mask_path, overwrite=True)
 
     fig, ax = plt.subplots()
     plot_array = mask_array.copy()

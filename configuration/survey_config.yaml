@@ -2,8 +2,8 @@
 
 ccds: [1, 2, 3, 4] # which ccds in stacks contain the data.
 
-fields: [SA, LH, EN, XM]
-field_names: [SA22, Lockman, ElaisN1, XMM-LSS]
+fields: [SA, EN, LH, XM]
+field_names: [SA22, ElaisN1, Lockman, XMM-LSS]
 field_to_code: {SA22: SA, Lockman: LH, ElaisN1: EN, XMM-LSS: XM}
 code_to_field: {SA: SA22, LH: Lockman, EN: ElaisN1, XM: XMM-LSS}
 tiles_per_field: {SA: 12, LH: 11, EN: 12, XM: 8}
@@ -21,6 +21,7 @@ mosaics:
   max_size: [25000, 25000]
   pixel_scale: 0.2 # arcsec.
   include_deprecated_stacks: True
+  masked_bgr_size: 32   # using segmentation map as mask, how large a bgr mesh to use?
 
 field_limits:
   SA: {ra: [332.0, 336.0], dec: [-1.2, 2.0]}
@@ -68,6 +69,8 @@ merge:
   unwise_match_error: 1.0
   hsc_match_error: 1.0
   swire_match_error: 1.0
+  galex_match_error: 2.0
+  irac_match_error: 1.0
 
   default_code: 0 # so default merged catalogs will be called FF00K.cat.fits
   default_tiles:
@@ -100,11 +103,6 @@ ab_vega_offset:
   I2: 3.290
 
 zeropoint_flux:
-  g: 3991.0
-  r: 3174.0
-  i: 2593.0
-  z: 2232.0
-  y: 2026.0
   J: 1530.0
   H: 1019.0
   K: 631.0
@@ -113,38 +111,28 @@ zeropoint_flux:
   I1: null
   I2: null
 
-reddening_coeffs: 
-  # panstarrs https://iopscience.iop.org/article/10.1088/0004-637X/750/2/99/pdf
-  # each also has a term depending on (g-i) of the order ~0.01*(g-i) - ignore these...?
+extinction_coeffs:
   g: 3.613
   r: 2.585
   i: 1.908
   z: 1.499
   y: 1.251
-  J: null
-  H: null
-  K: null
-  I1: null
-  I2: null
-  I3: null
-  I4: null
-  
-wavelengths:
-  g: 475.0
-  r: 622.0
-  i: 763.0
-  z: 905.0 
-  y: 1005.0
-  J: 1248.0
-  H: 1631.0
-  K: 2201.0
-  w1: 3368.0
-  w2: 4618.0
-  I1: 3600.0
-  I2: 4500.0
-
+  J: 0.902
+  H: 0.576
+  K: 0.367
 
 ###===== external catalogs =====###
+
+external_catalogs: [panstarrs, hsc, swire, unwise, galex, uds, spuds, galex]
+
+external_order:
+  galex: 0
+  panstarrs: 1
+  hsc: 1
+  swire: 2
+  irac: 2
+  spuds: 2
+  mips: 3 # unlikely to need/use!
 
 
 panstarrs:
@@ -156,6 +144,21 @@ panstarrs:
   apertures: [1.04, 1.76, 3.00, 4.64, 7.44, 11.42, 18.20, 28.20, 44.22 ]
   eazy_filter_codes: {g: 334, r: 335, i: 336, z: 337, y: 338}
 
+  # panstarrs https://iopscience.iop.org/article/10.1088/0004-637X/750/2/99/pdf
+  # each also has a term depending on (g-i) of the order ~0.01*(g-i) - ignore these...?
+  extinction_coeffs:
+    g: 3.613
+    r: 2.585
+    i: 1.908
+    z: 1.499
+    y: 1.251
+
+  zeropoint_flux:
+    g: 3991.0
+    r: 3174.0
+    i: 2593.0
+    z: 2232.0
+    y: 2026.0
 
 hsc:
   bands: [g, r, i, z, y]
@@ -176,7 +179,17 @@ hsc:
   random_urls:
     EN: ccb073e381e7643eef7390f532741ece38b7e56f508a89b4dc405a48d17dbc4d
     SA: 626a3d1595e23e9df28ab88a562dfb2865c4baa21b9c62ac7f0e664e0b687088
-    XM: 20d07c80836a7006d1cf64ad99f410ab29e160d4c3b34de5c84bb234e7ebee1f
+    XM: d16b422d1eeec0e9ef76bab3140a74e71668320559e7ac8acd9992bbbf0bb1e1
+    # old-- 20d07c80836a7006d1cf64ad99f410ab29e160d4c3b34de5c84bb234e7ebee1f
+
+  # https://hsc.mtk.nao.ac.jp/pipedoc/pipedoc_8_e/colorterms.html
+  extinction_coeffs:
+    g: 3.238
+    r: 2.280
+    i: 1.641
+    z: 1.262
+    y: 1.074
+
 swire:
   bands: [I1, I2, I3, I4]
   eazy_filter_codes: {I1: 18, I2: 19, I3: 20, I4: 21}
@@ -209,8 +222,43 @@ uds:
   
   # https://pleiades.nottingham.ac.uk/UDS/DR11/UDS-DR11.sex
   phot_apertures: [5.2,7.5,11.2,14.9,22.4,29.8,37.3,178.8376]
+  eazy_filter_codes: {J: 263, H: 264, K: 265}
 
 
+spuds:
+  base_url: "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?"
+  bands: [I1, I2, I3, I4]
+  eazy_filter_codes: {I1: 18, I2: 19, I3: 20, I4: 21}
+  url_base: "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?"
+  select_columns: [
+    "cntr", "ra", "dec",
+    "flux_ap_36", "uncf_ap_36", 
+    "flux_ap_45", "uncf_ap_45",
+    "flux_ap_56", "uncf_ap_56",
+    "flux_ap_80", "uncf_ap_80",
+  ]
 
 
+galex:
+  bands: [fuv, nuv]
+  base_url: http://galex.stsci.edu/data/
+  img_table_url: http://skyservice.pha.jhu.edu/CasJobsOutput/FITS/galex_img_asedgewick.fit
+  catalog_stem: combo_catalog
+  eazy_filter_codes: {fuv: 120, nuv: 121}
+
+  extinction_coeffs:
+  # GALEX https://ui.adsabs.harvard.edu/abs/2019MNRAS.489.5046W/abstract
+    fuv: 8.01
+    nuv: 6.79 
+
+
+video:
+    vertices_file:
+        # relative to base_path
+        XM: "external/video/XM_vertices.yaml"
+
+veils:
+    vertices_file:
+        # relative to base_path
+        XM: "external/veils/XM_vertices.yaml"
 

@@ -20,6 +20,7 @@ with open(system_config_path, "r") as f:
 def fix_placeholders(config, placeholders=None):
     if placeholders is None:
         placeholders = {}
+    print("placeholders", placeholders)
     for k, v in config.items():
         if type(v) is str:
             if "@" in v:
@@ -27,15 +28,23 @@ def fix_placeholders(config, placeholders=None):
                 rpl = [placeholders[x[1:]] if "@" in x else x for x in spl]
                 join = Path(*tuple(rpl))
                 config[k] = str(join)
+            if "$" in v:
+                print("in dollar rplace")
+                for pl_k, pl_v in placeholders.items():
+                    if not pl_k.startswith("$"):
+                        continue
+                    if pl_k in v:
+                        v = v.replace(pl_k, pl_v)
+                config[k] = v
             placeholders[k] = config[k]
         elif isinstance(v,dict):
             config[k] = fix_placeholders(v, placeholders=placeholders)
     return config
 
-def read_run_config(run_config_path):
+def read_run_config(run_config_path, placeholders=None):
     with open(run_config_path, "r") as f:
         run_config = yaml.load(f, Loader=yaml.FullLoader)
-    run_config = fix_placeholders(run_config)
+    run_config = fix_placeholders(run_config, placeholders=placeholders)
     for k, v in run_config.get("kwargs", {}).items():
         if v == "None":
             run_config["kwargs"][k] = None
@@ -50,10 +59,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     
-    run_config_path = Path(args.config)
-    run_config = read_run_config(run_config_path)
-    run_name = run_config.get("run_name", None)
     datestr = datetime.datetime.today().strftime("%y%m%d")
+
+    run_config_path = Path(args.config)
+    run_config = read_run_config(run_config_path, placeholders={"$date": datestr})
+    run_name = run_config.get("run_name", None)
+
     if run_name is None:
         run_name = f"{run_config_path.stem}_{datestr}"
         print(f"set run_name to {run_name}")
@@ -66,7 +77,14 @@ if __name__ == "__main__":
     if not python_script_path.exists():
         print(f"\033[31;1mWARN:\033[0m {python_script_path} not found.")
     job_name = run_config.get("job_name", None)
-    script_maker = ScriptMaker(python_script_path, base_dir=base_dir, job_name=job_name)
+
+    config = {}
+    if "cpus_per_job" in run_config:
+        config["cpus_per_job"] = run_config["cpus_per_job"]
+    print(config)
+    script_maker = ScriptMaker(
+        python_script_path, base_dir=base_dir, job_name=job_name, config=config
+    )
 
     arg_list = []
     for k, v in run_config.get("args",{}).items():
@@ -97,8 +115,12 @@ if __name__ == "__main__":
     if len(per_run_kwargs) > 0:
         kwargs_list = [kw for kw in per_run_kwargs]
         for kw in kwargs_list:
-            
             kw.update(kwargs)
+            kw_keys = kw.keys()
+            for key in kw_keys:
+                val = kw[key]
+                if isinstance(val, list):
+                    kw[key] = " ".join(x for x in val)
         print(kwargs_list)
         if len(combinations) == 1:
             combinations = [() for _ in kwargs_list]

@@ -13,5 +13,5 @@ treecorr:
     output_dots: false
 
 # not used by treecorr, but kept here for convenience
-randoms_density: 100000
+randoms_density: 90000
 patch_size: 0.33 # sq deg.

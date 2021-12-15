@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import time
+import tqdm
 import yaml
 from argparse import ArgumentParser
 from multiprocessing import Pool
@@ -23,8 +24,9 @@ from eazy.photoz import PhotoZ
 from eazy.param import EazyParam
 from eazy.utils import path_to_eazy_data
 
-from dxs import Stilts
+from stilts_wrapper import Stilts
 
+from dxs.utils.misc import print_header
 from dxs.utils.phot import vega_to_ab, ab_to_flux, apply_extinction
 
 from dxs import paths
@@ -39,8 +41,8 @@ class PhotozProcessor:
     def __init__(
         self, 
         input_catalog_path, 
-        aperture, 
-        external_catalog_apertures, 
+        #aperture, 
+        catalog_apertures, 
         output_dir=None,
         Nobj=None,
         basename="photoz",
@@ -77,8 +79,13 @@ class PhotozProcessor:
         self.photoz_input_path = self.output_dir / output_name
         self.eazy_parameters_path = self.output_dir / f"{self.basename}.param"
 
-        self.aperture = aperture
-        self.external_catalog_apertures = external_catalog_apertures
+        #self.aperture = aperture
+        #self.external_catalog_apertures = external_catalog_apertures
+    
+        self.aperture = catalog_apertures.get("dxs", None)
+        if self.aperture is None:
+            self.aperture = catalog_apertures.get("uds", "NO_AP")
+        self.catalog_apertures = catalog_apertures
         self.n_cpus = n_cpus
 
     def prepare_input_catalog(
@@ -88,9 +95,20 @@ class PhotozProcessor:
         magnitudes=True,
         flux_format="{band}_mag_{aperture}", 
         fluxerr_format="{band}_magerr_{aperture}",
+        skip_bands=None,
         query=None,
     ):
-
+        """
+        convert_from_vega
+           a list of bands to apply AB/Vega transform, defined in survey_config.
+        convert_magnitudes
+            if True, convert from (AB) magnitude to flux in uJy.
+        magnitudes
+            if True (default), assume input data is in magnutudes
+            
+     
+        """
+        print_header("prepare input catalog")
         full_catalog = Table.read(self.input_catalog_path)
         if "id" not in full_catalog.columns:
             full_catalog["id"] = np.arange(len(full_catalog))
@@ -99,6 +117,8 @@ class PhotozProcessor:
         coords = SkyCoord(ra=full_catalog["ra"], dec=full_catalog["dec"], unit="deg")
         sfdq = sfd.SFDQuery()
         ebv = sfdq(coords)
+
+        skip_bands = skip_bands or []
 
         if convert_from_vega is None:
             convert_from_vega = []
@@ -109,21 +129,35 @@ class PhotozProcessor:
             logger.info(f"convert {data_col} from VEGA with band={band}")
             full_catalog[data_col] = vega_to_ab(full_catalog[data_col], band=band)
         
-        d = {"dxs": self.aperture, **self.external_catalog_apertures}
         translate_dict = {}
-        for survey, aper in d.items():
-            if survey == "dxs":
+
+        for x, aper in self.catalog_apertures.items():
+            if x == "dxs":
                 bands = ["J", "H", "K"]
-                eazy_codes = survey_config["eazy_filter_codes"]
+                eazy_codes = survey_config[x].get("eazy_filter_codes")
+                
+            elif x in survey_config["external_catalogs"]:
+                bands = survey_config[x].get("bands")
+                if bands is None:
+                    raise ValueError(f"no bands in survey_config for {x}")
+                eazy_codes =  survey_config[x].get("eazy_filter_codes", None)
+                if eazy_codes is None:                    
+                    raise ValueError(f"no eazy_filter_codes in survey_config for {x}")
             else:
-                bands = survey_config[survey].get("bands")
-                eazy_codes = survey_config[survey].get("eazy_filter_codes")
+                bands = [x] # assume that this is one band? how to get 
+                raise ValueError(
+                    r"for now give eg \{'panstarrs': 'aper_30'}, not indiv bands."
+                )
+
             for band in bands:
+                if band in skip_bands:
+                    continue
                 data_col = flux_format.format(band=band, aperture=aper)
                 err_col = fluxerr_format.format(band=band, aperture=aper)
                 if data_col not in full_catalog.columns:
                     logger.info(f"missing {data_col}")
                     continue
+                print(f"use {data_col}")
                 if magnitudes:
                     #if data_col in convert_from_vega:
                     #    logger.info(f"convert {data_col} to AB")
@@ -170,13 +204,16 @@ class PhotozProcessor:
             catalog = full_catalog
 
         if self.Nobj is not None:
-            logger.info("selecting first {self.Nobj} objects, AFTER query...")        
+            logger.info("selecting first {self.Nobj} objects, AFTER query...")     
+            catalog = catalog[:self.Nobj]
+        logger.info(f"catalog length {len(catalog)}\n")
         catalog.write(self.photoz_input_path, overwrite=True)
         
 
     def prepare_eazy_parameters(
         self, paths_to_modify=None, modify_templates_file=True, **kwargs
     ):
+        print_header("prep param file")
         param = modified_eazy_parameters(
             paths_to_modify=paths_to_modify,
             catalog_file=self.photoz_input_path, 
@@ -204,36 +241,74 @@ class PhotozProcessor:
         param.write(self.eazy_parameters_path)
         
     def initialize_eazy(self, param_path=None):
+        print_header("init EAZY")
         param_path = param_path or self.eazy_parameters_path
         self.phz = PhotoZ(
             param_file=str(param_path), 
             translate_file=str(self.translate_file_path), 
             n_proc=self.n_cpus,
         )
-        print("END EAZY INIT")
-        time.sleep(5.0)
 
     def fit_catalog(self, **kwargs):
+        print_header("fit catalog")
         t1 = time.time()
         self.phz.fit_catalog(n_proc=self.n_cpus, timeout=7200, **kwargs)
         t2 = time.time()
         dt = t2 - t1
         rate = self.phz.NOBJ / dt
         logger.info(f"finish catalog fit")
-        logger.info(f"fit {self.phz.NOBJ} obj in {dt:.2f} s  (={rate:.2e}  obj / s)")
+        logger.info(f"fit {self.phz.NOBJ} obj in {dt:.2f}s (={rate:.2e} obj/s)")
         print()
 
-    def standard_output(self, auto_save_fits=False, **kwargs):
+    def standard_output(self, auto_save_fits=False, par_timeout=14400, **kwargs):
+        print_header("standard output")
 
+        
         t1 = time.time()
+        
+        extra_rf_filters = kwargs.pop("extra_rf_filters", [])
+        absmag_filters = kwargs.pop("absmag_filters", [])
+        assert "absmag_filters" not in kwargs
+
+        print("standard output kwargs are")
+        for k, v in kwargs.items():
+            print(f"{k} : {v}")
+        
         zout, hdu = self.phz.standard_output(
             prior=True, 
             beta_prior=True, 
             save_fits=auto_save_fits, 
-            n_proc=self.n_cpus, #par_skip=100
-            par_timeout=14400,
+            n_proc=self.n_cpus,
+            par_skip=100,
+            extra_rf_filters=[],
+            absmag_filters=[],
+            par_timeout=par_timeout,
             **kwargs
         )
+        
+        # Basically copy-paste from sps_parameters
+        # do absmag by hand.
+        if len(absmag_filters) > 0:
+            print('Abs Mag filters', absmag_filters)
+            absm = self.phz.abs_mag(
+                f_numbers=absmag_filters, 
+                cosmology=None, 
+                rest_kwargs={
+                    'percentiles': [2.5,16,50,84,97.5], 
+                    'pad_width': 0.5, 
+                    'max_err': 0.5, 
+                    'verbose': False,
+                    'simple': False,
+                    'par_timeout': par_timeout,
+                    'n_proc': self.n_cpus,
+                }
+            )
+            for c in absm.colnames:
+                zout[c] = absm[c]
+            
+            for key in absm.meta:
+                zout.meta[key] = absm.meta[key]
+
         logger.info("done STDOUT")
         if not auto_save_fits:
             eazy_data_path = Path(path_to_eazy_data())
@@ -252,6 +327,7 @@ class PhotozProcessor:
         logger.info(f"write stdout in {t2-t1}")
 
     def match_result(self, output_path=None):
+        print_header("match result")
         if output_path is None:
             stem = self.input_catalog_path.name.split(".")[0]
             output_path = (
@@ -260,26 +336,54 @@ class PhotozProcessor:
             )
         
         tab = Table.read(self.zout_path)
-        tab.remove_columns(["ra", "dec"])
-        temp_path = paths.temp_stilts_path / output_path.name
+        tab.rename_column("ra", "ra_pz")
+        tab.rename_column("dec", "dec_pz")
+        temp_path = paths.scratch_stilts_path / output_path.name
         tab.write(temp_path, overwrite=True)
         #shutil.copy2(self.zout_path, temp_path)
-
-        stilts = Stilts.tmatch2_exact_fits(
-            self.input_catalog_path, temp_path, output_path, "id"
-        )
-        stilts.run()
+        try:
+            stilts = Stilts.tskymatch2(
+                in1=self.input_catalog_path, 
+                in2=temp_path,
+                out=output_path,
+                ra1="ra", dec1="dec",
+                ra2="ra_pz", dec2="dec_pz",
+                error=1.0,
+                join="all1",
+                all_formats="fits"
+            )
+            stilts.run()
+        except Exception as e:
+            print(e)
+            print("match failed!")
 
     def make_plots(self, N=None):
         plot_dir = self.output_dir / "SED_plots"
         plot_dir.mkdir(exist_ok=True, parents=True)
         matplotlib.use('Agg')
         if N is None:
-            N = self.phz.NOBJ
+            N_plots = self.phz.NOBJ
+        else:
+            N_plots = min(N, self.phz.NOBJ)
 
-        for ii in range(N):
-            print(f"plot {ii}")
-            fig, params = self.phz.show_fit(ii, id_is_idx=True)
+        print_header(f"make {N_plots} plots")
+        for ii in tqdm.tqdm(range(N_plots)):
+            #print(f"plot {ii}")
+            fig, params = self.phz.show_fit(ii, id_is_idx=True, add_label=False)
+            axes = fig.axes
+            txt = (
+                f"z={self.phz.zbest[ii]:.2f}\n"
+                f"ID={self.phz.OBJID[ii]}\n" 
+                f"chi2={self.phz.chi2_best[ii]:.2f}\n"
+                f"mag={self.phz.prior_mag_cat[ii]:.2f}"
+            )
+            axes[0].text(
+                0.95, 0.95, txt, ha="right", va="top", fontsize=10, 
+                transform=axes[0].transAxes, 
+                bbox=dict(facecolor='w', alpha=0.5), zorder=10
+                
+            )
+
             fig_name = plot_dir / f"{self.catalog_stem}_{ii:06d}.png"
             fig.savefig(fig_name)
             plt.close()
@@ -345,14 +449,14 @@ if __name__ == "__main__":
         n_cpus=3
     )
 
-    pzp.prepare_input_catalog(
-        convert_from_vega=["J_mag_aper_30", "K_mag_aper_30"],
-        query=(
-            f"(J_mag_aper_30 - 0.938) - (K_mag_aper_30 - 1.900) > 1.0", 
-            f"i_mag_aper_30 - K_mag_aper_30 > 2.45", "i_mag_aper_30 < 25.0",
-            f"K_mag_auto + 1.900 < {args.K_cut}",
-        )
-    )
+    #pzp.prepare_input_catalog(
+        #convert_from_vega=["J_mag_aper_30", "K_mag_aper_30"],
+        #query=(
+        #    #f"(J_mag_aper_30 - 0.938) - (K_mag_aper_30 - 1.900) > 1.0", 
+        #    #f"i_mag_aper_30 - K_mag_aper_30 > 2.45", "i_mag_aper_30 < 25.0",
+        #    #f"K_mag_auto + 1.900 < {args.K_cut}",
+        #)
+    #)
     pzp.prepare_eazy_parameters(
         paths_to_modify=[
             "prior_file", "templates_file", "wavelength_file", "temp_err_file",

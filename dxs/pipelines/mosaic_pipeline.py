@@ -197,7 +197,7 @@ def mosaic_pipeline(
         seg_name = builder.mosaic_path.stem
         mosaic_dir = paths.get_mosaic_dir(*spec)
         catalog_dir = paths.get_mosaic_dir(*spec) # so we can store the mask with the mosaic.
-        seg_catalog_name = catalog_dir / f"{seg_name}_segmenation.cat.fits"
+        seg_catalog_name = catalog_dir / f"{seg_name}_segmentation.cat.fits"
         seg_config = {"checkimage_name": mosaic_dir / f"{seg_name}_mask.seg.fits"}
         extractor = CatalogExtractor(
             builder.mosaic_path,
@@ -218,12 +218,14 @@ def mosaic_pipeline(
         masked_swarp_config = {
             "center": builder.swarp_config["center"], # don't calculate twice!
             "image_size": builder.swarp_config["image_size"], # don't calculate twice!
+            "subtract_back": "N", # This is for the SWARP
         }        
         masked_prep_kwargs = {
             "hdu_prefix": f"{stem}_m",
             #resize=True, edges=25.0,
             "mask_sources": True, "mask_header": mask_header, "mask_map": mask_map,
-            "subtract_bgr": True, "bgr_size": 64,
+            "subtract_bgr": True, # This is for the HDUPREP - see masked_swarp_config.
+            "bgr_size": survey_config["mosaics"]["masked_bgr_size"],
             "overwrite": False,
         }
         masked_builder = MosaicBuilder.from_dxs_spec(

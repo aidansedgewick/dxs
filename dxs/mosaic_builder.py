@@ -447,12 +447,16 @@ class MosaicBuilder:
         return tiny_hdu_path
     
     def initialise_astromatic(self, n_cpus=None):
-        config = self.build_swarp_config()
+        config = self.build_default_swarp_config()
         config["nthreads"] = n_cpus or 1    
         config.update(self.swarp_config)
         #if not os.isatty(0):
         #    config["verbose_type"] = "quiet" # If running on a batch, prevent spewing output.
         config = format_flags(config)
+        swarp_subtract = (config.get("SUBTRACT_BACK", 0) == "Y")
+        hdu_subtract = self.hdu_prep_kwargs.get("subtract_bgr", False)
+        if swarp_subtract and hdu_subtract:
+            logger.warn(f"subtract bgr in swarp **AND** hdu_prep?!?!")
         self.swarp = Astromatic(
             "SWarp", 
             str(paths.scratch_swarp_path), # I think this is ignored by Astromatic() anyway?!
@@ -466,24 +470,22 @@ class MosaicBuilder:
         self.cmd_kwargs = cmd_kwargs
         self.cmd_kwargs["cmd"] = cmd
 
-    def build_swarp_config(self,):
+    def build_default_swarp_config(self,):
         config = {}
         config["imageout_name"] = self.mosaic_path
         weightout_name = self.mosaic_dir / f"{self.mosaic_path.stem}.weight.fits"
         config["weightout_name"] = weightout_name
         config["resample_dir"] = paths.scratch_swarp_path
         config["pixel_scale"] = survey_config["mosaics"].get("pixel_scale", 0.2) #f"{pixel_scale:.6f}" 
-        config["pixelscale_type"] = "manual"       
+        config["pixelscale_type"] = "MANUAL"
+        config["subtract_back"] = "Y"  
         config["xml_name"] = self.swarp_xml_path
         return config
 
     def add_extra_keys(self, extra_keys=None, magzpt_inc_exptime=True):
         extra_keys = extra_keys or {}
-        print(self.header_keys)
         keys = self.header_keys
         keys.update(extra_keys)
-        print("these are the keys")
-        print(keys)
         
         keys["do_flxsc"] = (
             self.hdu_prep_kwargs.get("add_flux_scale", False),
@@ -716,7 +718,9 @@ def calculate_mosaic_geometry(
     y_size = abs(dec_limits[1] - dec_limits[0]) * plate_factor
     mosaic_size = (int(x_size), int(y_size))
     if factor is not None:
-        mosaic_size = (mosaic_size[0]*factor, mosaic_size[1]*factor)
+        mosaic_size = (
+            int(mosaic_size[0] * factor), int(mosaic_size[1] * factor)
+        )
     if border is not None:
         mosaic_size = (mosaic_size[0]+border, mosaic_size[1]+border)
     max_size = [int(x) for x in survey_config["mosaics"]["max_size"]]

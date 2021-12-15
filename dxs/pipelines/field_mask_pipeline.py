@@ -42,7 +42,7 @@ def field_mask_pipeline(
     output_stem = paths.get_mosaic_stem(field, output_code, band, suffix=output_suffix)
     output_path = paths.masks_path / f"{output_stem}.fits"
     print(output_path)
-
+    paths.masks_path.mkdir(exist_ok=True, parents=True)
 
     input_paths = []
     for tile in tiles:

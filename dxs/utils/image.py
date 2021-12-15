@@ -21,6 +21,7 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 import healpy as hp
 
 from regions import PolygonPixelRegion, PolygonSkyRegion, PixCoord, read_ds9
+from reproject.mosaicking import find_optimal_celestial_wcs
 
 from dxs import paths
 
@@ -150,6 +151,7 @@ def single_image_coverage(
     #pix = pix[ pix_mask ]
 
     in_good_coverage = data[ypix, xpix] > minimum_coverage # boolean.
+
     assert len(in_good_coverage) == sum(pix_mask)
 
     mask[ pix_mask ] = in_good_coverage
@@ -206,7 +208,7 @@ def objects_in_coverage(
     return full_mask
 
 def calc_survey_area(
-    image_list, ra_limits=None, dec_limits=None, limits_units="deg", nside=2048
+    image_list, ra_limits=None, dec_limits=None, limits_units="deg", nside=2048, coords=False
 ):
     if not isinstance(image_list, list):
         image_list = [image_list]
@@ -247,6 +249,9 @@ def calc_survey_area(
     ra = np.rad2deg(phi)
     dec = np.rad2deg(0.5 * np.pi - theta)
     mask = objects_in_coverage(image_list, ra, dec)
+    
+    if coords:
+        return sum(mask) * pix_area, (ra, dec), mask
 
     return sum(mask) * pix_area
 
@@ -407,7 +412,7 @@ def mask_regions_in_mosaic(
 ###=================== compare mosaics ===================###
 
 def mosaic_compare(
-    path1, path2, func="diff", save_path=None, show=True, header=1, hdu1=0, hdu2=0
+    path1, path2, func="diff", save_path=None, show=True, header=1, hdu1=0, hdu2=0, mode="partial"
 ):
     path1 = Path(path1)
     path2 = Path(path2)
@@ -417,13 +422,28 @@ def mosaic_compare(
     with fits.open(path1) as mosaic1:
         data1 = mosaic1[hdu1].data
         header1 = mosaic1[hdu1].header
+        wcs1 = WCS(header1)
     with fits.open(path2) as mosaic2:
         data2 = mosaic2[hdu2].data
         header2 = mosaic2[hdu2].header
-    try:
-        out_header = [header1, header2][header-1]
-    except:
-        raise ValueError("Choose to keep first header (header=1), or second (header=2)")
+        wcs2 = WCS(header2)
+    if data2.shape == data1.shape:
+        try:
+            out_header = [header1, header2][header-1]
+        except:
+            raise ValueError("Choose to keep first header (header=1), or second (header=2)")
+    else:
+        logger.info("wrong shapes - take cutouts")
+        
+        out_wcs, shape = find_optimal_celestial_wcs([(data1, wcs1), (data2, wcs2)])
+        center1 = SkyCoord.from_pixel(shape[1]/2, shape[0]/2, wcs=out_wcs)
+        center2 = SkyCoord.from_pixel(shape[1]/2, shape[0]/2, wcs=out_wcs)
+        c1 = Cutout2D(data1, center1, shape, wcs=wcs1, mode=mode, fill_value=0.)
+        c2 = Cutout2D(data2, center2, shape, wcs=wcs2, mode=mode, fill_value=0.)
+        data1 = c1.data
+        data2 = c2.data
+        out_header = out_wcs.to_header()        
+
     if func in ["diff", "difference"]:
         data = np.subtract(data1, data2)
     elif func in ["quot", "quotient"]:
@@ -434,7 +454,7 @@ def mosaic_compare(
     output_hdu.writeto(save_path, overwrite=True)
    
     ds9_command = build_ds9_command(save_path, path1, path2)
-    print(f"view image with \n    {ds9_command} &")
+    print(f"view image with \n    {ds9_command} -single")
 
 def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
     path = Path(path)
@@ -452,7 +472,7 @@ def scale_mosaic(path, value, save_path=None, hdu=0, round_val=None):
 ### other
 
 default_ds9_flags = [
-    "single", "zscale", "cmap bb", "wcs skyformat degrees", "multiframe", "lock frame wcs"    
+    "zscale", "wcs skyformat degrees", "multiframe", "lock frame wcs"    
 ]
 
 def build_ds9_command(*mosaic_paths, flags=None, relative=True):
@@ -475,7 +495,7 @@ def build_ds9_command(*mosaic_paths, flags=None, relative=True):
             except:
                 print_path_list.append( path )
     else:
-        print_path_list = mosaic_paths   
+        print_path_list = mosaic_paths
     flag_str = " ".join(f"-{x}" for x in flags)
     path_str = " ".join(str(path) for path in print_path_list)
     cmd = f"ds9 {flag_str} {path_str}"

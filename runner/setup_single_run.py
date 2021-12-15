@@ -4,7 +4,7 @@ import yaml
 from argparse import ArgumentParser
 from pathlib import Path
 
-from .runner import ScriptMaker
+from runner import ScriptMaker
 
 
 
@@ -44,18 +44,39 @@ if __name__ == "__main__":
 
         run_dir = "_".join([job_str, obj_str, opt_str, tc_str])"""
             
-    
-    script_maker = ScriptMaker(args.python_script, run_dir)
+   
+    config={}
+
+    script_kwargs = {}
+    opt = []
+    new_key = None
+    for word in s_ak:
+        if word.startswith("--"):
+            if new_key is not None:
+                script_kwargs["
+            new_key = word[2:]
+            opt = []
+        else:
+            opt.append(new_key)
+        
+
+    if "num_threads" in s_ak:
+        config["cpus_per_job"] = s_ak["num_threads"]
+
+    script_maker = ScriptMaker(args.python_script, run_dir, config=config)
 
     header = script_maker.make_header(stdout_name="run")
     header.append("")
     modules = script_maker.make_script_modules()
     modules.append("")
 
+    script_path = Path(args.python_script).absolute()
+
     s_ak_str = " ".join(x for x in s_ak)
-    python_cmd = [f"python3 {args.python_script} {s_ak_str}"]
+    python_cmd = [f"python3 -u {script_path} {s_ak_str}"]
 
     output_script = run_dir / "run.sh"
+
 
     lines = header + modules + python_cmd
 
@@ -65,6 +86,9 @@ if __name__ == "__main__":
 
     print_path = output_script.relative_to(Path.cwd())
 
+
     print(f"view script with\n   less {print_path}")
+    stdout_path = script_maker.stdout_dir / "run.out"
+    print(f"watch output with\n    less {stdout_path.relative_to(Path.cwd())}")
 
     print(f"\nnow do:\n    \033[35msbatch {print_path}\033[0m")

@@ -213,5 +213,14 @@ def calc_widths(arr):
 def calc_range(arr, axis=None):
     return (arr.min(axis=axis), arr.max(axis=axis))
 
+def mad(arr):
+    med = np.median(arr)
+    dev = arr - med
+    mad_val = np.median(abs(dev))
+    return mad_val
+
+
+
+
 
 

@@ -149,17 +149,25 @@ def photometry_pipeline(
         fix_sextractor_column_names(JKfp_ex.catalog_path, band="K", suffix="")
         logger.info(f"K forced from J apers at {JKfp_ex.catalog_path}")
     # stick them together.
-    Jfp_output_dir = paths.get_catalog_dir(*Jspec)
-    Jfp_combined_stem = paths.get_catalog_stem(field, tile, "J_K", prefix=prefix)
-    Jfp_output_path =  Jfp_output_dir / f"{Jfp_combined_stem}.cat.fits"
-    Jfp_matcher = CatalogMatcher(J_output_path, ra="J_ra", dec="J_dec")
+    JKfp_output_dir = paths.get_catalog_dir(*Jspec)
+    JKfp_combined_stem = paths.get_catalog_stem(field, tile, "J_K", prefix=prefix)
+    JKfp_output_path =  JKfp_output_dir / f"{JKfp_combined_stem}.cat.fits"
+    JKfp_matcher = CatalogMatcher(J_output_path, ra="J_ra", dec="J_dec")
     if match_fp:
         print_header("match J and K forced")
-        Jfp_matcher.match_catalog(
-            JKfp_ex.catalog_path, output_path=Jfp_output_path, ra="K_ra", dec="K_dec", error=1.0
+        JKfp_matcher.match_catalog(
+            JKfp_ex.catalog_path, output_path=JKfp_output_path, 
+            ra="K_ra", dec="K_dec", error=1.0
         )
-        fix_column_names(Jfp_output_path, column_lookup={"Separation": "JKfp_separation"})
-        logger.info(f"joined J and K forced at {Jfp_output_path}")
+        explode_columns_in_fits(
+            JKfp_output_path, "K_flux_radius", suffixes=flux_radii_suffixes
+        )
+        JKfp_aper_cols = ["K_mag_aper", "K_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
+        explode_columns_in_fits(
+            JKfp_output_path, JKfp_aper_cols, suffixes=aperture_suffixes, remove=True
+        )
+        fix_column_names(JKfp_output_path, column_lookup={"Separation": "JKfp_separation"})
+        logger.info(f"joined J and K forced at {JKfp_output_path}")
 
 
 
@@ -198,7 +206,9 @@ def photometry_pipeline(
             K_ex.catalog_path, ra="K_ra", dec="K_dec", output_path=K_output_path, 
         )
         fix_crosstalk_column_names(K_output_path, band="K")
-        explode_columns_in_fits(K_output_path, "K_flux_radius", suffixes=flux_radii_suffixes)
+        explode_columns_in_fits(
+            K_output_path, "K_flux_radius", suffixes=flux_radii_suffixes
+        )
         K_aper_cols = ["K_mag_aper", "K_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
         explode_columns_in_fits(
             K_output_path, K_aper_cols, suffixes=aperture_suffixes, remove=True
@@ -215,17 +225,26 @@ def photometry_pipeline(
         fix_sextractor_column_names(KJfp_ex.catalog_path, band="J", suffix="")
         logger.info(f"J forced from K apers at {KJfp_ex.catalog_path}")
     ## stick them together.
-    Kfp_output_dir = paths.get_catalog_dir(*Kspec)
-    Kfp_combined_stem = paths.get_catalog_stem(field, tile, "K_J", prefix=prefix)
-    Kfp_output_path =  Kfp_output_dir / f"{Kfp_combined_stem}.cat.fits"
-    Kfp_matcher = CatalogMatcher(K_output_path, ra="K_ra", dec="K_dec")
+    KJfp_output_dir = paths.get_catalog_dir(*Kspec)
+    KJfp_combined_stem = paths.get_catalog_stem(field, tile, "K_J", prefix=prefix)
+    KJfp_output_path =  KJfp_output_dir / f"{KJfp_combined_stem}.cat.fits"
+    KJfp_matcher = CatalogMatcher(K_output_path, ra="K_ra", dec="K_dec")
     if match_fp:
-        Kfp_matcher.match_catalog(
-            KJfp_ex.catalog_path, output_path=Kfp_output_path, 
+        KJfp_matcher.match_catalog(
+            KJfp_ex.catalog_path, output_path=KJfp_output_path, 
             ra="J_ra", dec="J_dec", error=1.0
         )
-        fix_column_names(Kfp_output_path, column_lookup={"Separation": "KJfp_separation"})
-        logger.info(f"joined J and K forced at {Kfp_output_path}")
+        explode_columns_in_fits(
+            KJfp_output_path, "J_flux_radius", suffixes=flux_radii_suffixes
+        )
+        KJfp_aper_cols = ["J_mag_aper", "J_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
+        explode_columns_in_fits(
+            KJfp_output_path, KJfp_aper_cols, suffixes=aperture_suffixes, remove=True
+        )
+        fix_column_names(KJfp_output_path, column_lookup={"Separation": "KJfp_separation"})
+        logger.info(f"joined J and K forced at {KJfp_output_path}")
+
+        
 
     ##======================== extract H
 
@@ -256,17 +275,25 @@ def photometry_pipeline(
         fix_sextractor_column_names(KHfp_ex.catalog_path, band="H", suffix="")
         
         Kfp_output_dir = paths.get_catalog_dir(*Kspec)
-        KHfp_combined_stem = paths.get_catalog_stem(field, tile, "K_JH", prefix=prefix)
-        KHfp_output_path =  Kfp_output_dir / f"{KHfp_combined_stem}.cat.fits"
-        KHfp_matcher = CatalogMatcher(K_output_path, ra="K_ra", dec="K_dec")
+        KJHfp_combined_stem = paths.get_catalog_stem(field, tile, "K_JH", prefix=prefix)
+        KJHfp_output_path =  Kfp_output_dir / f"{KJHfp_combined_stem}.cat.fits"
+        KJHfp_matcher = CatalogMatcher(KJfp_output_path, ra="K_ra", dec="K_dec")
         if match_fp:
-            Kfp_matcher.match_catalog(
-                Kfp_output_path, output_path=KHfp_output_path, 
+            KJHfp_matcher.match_catalog(
+                KHfp_ex.catalog_path, output_path=KHfp_output_path, 
                 ra="H_ra", dec="H_dec", error=1.0
             )
+            explode_columns_in_fits(
+                KJfp_output_path, "H_flux_radius", suffixes=flux_radii_suffixes
+            )
+            KJHfp_aper_cols = ["H_mag_aper", "H_magerr_aper"] #"K_flux_aper", "K_fluxerr_aper", 
+            explode_columns_in_fits(
+                KJHfp_output_path, KJHfp_aper_cols, suffixes=aperture_suffixes, remove=True
+            )
             fix_column_names(Kfp_output_path, column_lookup={"Separation": "KHfp_separation"})
-            logger.info(f"joined J and K forced at {Kfp_output_path}")      
-
+            logger.info(f"joined K and JH forced at {KJHfp_output_path}")
+    
+    # end of pipeline function.
 
 
 if __name__ == "__main__":

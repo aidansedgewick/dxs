@@ -3,7 +3,7 @@ scheduler: slurm
 account: durham
 queue: cosma
 cpus_per_node: 16
-max_time: 0-12:00:00
+max_time: 2-00:00:00
 email: False
 
 extra_header_lines: []

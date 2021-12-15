@@ -1,4 +1,4 @@
-import logging
+eogfimport logging
 import yaml
 from argparse import ArgumentParser
 from itertools import product
@@ -29,7 +29,7 @@ measurement_lookup = {
     #"H": "",
 }
 
-external_data = ["panstarrs", "cfhtls", "hsc", "unwise", "swire"]
+external_data = ["panstarrs", "cfhtls", "hsc", "unwise", "swire", "galex"]
 
 merge_config = survey_config["merge"]
 
@@ -39,7 +39,7 @@ def merge_pipeline(
     tiles, 
     bands, 
     mosaic_extension=".cov.good_cov.fits", 
-    use_fp_catalogs=False,
+    fp_bands=None,
     require_all=False,
     force_merge=False,
     external=None,
@@ -48,9 +48,12 @@ def merge_pipeline(
 ):
     output_catalogs = {}
     for band in bands:
+        fp_str = "_" + "".join(fp_bands) if fp_bands is not None else ""
+        band_str = f"{band}{fp_str}"
+
         output_dir = paths.get_catalog_dir(field, output_code, band)
         output_dir.mkdir(exist_ok=True, parents=True)
-        output_stem = paths.get_catalog_stem(field, output_code, band)
+        output_stem = paths.get_catalog_stem(field, output_code, band_str)
         output_path = output_dir / f"{output_stem}.cat.fits"
         output_catalogs[band] = output_path
 
@@ -60,16 +63,12 @@ def merge_pipeline(
             logger.info(f"SKIP {field} {tiles} {band} merge; {output_path.name} exists")
             continue
 
-        if use_fp_catalogs:
-            mband = measurement_lookup.get(band, None)
-        else: 
-            mband = None
-      
+
         data_list = []
         tile_list = []
         for tile in tiles:
             spec = (field, tile, band)
-            catalog_path = paths.get_catalog_path(*spec, measurement_band=mband)
+            catalog_path = paths.get_catalog_path(field, tile, band_str)
             if not catalog_path.exists():
                 if require_all:
                     raise IOError("No catalog {catalog_path}")
@@ -98,9 +97,14 @@ def merge_pipeline(
         merge_catalogs(
             data_list, output_path, id_col, ra_col, dec_col, snr_col, **merge_kwargs
         )
-        fix_column_names(output_path, column_lookup={
+        
+        column_lookup = {
             "GroupID": f"{band}_GroupID", "GroupSize": f"{band}_GroupSize"
-        })
+        }
+        if len(bands) == 1 and fp_bands is not None:
+            column_lookup.update({f"{band}_ra": "ra", f"{band}_dec": "dec"})
+
+        fix_column_names(output_path, column_lookup=column_lookup)
         branch, local_SHA = get_git_info()
         meta_data = {
             "branch": (branch, "pipeline branch"),
@@ -154,18 +158,27 @@ def merge_pipeline(
 
     elif (J_output and not K_output): 
         ext_match_input_path = J_output
-        input_ra = "J_ra"
-        input_dec = "J_dec"
+        if fp_bands is not None:
+            input_ra = "ra"
+            input_dec = "dec"
+        else:
+            input_ra = "J_ra"
+            input_dec = "J_dec"
     elif (K_output and not J_output): 
         ext_match_input_path = K_output
-        input_ra = "K_ra"
-        input_dec = "K_dec"
+        if fp_bands is not None:
+            input_ra = "ra"
+            input_dec = "dec"
+        else:
+            input_ra = "K_ra"
+            input_dec = "K_dec"
+
 
     ext_output_stem = ext_match_input_path.name.split(".")[0]
     
     for ext in external:
         print_header(f"add {ext} catalog")
-        logger.info(f"will left join to {ext_match_input_path.name}")
+        logger.info(f"left join {ext_match_input_path.name}")
         ext_matcher = CatalogMatcher(ext_match_input_path, ra=input_ra, dec=input_dec)
 
         if ext == "H":
@@ -173,7 +186,8 @@ def merge_pipeline(
             ext_match_error = merge_config["nir_match_error"]
             ext_ra, ext_dec = "H_ra", "H_dec"
         else:
-            ext_name = f"{field}_{ext}"
+            ext_stem = survey_config.get(ext, {}).get("catalog_stem", ext)
+            ext_name = f"{field}_{ext_stem}"
             ext_catalog_path = (
                 paths.input_data_path / f"external/{ext}/catalogs/{ext_name}.cat.fits"
             )
@@ -182,6 +196,11 @@ def merge_pipeline(
 
         ext_output_stem = ext_output_stem + f"_{ext}"
         ext_output_path = nir_output_dir / f"{ext_output_stem}.cat.fits"
+
+        if ext_output_path.exists() and (not force_merge):
+            logger.info(f"{ext_output_path.name} exists, no force-merge - skip!")
+            ext_match_input_path = ext_output_path
+            continue
 
         logger.info(f"output at {ext_output_path.name}")
         logger.info(f"match {ext} with error={ext_match_error:.2f}")
@@ -212,7 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--tiles", action="store", default=None)
     #parser.add_argument("--output-code", action="store", default=0, type=int, required=False)
     parser.add_argument("--force-merge", action="store_true", default=False, required=False)
-    parser.add_argument("--use-fp", action="store_true", default=False, required=False)
+    parser.add_argument("--fp-bands", default=None, required=False, nargs="+")
     parser.add_argument(
         "--external", action="store", nargs="+", 
         default=["panstarrs"], choices=external_data, required=False
@@ -244,7 +263,7 @@ if __name__ == "__main__":
         field, tiles, bands, 
         output_code=output_code, 
         force_merge=args.force_merge,
-        use_fp_catalogs=args.use_fp,
+        fp_bands=args.fp_bands,
         external=args.external,
         require_all=args.require_all,
         prefix=args.prefix

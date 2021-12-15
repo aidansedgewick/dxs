@@ -35,9 +35,9 @@ if __name__ == "__main__":
     mosaic_pipeline(args.field, args.tile, "K", n_cpus=args.n_cpus)
     mosaic_pipeline(args.field, args.tile, "H", n_cpus=args.n_cpus)
     photometry_pipeline(args.field, args.tile, n_cpus=args.n_cpus)
-    
+
     #tiles_in_field = survey_config["tiles_per_field"][args.field]
-    tiles = survey_config["merge"]["default_tiles"].get(field, None)
+    tiles = survey_config["merge"]["default_tiles"].get(args.field, None)
     #[x for x in range(1, tiles_in_field+1)]
     try:
         merge_pipeline(args.field, tiles, ["J", "K"], require_all=True)

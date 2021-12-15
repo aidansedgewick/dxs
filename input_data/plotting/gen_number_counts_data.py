@@ -35,8 +35,11 @@ def make_all_files():
     outpath = paths.input_data_path / "plotting/kim11_number_counts.csv"
     df.to_csv(outpath, index=False, float_format="%.2f")
 
-    print(f"save_to_ \n{outpath}")
-
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
     #for col in df.columns:
     #    if col == "K":
     #        continue
@@ -74,7 +77,11 @@ def make_all_files():
     df = pd.DataFrame(kim14_dict)
     outpath = paths.input_data_path / "plotting/kim14_number_counts.csv"
     df.to_csv(outpath, index=False, float_format="%.2f")
-    print(f"saved to \n{outpath}")
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except Exception as e:
+        print_path = outpath
+    print(f"save to {print_path}")
 
     ###====================== KAJISAWA+2006 DRG ===========================###
 
@@ -86,7 +93,7 @@ def make_all_files():
         [0.16, 0.25, 0.33, 0.58, 1.07, 0.41, 1.98, 1.48, 0.91]
     )
 
-    print(len(K_mags), len(density_per_arcmin_per_mag))
+    #print(len(K_mags), len(density_per_arcmin_per_mag))
 
     density_per_sqdeg_half_mag = density_per_arcmin_per_mag * 3600. * 0.5
 
@@ -94,9 +101,42 @@ def make_all_files():
 
     outpath = paths.input_data_path / "plotting/kajisawa06_number_counts.csv"
     df.to_csv(outpath, index=False, float_format="%.2f")
-    print(f"saved to \n{outpath}")
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
+    ###========================== GRAZIAN+2006 DRGs =============================###
 
-    ###====================== MCCRACKEN+2006 BzK GALS ===========================###
+    grazian06_df = pd.DataFrame([
+            [20.25, 6, -1.13, -0.91, -1.38, 1.05, 20.34, 135.372],
+            [20.75, 14, -0.68, -0.58, -0.82, 1.25, 20.81, 135.372],
+            [21.25, 16, -0.63, -0.53, -0.75, 1.42, 21.26, 135.372],
+            [21.75, 22, -0.47, -0.39, -0.57, 1.96, 21.79, 129.692],
+            [22.25, 29, -0.34, -0.27, -0.43, 2.04, 22.27, 128.273],
+            [22.75, 50, -0.11, -0.05, -0.17, 2.45, 22.78, 127.935],
+            [23.25, 32, -0.10, -0.03, -0.19, 2.80, 23.20, 81.272],
+            [23.75, 10, 0.10, 0.26, -0.06, 2.75, 23.58, 12.585],
+        ], columns=[
+            "Kmag", "N", "per_sqmin_mag", "pos_sigma", "neg_sigma", "z_mean", "K_mean", "area_sqmin"
+        ]
+    )
+    grazian06_bin_width = 0.5
+    grazian06_df["drgs"] = (10**grazian06_df["per_sqmin_mag"] * 60. * 60. ) * grazian06_bin_width
+    
+    outpath = paths.input_data_path / "plotting/grazian06_number_counts.csv"
+    grazian06_df.to_csv(outpath, index=False, float_format="%.2f")
+
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
+    
+    
+
+
+    ###====================== MCCRACKEN+2010 BzK GALS ===========================###
 
     K_mags = np.arange(16.25, 23.25, 0.5)
 
@@ -122,7 +162,11 @@ def make_all_files():
 
     outpath = paths.input_data_path / "plotting/mccracken10_number_counts.csv"
     df.to_csv(outpath, index=False, float_format="%.2f")
-    print(f"save to \n{outpath}")
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
 
     ###====================== ARCILA-OSEJO+2019 BzK GALS ===========================###
 
@@ -139,8 +183,37 @@ def make_all_files():
 
     outpath = paths.input_data_path / "plotting/arcilaosejo19_number_counts.csv"
     df.to_csv(outpath, index=False, float_format="%.2f")
-    print(f"save to \n{outpath}")
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
 
+    ### =============================== SEO+2021 gzK
+
+
+    df = pd.DataFrame([
+            [17.50, 3.68],
+            [18.00, 1.85],
+            [18.50, 3.68],
+            [19.00, 10.92],
+            [19.49, 11.46],
+            [20.00, 44.60],
+            [20.49, 134.42],
+            [21.00, 374.04],
+            [21.50, 644.21],
+            [21.99, 1145.59],
+            [22.50, 1681.49],
+        ], columns=["Kmag", "sf_gzK"]
+    )
+
+    outpath = paths.input_data_path / "plotting/seo21_number_counts.csv"
+    df.to_csv(outpath, index=False, float_format="%.2f")
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
     ###==================== DAVIES+2021 DEVILS galaxies
     
 
@@ -153,7 +226,11 @@ def make_all_files():
     df = pd.DataFrame({"Kmag": K_mags, "galaxies": K_counts})
     outpath = paths.input_data_path / "plotting/davies21_number_counts.csv"
     df.to_csv(outpath, index=False, float_format="%.2f")
-    print(f"save to \n{outpath}")
+    try:
+        print_path = outpath.relative_to(paths.Path.cwd())
+    except:
+        print_path = outpath
+    print(f"save to {print_path}")
 
 if __name__ == "__main__":
     make_all_files()

@@ -8,6 +8,7 @@ from .catalog_builder import (
     CatalogPairMatcher
 )
 from .catalog_merge import merge_catalogs
+from .catalog_tools import PhotometricCatalog
 from .crosstalk_processor import CrosstalkProcessor
 from .hdu_preprocessor import HDUPreprocessor
 from .mosaic_builder import (
@@ -15,7 +16,7 @@ from .mosaic_builder import (
     calculate_mosaic_geometry
 
 )
-#from .photoz_processor import PhotozProcessor
+from .photoz_processor import PhotozProcessor
 #from .quick_plotter import QPlot, QuickPlotter
 
 from dxs import paths

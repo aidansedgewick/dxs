@@ -68,6 +68,13 @@ def get_mosaic_stem(field, tile, band, prefix=None, suffix=None):
         tile_code = tile
     return f"{prefix}{field}{tile_code}{band}{suffix}"
 
+def get_analysis_path():
+    try:
+        import dxs_analysis
+        return Path(dxs_analysis.__file__).parent.parent
+    except:
+        raise IOError("No installed module dxs_analysis")
+
 def get_mosaic_dir(field, tile, band):
     return mosaics_path / get_mosaic_stem(field, tile, band)
 

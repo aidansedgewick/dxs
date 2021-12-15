@@ -12,6 +12,8 @@ input_data/
 !input_data/external/tmass
 !input_data/plotting
 safe/
+scripts/
+runner/configs
 runner/runs
 runner/runner_outputs
 temp_data/
